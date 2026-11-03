@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+
+# Environment & secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.npmrc
+credentials*.json
+*secret*
+config.local.*
+
+# Telegram / session files (these are credentials)
+*.session
+
+# Runtime data — war-room runs, logs, local databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+logs/
+*.log
+runs/
+sessions/
+store/
+data/
+
+# Claude Code local settings (may contain machine-specific paths)
+.claude/settings.local.json
+
+# OS & editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Misc
+*.tmp
+*.temp
+.cache/
+coverage/
+
+# King's Reach publish exclusions — local-only files, never commit these
+workspace/
+agents/*/workspace/
+warroom/.venv/
+*.pid
+Desktop.ini
+__pycache__/
+/HANDOFF.md
+/CLAUDE.md
+/AGENT_PROMPT.md
+scripts/wire-*.ps1

@@ -1,0 +1,8 @@
+id: "research"
+name: "Research"
+description: "deep dives, competitive analysis, market research"
+model: "claude-sonnet-4-6"
+# telegram_token: ""  # Uncomment and add token for dedicated bot
+# mcp_allowlist:      # Uncomment to restrict MCP servers
+#   - filesystem
+#   - browser

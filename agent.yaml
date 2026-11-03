@@ -1,0 +1,19 @@
+# King's Reach agent registry. Runtime reads this (not per-agent files).
+# Managed by `node dist/agent-create-cli.js` and `npm run setup`.
+agents:
+  - id: comms
+    name: Comms
+    description: "email, Slack, LinkedIn, all communications"
+    model: "claude-sonnet-4-6"
+  - id: content
+    name: Content
+    description: "writing, editing, publishing, brand voice"
+    model: "claude-sonnet-4-6"
+  - id: ops
+    name: Ops
+    description: "system admin, deployments, infrastructure, backups"
+    model: "claude-sonnet-4-6"
+  - id: research
+    name: Research
+    description: "deep dives, competitive analysis, market research"
+    model: "claude-sonnet-4-6"

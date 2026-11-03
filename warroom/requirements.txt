@@ -1,0 +1,9 @@
+# War Room: local, offline voice + WebSocket transport.
+# Models are intentionally NOT fetched here; place them under VOICE_MODEL_DIR (D: by default).
+# NVIDIA wheels provide the CUDA DLLs CTranslate2 needs on Windows; voice.py adds their bin dirs.
+websockets==13.1
+numpy>=2.0,<3
+kokoro-onnx==0.6.1
+faster-whisper==1.2.1
+nvidia-cublas-cu12==12.9.2.10; platform_system == "Windows"
+nvidia-cudnn-cu12==9.27.0.42; platform_system == "Windows"
