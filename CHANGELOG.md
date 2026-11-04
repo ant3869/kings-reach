@@ -1,5 +1,48 @@
 # Changelog
 
+## 2.14.0 - Live visibility, salvage, measured minds
+
+The 2.13.1 post-mortem left three design issues and the owner could not tell whether a build was working, stalled
+or dead. This release fixes both.
+
+**You can now see what is happening (War Room client v22, server v12)**
+- **Live status panel** under the stage chips: one badge (`WORKING`, `QUIET`, `STALLED`, `RUNNING`, `DONE`, `FAILED`,
+  `CANCELLED`; each has a glyph and a word, never colour alone), an estimated progress bar (`~37% (estimate)`, never
+  100% until the run really finished), a per-agent row (current action, `turn 7/24`, files read / edited, seconds since
+  last news), the last spoken line as a caption, and a short activity feed.
+- **Real events, not timers.** `src/activity.ts` turns Claude tool calls and Codex `exec --json` events into short,
+  secret-redacted sentences ("Editing src/agent.ts"; file *contents* never leave the process). The bridge streams them
+  (`activity: true`) and `warroom/live.py` forwards them. Silence is shown honestly: 45 s `QUIET`, 90 s `STALLED`.
+- **Cards react to what happened:** `defeated` on a failed answer, `confused` on a stall or a route failure, per-seat
+  text badges next to the existing building/researching art.
+- **Spoken commentary** from the same events: stage changes, first edit per file, route fallbacks, stalls, a periodic
+  "N files read, M changed". Room-wide throttle (22 s, 6 s for urgent news), skipped when more than one clip is already
+  queued, always captioned even when speech is off. Templated, so it is free and cannot invent progress.
+- **Build reports are cross-checked** against the edits actually observed (soft warning: shell edits and
+  non-streaming routes legitimately differ).
+- **Demo / replay, zero cost:** `/warroom?demo=build|build-fail|stall|summit[&speed=20]` plays synthetic events through
+  the real handlers on a virtual clock (browser speech stands in for Kokoro). `scripts/ui-check.mjs` drives it in real
+  Chrome. Nothing is sent to the server.
+
+**The three design issues**
+- **Failed-provider work is no longer discarded.** (1) A Claude seat that hits its turn cap is resumed in the same
+  session for up to 4 turns and told to answer from what it gathered; the attempt is marked `salvaged`. (2) If a route
+  still fails, a bounded, redacted, clearly-UNVERIFIED work log (files looked at, its own notes) is prepended to the
+  next route's prompt.
+- **A tool-less route can no longer talk a verified position down.** Replies now carry `hasTools`. A tool-less debate
+  answer may lower confidence by at most 0.10; tool-less takes are labelled in the log and flagged `NO TOOLS: unverified`
+  to Main, and recorded as `takes_without_tools`.
+- **`changed_minds` is measured.** From the before/after structured answers: confidence moved >= 0.15, or the
+  recommendation was rewritten (< 45% wording kept). The agent's own `changed_mind` is kept as
+  `changed_minds_claimed`, with `claimed_without_change` / `changed_without_claim` and per-agent `mind_changes`.
+
+**Honest limits**
+- The salvage / handoff / activity-stream path through the real Claude SDK is covered by unit tests of its parts and the
+  protocol parser, but its first end-to-end exercise is the next paid run. Watch the first summit's feed.
+- Progress % is an estimate (phase weights are guesses); turn counts and file counts are measured.
+- `to_thread` phases (preflight, gate) have no heartbeat: the page shows the phase clock but cannot flag them stalled.
+- Tests: node 64 (+16), python 42 (+22 in `tests/test_live.py`), ui-check +16.
+
 ## 2.13.1 - Summit post-mortem fixes
 
 Found by auditing the first live summit (run `cfac8fa0`) against the Claude Code transcripts.

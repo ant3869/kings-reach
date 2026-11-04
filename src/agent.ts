@@ -13,6 +13,7 @@ import { logger } from './logger.js';
 import { providerHasTools, recordProviderOutcome, routesFor, type ProviderId, type ToolNeed } from './provider-config.js';
 import { runExternalProvider } from './provider-runner.js';
 import { agentEnv, claudeSkillOptions, skillContext } from './skills.js';
+import { describeTool, redact, WorkLog, type ActivitySink } from './activity.js';
 
 /** Deliberation stages may read and research, never mutate. */
 export const WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
@@ -36,6 +37,8 @@ export interface AgentOptions {
   schema?: Record<string, unknown>;
   /** When set, usage + cost are recorded in token_usage for this chat. */
   chatId?: string;
+  /** Live narration of what the agent is doing (tool calls, turns, route changes). Optional and best-effort. */
+  onActivity?: ActivitySink;
 }
 
 export interface AgentResult {
@@ -52,10 +55,17 @@ export interface AgentResult {
   attempts?: Attempt[];
   /** Set when the SDK reported a failed result (max turns, execution error, ...). */
   error?: string;
+  /** On failure: what the attempt had already gathered, formatted for the next route's prompt. */
+  handoff?: string;
 }
 
+const TURN_CAP = /maximum number of turns/i;
+const WRAP_UP = 'You have run out of tool budget. Do NOT call any more tools. Using ONLY what you have already gathered ' +
+  'in this session, give your final answer now in the required format. Anything you did not get to verify must be ' +
+  'labelled unverified, and your confidence must reflect that.';
+
 /** One route tried. `costUsd` is money a FAILED attempt still burned (e.g. a Claude run that hit its turn cap). */
-export interface Attempt { provider: ProviderId; model: string; error?: string; costUsd?: number }
+export interface Attempt { provider: ProviderId; model: string; error?: string; costUsd?: number; salvaged?: boolean }
 
 /** Total spend across attempts that produced no answer. */
 export const wastedCost = (attempts: Attempt[]): number => attempts.reduce((sum, a) => sum + (a.costUsd ?? 0), 0);
@@ -132,6 +142,8 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
     let numTurns: number | undefined;
     let durationMs: number | undefined;
     let error: string | undefined;
+    const log = new WorkLog();
+    let turn = 0;
 
     const q = query({
       prompt: opts.message,
@@ -157,6 +169,17 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
         const sid = event['session_id'] ?? event['sessionId'];
         if (typeof sid === 'string' && sid) {
           newSessionId = sid;
+        }
+      } else if (type === 'assistant') {
+        turn += 1;
+        opts.onActivity?.({ kind: 'turn', text: `turn ${turn}/${maxTurns}`, turn, maxTurns });
+        const blocks = ((event['message'] as { content?: unknown[] } | undefined)?.content ?? []) as Array<Record<string, unknown>>;
+        for (const b of blocks) {
+          if (b['type'] === 'tool_use') {
+            const act = describeTool(String(b['name'] ?? ''), b['input']);
+            log.addActivity(act);
+            opts.onActivity?.(act);
+          } else if (b['type'] === 'text' && typeof b['text'] === 'string') log.addText(b['text']);
         }
       } else if (type === 'result') {
         const result = event['result'];
@@ -191,12 +214,31 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
         logger.warn({ err }, 'token usage logging failed (non-fatal)');
       }
     }
-    return { text, newSessionId, inputTokens, outputTokens, model, structured, costUsd, numTurns, durationMs, error, provider: 'claude' };
+    return { text, newSessionId, inputTokens, outputTokens, model, structured, costUsd, numTurns, durationMs, error, provider: 'claude',
+      handoff: error ? log.handoff('claude') : undefined };
   } finally {
     if (typingTimer) {
       clearInterval(typingTimer);
     }
   }
+}
+
+/**
+ * A Claude run that hit its turn cap has already paid for its research. Resume the same session and make it answer
+ * from what it gathered instead of discarding the work. Returns null when that does not work (its cost is then
+ * added to `failed` so the ledger still counts it).
+ */
+async function salvage(opts: AgentOptions, model: string, failed: AgentResult): Promise<AgentResult | null> {
+  if (!failed.newSessionId || !TURN_CAP.test(failed.error ?? '')) return null;
+  opts.onActivity?.({ kind: 'route', state: 'salvage', provider: 'claude', model,
+    text: 'Out of turns: asking Claude to answer from what it already gathered' });
+  const wrap = await runClaudeAgent({ ...opts, model, sessionId: failed.newSessionId, message: WRAP_UP, maxTurns: 4 });
+  failed.costUsd = (failed.costUsd ?? 0) + (wrap.costUsd ?? 0);
+  if (wrap.error || (!wrap.text && wrap.structured === undefined)) return null;
+  wrap.costUsd = failed.costUsd;
+  wrap.numTurns = (wrap.numTurns ?? 0) + (failed.numTurns ?? 0);
+  wrap.durationMs = (wrap.durationMs ?? 0) + (failed.durationMs ?? 0);
+  return wrap;
 }
 
 /** One capability-aware entry point for every surface. Tries each configured route in order. */
@@ -212,6 +254,7 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
     systemPrompt: [rolePrompt, opts.systemPrompt, await skillContext(agentId, true)].filter(Boolean).join('\n\n'),
   };
   const attempts: Attempt[] = [];
+  let handoff = '';
   const routes = routesFor(agentId);
   for (const target of routes) {
     if (opts.toolNeed === 'required' && !providerHasTools(target.provider)) {
@@ -220,15 +263,25 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
     }
     const started = Date.now();
     let spent: number | undefined;
+    // Work an earlier route finished before dying rides along, so the next route does not start from zero.
+    const message = handoff ? `${handoff}\n\n${opts.message}` : opts.message;
+    opts.onActivity?.({ kind: 'route', state: 'try', provider: target.provider, model: target.model,
+      text: `Asking ${target.provider} (${target.model})${handoff ? ' with the earlier attempt\'s notes' : ''}` });
     try {
-      const result = target.provider === 'claude'
-        ? await runClaudeAgent({ ...opts, model: target.model })
-        : await runExternalProvider(target, externalOpts);
+      let result = target.provider === 'claude'
+        ? await runClaudeAgent({ ...opts, message, model: target.model })
+        : await runExternalProvider(target, { ...externalOpts, message });
+      let salvaged = false;
+      if (result.error && target.provider === 'claude') {
+        const rescued = await salvage({ ...opts, message }, target.model, result);
+        if (rescued) { result = rescued; salvaged = true; }
+      }
       if (result.error || (!result.text && result.structured === undefined)) {
         spent = result.costUsd;
+        handoff = result.handoff ?? handoff;
         throw new Error(result.error ?? 'empty result');
       }
-      attempts.push({ ...target });
+      attempts.push({ ...target, ...(salvaged ? { salvaged: true } : {}) });
       const wasted = wastedCost(attempts);
       if (wasted) result.costUsd = (result.costUsd ?? 0) + wasted; // earlier failed routes were paid for too
       recordProviderOutcome(target.provider, target.model, true);
@@ -253,6 +306,8 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
       const reason = String(err).slice(-1500);
       attempts.push({ ...target, error: reason, ...(spent ? { costUsd: spent } : {}) });
       recordProviderOutcome(target.provider, target.model, false, reason);
+      opts.onActivity?.({ kind: 'route', state: 'failed', provider: target.provider, model: target.model,
+        text: `${target.provider} could not finish: ${redact(reason).replace(/\s+/g, ' ').slice(-110)}` });
       logger.warn({ agentId, provider: target.provider, model: target.model, err: reason }, 'provider route failed; trying fallback');
     }
   }

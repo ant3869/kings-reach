@@ -10,17 +10,25 @@ import {
   OPENAI_API_KEY, OPENROUTER_API_KEY, OPENROUTER_BASE_URL, STORE_DIR,
 } from './config.js';
 import type { AgentOptions, AgentResult } from './agent.js';
+import { codexActivity } from './activity.js';
 import { loadProviderState, type ProviderId, type RouteTarget } from './provider-config.js';
 
 interface CommandResult { code: number | null; stdout: string; stderr: string; }
 const TIMEOUT_MS = 15 * 60_000;
 
-function command(exe: string, args: string[], input = '', timeoutMs = TIMEOUT_MS): Promise<CommandResult> {
+function command(exe: string, args: string[], input = '', timeoutMs = TIMEOUT_MS, onLine?: (line: string) => void): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(exe, args, { cwd: process.cwd(), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '';
+    let stdout = '', stderr = '', pending = '';
     const timer = setTimeout(() => { child.kill(); reject(new Error(`${exe} timed out`)); }, timeoutMs);
-    child.stdout.on('data', (b: Buffer) => { stdout += b.toString(); });
+    child.stdout.on('data', (b: Buffer) => {
+      const chunk = b.toString();
+      stdout += chunk;
+      if (!onLine) return;
+      const lines = (pending + chunk).split(/\r?\n/);
+      pending = lines.pop() ?? '';
+      for (const line of lines) onLine(line);
+    });
     child.stderr.on('data', (b: Buffer) => { stderr += b.toString(); });
     child.on('error', (err) => { clearTimeout(timer); reject(err); });
     child.on('close', (code) => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
@@ -78,7 +86,13 @@ async function runCodex(target: RouteTarget, opts: AgentOptions): Promise<AgentR
     // `.cmd` is resolved by cmd.exe on Windows; no shell on other platforms.
     const exe = process.platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : 'codex';
     const realArgs = process.platform === 'win32' ? ['/d', '/s', '/c', 'codex.cmd', ...args] : args;
-    const r = await command(exe, realArgs, fullPrompt(opts));
+    const r = await command(exe, realArgs, fullPrompt(opts), TIMEOUT_MS, (line) => {
+      if (!opts.onActivity) return;
+      try {
+        const act = codexActivity(JSON.parse(line) as Record<string, unknown>);
+        if (act) opts.onActivity(act);
+      } catch { /* non-JSON diagnostic line */ }
+    });
     const text = (() => { try { return readFileSync(output, 'utf8').trim(); } catch { return r.stdout.trim(); } })();
     if (r.code !== 0) throw new Error((r.stderr || r.stdout || `Codex exited ${r.code}`).slice(-1000));
     let inputTokens = 0, outputTokens = 0;

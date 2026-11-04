@@ -3,7 +3,8 @@
 Every stage returns schema-validated JSON (SDK outputFormat). `spoken` fields are what the
 voices say; everything else is evidence for the log, the verdict file and the scoreboard.
 Deliberation is read-only (no Write/Edit tools); only execute() may change things.
-`room` is the UI sink: stage(), say(), thinking(), status(), send().
+`room` is the UI sink: stage(), say(), thinking(), status(), send(), narrate(). Live progress (what each agent is
+doing, the overall meter, spoken commentary) comes from live.py, fed by the bridge's activity stream.
 """
 
 import asyncio
@@ -15,16 +16,20 @@ import uuid
 try:
     from . import agent_bridge as ab
     from . import build
+    from . import mindchange
     from .config import (AGENT_BRIDGE_PATH, COUNCIL_DIR, DEBATE_ROUNDS, INVESTIGATE_TURNS, PROJECT_ROOT,
                          RUNS_FILE, VERDICT_ARCHIVE_DIR, VERDICT_FILE, VERDICT_JSON)
     from .ledger import archive_verdict, build_outcome, criteria_tally
+    from .live import BUILD_PHASES, COUNCIL_PHASES, Live
     from .personas import AGENT_IDS, SPECIALISTS, persona_prompt
 except ImportError:  # run as a script
     import agent_bridge as ab
     import build
+    import mindchange
     from config import (AGENT_BRIDGE_PATH, COUNCIL_DIR, DEBATE_ROUNDS, INVESTIGATE_TURNS, PROJECT_ROOT,
                         RUNS_FILE, VERDICT_ARCHIVE_DIR, VERDICT_FILE, VERDICT_JSON)
     from ledger import archive_verdict, build_outcome, criteria_tally
+    from live import BUILD_PHASES, COUNCIL_PHASES, Live
     from personas import AGENT_IDS, SPECIALISTS, persona_prompt
 
 STAGES = ("recall", "plan", "investigate", "debate", "verdict", "record")
@@ -141,12 +146,15 @@ class Run:
 class Council:
     def __init__(self, room):
         self.room = room
+        self.live = Live(room)
 
     async def _ask(self, run, agent, prompt, schema, **kw):
         """One structured call with seat animation + cost accounting. Returns (data|None, reply)."""
         await self.room.thinking(agent, True)
         try:
-            reply = await ab.ask(agent, prompt, system=persona_prompt(agent), schema=schema, **kw)
+            async with self.live.following(agent) as on_event:
+                reply = await ab.ask(agent, prompt, system=persona_prompt(agent), schema=schema,
+                                     on_event=on_event, **kw)
         finally:
             await self.room.thinking(agent, False)
         run.charge(agent, reply)
@@ -154,21 +162,26 @@ class Council:
             await self.room.send({"type": "provider", "agent_id": agent, "provider": reply.get("provider"),
                                   "model": reply.get("model", ""), "attempts": reply.get("attempts", [])})
         data = reply.get("data")
-        if not reply.get("ok") or not isinstance(data, dict):
+        good = bool(reply.get("ok")) and isinstance(data, dict)
+        await self.room.send({"type": "activity", "kind": "result", "agent_id": agent, "ok": good})
+        if not good:
             await self.room.say(agent, f"_(no structured answer)_ {reply.get('text', '')[:600]}", kind="error")
             return None, reply
         return data, reply
 
-    async def _stage(self, run, name, coro):
+    async def _stage(self, run, name, coro, expected=1):
         run.begin(name)
         await self.room.stage(name, "active")
+        await self.live.enter(name, expected)
         try:
             result = await coro
         except Exception:
             await self.room.stage(name, "failed")
+            await self.live.leave(name, ok=False)
             raise
         run.end(name)
         await self.room.stage(name, "done", human_time(run.data["stages"][name]))
+        await self.live.leave(name)
         return result
 
     async def _progress(self, phase, message, coro, interval=10):
@@ -190,7 +203,24 @@ class Council:
             raise
 
     # --- deliberation ---------------------------------------------------------------
+    async def _tracked(self, coro, success_outcome):
+        """Run one top-level job and always leave the live meter in an honest final state."""
+        state = "failed"
+        try:
+            data = await coro
+            state = "complete" if data and data.get("outcome") == success_outcome else "failed"
+            return data
+        except asyncio.CancelledError:
+            state = "cancelled"
+            raise
+        finally:  # cancel, crash or adjourn: the meter must never be left looking busy
+            await self.live.finish(state)
+
     async def deliberate(self, question, convo=""):
+        self.live = Live(self.room, COUNCIL_PHASES)
+        return await self._tracked(self._deliberate(question, convo), "verdict")
+
+    async def _deliberate(self, question, convo):
         run = Run("summit", question)
         brief = await self._stage(run, "recall", ab.recall(question))
         memory_lines = max(0, len(brief.splitlines()) - 1)
@@ -219,20 +249,23 @@ class Council:
 
         frame = (f"{context}\n\n[Objective]\n{plan['objective']}\n\n[Success criteria]\n"
                  f"{bullets(plan.get('success_criteria', []))}")
-        takes = {}
+        takes, tooled = {}, {}
 
         async def investigate(agent):
-            take, _ = await self._ask(run, agent, (
+            take, reply = await self._ask(run, agent, (
                 f"{frame}\n\n[Your assignment]\n{assigned[agent]['task']}\n\n{READ_ONLY_NOTE}\n{TOOLS_NOTE}"),
                 TAKE, read_only=True, tools="required" if assigned[agent].get("tools_required") else "preferred",
                 max_turns=INVESTIGATE_TURNS)
             if take:
                 takes[agent] = take
+                tooled[agent] = bool(reply.get("hasTools", True))
+                note = "" if tooled[agent] else "\n\n_Answered by a route without tools: nothing here was opened or fetched._"
                 await self.room.say(agent, f"{take['recommendation']}\n\n**Findings**\n{bullets(take['findings'])}"
                                     f"\n\n**Evidence**\n{bullets(take['evidence'])}\n\n_confidence "
-                                    f"{take['confidence']:.2f}_", spoken=take["spoken"], kind="take")
+                                    f"{take['confidence']:.2f}_{note}", spoken=take["spoken"], kind="take")
 
-        await self._stage(run, "investigate", asyncio.gather(*(investigate(a) for a in assigned)))
+        await self._stage(run, "investigate", asyncio.gather(*(investigate(a) for a in assigned)),
+                          expected=len(assigned))
         failed_specialists = sorted(set(assigned) - set(takes))
         quorum = max(2, (2 * len(assigned) + 2) // 3)
         if len(takes) < quorum:
@@ -248,12 +281,12 @@ class Council:
         if diversity_warning:
             await self.room.status(diversity_warning)
 
-        debates = {}
+        debates, assessments = {}, {}
         if DEBATE_ROUNDS > 0 and len(takes) > 1:
             async def cross_examine(agent):
                 others = "\n".join(f"- {o} (confidence {t['confidence']:.2f}): {t['recommendation']} | findings: "
                                    f"{'; '.join(t['findings'][:4])}" for o, t in takes.items() if o != agent)
-                d, _ = await self._ask(run, agent, (
+                d, reply = await self._ask(run, agent, (
                     f"{frame}\n\n[Your position]\n{takes[agent]['recommendation']}\n\n[The other councillors]\n{others}"
                     "\n\nCross-examine. Challenge the weakest claim another councillor made, with a reason. Concede "
                     "where someone has better evidence. Then give your revised recommendation. You may verify a "
@@ -261,13 +294,22 @@ class Council:
                     read_only=True, tools="preferred", max_turns=TURNS["debate"]) 
                 if d:
                     debates[agent] = d
-                    shift = " _(changed position)_" if d["changed_mind"] else ""
+                    t = takes[agent]
+                    a = assessments[agent] = mindchange.assess(
+                        t["confidence"], t["recommendation"], d["confidence"], d["revised_recommendation"],
+                        d["changed_mind"], has_tools=bool(reply.get("hasTools", True)))
+                    d["confidence"] = a["after"]  # a tool-less route cannot talk a verified position down
+                    shift = (f" _(position changed: {'; '.join(a['reasons'])})_" if a["changed"] else
+                             " _(claimed a change; none measured)_" if a["claimed"] else "")
+                    if a["capped"]:
+                        shift += " _(answered without tools, so confidence was held up)_"
                     challenges = "\n".join(f"- to **{c['target']}**: {c['issue']}" for c in d["challenges"])
                     await self.room.say(agent, f"{challenges}\n\n**Revised:** {d['revised_recommendation']}{shift}",
                                         spoken=d["spoken"], kind="critique")
 
             for _ in range(DEBATE_ROUNDS):
-                await self._stage(run, "debate", asyncio.gather(*(cross_examine(a) for a in takes)))
+                await self._stage(run, "debate", asyncio.gather(*(cross_examine(a) for a in takes)),
+                                  expected=len(takes))
         else:
             await self.room.stage("debate", "skipped")
         debate_failed_specialists = (sorted(set(takes) - set(debates))
@@ -275,7 +317,8 @@ class Council:
 
         final_positions = "\n".join(
             f"- {a} (confidence {debates.get(a, t).get('confidence', t['confidence']):.2f}"
-            f"{', changed mind' if debates.get(a, {}).get('changed_mind') else ''}): "
+            f"{', changed mind (measured)' if assessments.get(a, {}).get('changed') else ''}"
+            f"{'' if tooled.get(a, True) else ', NO TOOLS: unverified'}): "
             f"{debates.get(a, {}).get('revised_recommendation') or t['recommendation']}\n  findings: "
             f"{'; '.join(t['findings'][:5])}\n  evidence: {'; '.join(t['evidence'][:5])}\n  risks: {'; '.join(t['risks'][:3])}"
             + "".join(f"\n  challenged {c['target']}: {c['issue']}" for c in debates.get(a, {}).get("challenges", []))
@@ -315,7 +358,8 @@ class Council:
                           specialists=list(takes), failed_specialists=failed_specialists,
                           debate_failed_specialists=debate_failed_specialists, providers=final_providers,
                           provider_diversity=len(final_providers),
-                          changed_minds=sum(d["changed_mind"] for d in debates.values()),
+                          mind_changes=assessments, **mindchange.summarize(assessments),
+                          takes_without_tools=sorted(a for a, ok in tooled.items() if not ok),
                           challenges=sum(len(d["challenges"]) for d in debates.values()),
                           evidence=sum(len(t["evidence"]) for t in takes.values()),
                           confidence={a: [before[a], debates.get(a, {}).get("confidence", before[a])] for a in takes},
@@ -352,6 +396,10 @@ class Council:
 
     # --- execution ------------------------------------------------------------------
     async def execute(self):
+        self.live = Live(self.room, BUILD_PHASES)
+        return await self._tracked(self._execute(), "built")
+
+    async def _execute(self):
         if not VERDICT_JSON.exists():
             await self.room.status("No executable verdict on file yet: convene the council first.")
             return None
@@ -361,9 +409,13 @@ class Council:
         success_metrics = v.get("success_metrics", [])
         run.begin("preflight")
         await self.room.stage("preflight", "active", "checking clean baseline")
+        await self.live.enter("preflight", caption="compiling and syntax-checking before anyone edits")
+        await self.live.announce("main", "Checking the baseline first. Nobody edits anything until it is clean.")
         preflight = await asyncio.to_thread(build.preflight, sys.executable)
         run.end("preflight")
+        await self.live.leave("preflight", ok=preflight["ok"])
         if not preflight["ok"]:
+            await self.live.announce("main", "The baseline is already broken, so I stopped. No agent ran and nothing changed.")
             await self.room.stage("preflight", "failed", "baseline is broken")
             await self.room.send({"type": "build_progress", "phase": "preflight", "state": "failed",
                                   "elapsed": 0, "message": "Build stopped before any agent ran.",
@@ -375,10 +427,15 @@ class Council:
             await self.room.send({"type": "metrics", **data})
             return data
         await self.room.stage("preflight", "done", "baseline clean")
+        await self.room.send({"type": "build_progress", "phase": "preflight", "state": "done", "elapsed": 0,
+                              "message": "Baseline is clean"})
         owners = list(dict.fromkeys(s["owner"] for s in v.get("plan", [])))
         changed, reports = [], {}
         run.begin("execute")
         await self.room.stage("execute", "active", "starting implementation")
+        await self.live.enter("execute", len(owners), f"{len(owners)} owner(s) implementing")
+        await self.live.announce("main", f"Baseline is clean. {len(owners)} owner{'s' if len(owners) != 1 else ''} start building: "
+                                 + ", ".join(owners) + ".")
         for owner in owners:
             steps = "\n".join(f"- {s['step']} (done when: {s['done_when']})" for s in v["plan"] if s["owner"] == owner)
             r, _ = await self._progress("execute", f"{owner} is implementing its assigned steps", self._ask(run, owner, (
@@ -391,6 +448,11 @@ class Council:
             if r:
                 reports[owner] = r
                 changed += r["changed_files"]
+                unseen, unreported = self.live.tracker(owner).compare(r["changed_files"])
+                if unseen or unreported:  # soft: shell edits and non-streaming routes legitimately differ
+                    await self.room.status(f"{owner}: report and observed edits differ. Reported but never seen edited: "
+                                           f"{', '.join(unseen) or 'none'}. Edited but not reported: "
+                                           f"{', '.join(unreported) or 'none'}.")
                 await self.room.send({"type": "build_progress", "phase": "execute", "state": "active",
                                       "elapsed": int(run.data["agents"][owner]["seconds"]),
                                       "message": f"{owner} finished; {len(r['changed_files'])} file(s) reported"})
@@ -402,10 +464,16 @@ class Council:
                                       "elapsed": 0, "message": f"{owner} returned no usable build report"})
         run.end("execute")
         execution_failures = [owner for owner in owners if owner not in reports]
+        await self.live.leave("execute", ok=not execution_failures)
+        await self.room.send({"type": "build_progress", "phase": "execute", "elapsed": 0,
+                              "state": "done" if not execution_failures else "failed",
+                              "message": f"{len(reports)}/{len(owners)} owners reported; {len(set(changed))} file(s)"})
         await self.room.stage("execute", "done" if not execution_failures else "failed",
                               f"{len(reports)}/{len(owners)} owners; {len(set(changed))} files")
         await self.room.send({"type": "build_progress", "phase": "gate", "state": "active",
                               "elapsed": 0, "message": "Running automated checks"})
+        await self.live.announce("main", f"Implementation is in: {len(set(changed))} file{'s' if len(set(changed)) != 1 else ''} "
+                                 "changed. Running the automated checks now.")
         gate = await self._stage(run, "gate", asyncio.to_thread(build.gate, changed, sys.executable))
         if execution_failures:
             gate = {"ok": False, "output": gate["output"] + "; missing reports: " + ", ".join(execution_failures)}
@@ -413,7 +481,11 @@ class Council:
                               "state": "done" if gate["ok"] else "failed", "elapsed": 0,
                               "message": "Automated checks passed" if gate["ok"] else "Automated checks failed",
                               "detail": gate["output"][:2000]})
+        if not gate["ok"]:  # _stage marks a stage done when its coroutine returns; a failed check is returned, not raised
+            await self.room.stage("gate", "failed", "checks failed")
         await self.room.status(("checks passed: " if gate["ok"] else "checks FAILED: ") + gate["output"][:1500])
+        await self.live.announce("main", "Checks passed. Research is reviewing the changes." if gate["ok"] else
+                                 "Checks failed. The changes stay on disk but are not activated, and review is skipped.")
         review = None
         if gate["ok"]:
             review, _ = await self._stage(run, "review", self._progress("review",
@@ -440,7 +512,12 @@ class Council:
         if gate["ok"] and review and review["approved"] and any(
                 f.replace("\\", "/").lstrip("./").startswith("src/") for f in changed):
             await self.room.status("core code changed and checks pass: rebooting core...")
+            await self.live.enter("reboot", caption="restarting the core, then waiting for it to answer")
+            await self.live.announce("ops", "Core code changed. Restarting it and waiting for it to come back.")
             rebooted = await asyncio.to_thread(build.reboot_core)
+            await self.live.leave("reboot", ok=rebooted["ok"])
+            await self.live.announce("ops", "The core is back up." if rebooted["ok"] else
+                                     "The core restart failed. Check the log before trusting this build.")
             await self.room.status(("core rebooted: " if rebooted["ok"] else "reboot FAILED: ") + rebooted["detail"])
         if any(f.replace("\\", "/").lstrip("./").startswith("warroom/") for f in changed):
             await self.room.status("war room code changed: restart the war room to load it.")
@@ -462,6 +539,8 @@ class Council:
                           gate_output=gate["output"][:3000],
                           review_status="approved" if approved else ("not approved" if review else "skipped"),
                           execution_failures=execution_failures)
+        await self.live.announce("main", "Build complete and approved." if outcome == "built" else
+                                 f"Build did not succeed. {failure}")
         await self.room.send({"type": "build_progress", "phase": "complete",
                               "state": "done" if outcome == "built" else "failed", "elapsed": 0,
                               "message": "Build completed and approved" if outcome == "built" else failure,

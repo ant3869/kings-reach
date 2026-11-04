@@ -9,7 +9,7 @@ import { PROJECT_ROOT, WARROOM_PORT } from './config.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 
-export const WARROOM_CLIENT_VERSION = 21;
+export const WARROOM_CLIENT_VERSION = 23;
 export const WARROOM_PROTOCOL = 'council-v3'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
@@ -29,7 +29,8 @@ function manifestAssets(): string[] {
     return []; // no manifest: the client falls back to the original four-state art
   }
 }
-export const WARROOM_STATIC: readonly string[] = ['warroom-app.js', 'warroom-voice.js', 'card-director.js', 'mic-worklet.js',
+export const WARROOM_STATIC: readonly string[] = ['warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-demo.js',
+  'card-director.js', 'mic-worklet.js',
   'warroom-council-cards.png', 'warroom-chamber-bg.png', ...CARD_ASSETS, ...manifestAssets()];
 
 const COLORS: Record<string, string> = {
@@ -124,6 +125,26 @@ button.go:hover{background:linear-gradient(#977335,#4e3815)}button.alt{backgroun
 button.stop{background:transparent;border:1px solid #f85149;color:#f85149}
 .hint{font:11px system-ui;color:#6e7681;margin-top:6px}
 .planline{font:12px/1.5 system-ui;color:#b2a47d;margin-top:8px}.planline a{color:#e2bf62}.planline b{color:#f0d88e}.planline.none{color:#8f856c}
+.now{max-width:980px;margin:8px auto;padding:10px 14px;border:1px solid #8e6a2c;border-radius:8px;background:#080b12e8;font:13px system-ui}
+.nowhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.nowbadge{font:700 12px system-ui;letter-spacing:.6px;padding:4px 10px;border-radius:6px;border:2px solid #6e7681;color:#c9d1d9;min-width:108px;text-align:center}
+.nowbadge.working,.nowbadge.running{border-color:#d4a017;color:#f4d77c}.nowbadge.working:before,.nowbadge.running:before{content:'';display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:#d4a017;animation:beat 1s ease-in-out infinite}
+.nowbadge.quiet{border:2px dashed #e3b341;color:#e3b341}.nowbadge.stalled{border:2px solid #f85149;color:#fff;background:#f8514933;animation:pulse 1s ease-in-out infinite}
+.nowbadge.complete{border-color:#3fb950;color:#3fb950}.nowbadge.failed{border-color:#f85149;color:#f85149;background:#f8514922}.nowbadge.cancelled{border:2px dotted #8b949e;color:#8b949e}
+#nowlabel{flex:1;min-width:200px;color:#eadfbe}#nowclock{font-variant-numeric:tabular-nums;color:#8b949e}
+.meter{height:10px;margin:9px 0 4px;border-radius:5px;background:#1a1d27;border:1px solid #3a3020;overflow:hidden}
+#meterfill{height:100%;width:0;background:repeating-linear-gradient(135deg,#d4a017 0 10px,#a47a10 10px 20px);transition:width .6s ease}
+.meter.complete #meterfill{background:#3fb950}.meter.failed #meterfill{background:#f85149}.meter.cancelled #meterfill{background:#6e7681}
+#meterlabel{font-size:11px;color:#8b949e;min-height:15px}
+.arow{display:grid;grid-template-columns:90px 112px 1fr auto 56px;gap:8px;align-items:baseline;padding:3px 0;border-top:1px solid #1e1e2a;font-size:12px}
+.arow b{color:#f0d88e}.arow .st{font-weight:700}.arow .txt{color:#cbbd96;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.arow .cnt,.arow .ago{color:#8b949e;font-variant-numeric:tabular-nums}
+.arow.quiet .st{color:#e3b341}.arow.stalled .st{color:#f85149}.arow.failed .st{color:#f85149}.arow.complete .st{color:#3fb950}
+.caption{margin-top:8px;padding:6px 10px;border-left:3px solid var(--gold);background:#d4a01710;font:italic 13px Georgia;color:#eadfbe;min-height:20px}
+.feed{list-style:none;margin:6px 0 0;padding:0;font-size:11px;line-height:15px;color:#8b949e}.feed li{padding:1px 0}/* no max-height: the list is bounded by FEED_MAX, and a clipped warning is worse than a taller panel */.feed li.edit:before{content:'\u270e ';color:#d4a017}.feed li.warn{color:#e3b341}.feed li.warn:before{content:'\u26a0 '}.feed li.bad{color:#f85149}.feed li.bad:before{content:'\u2716 '}.feed li.ok:before{content:'\u2714 ';color:#3fb950}.feed li.narr:before{content:'\u266a '}
+.badge{position:absolute;z-index:5;top:4px;left:4px;font:700 10px system-ui;padding:2px 6px;border-radius:5px;background:#05070bdd;border:1px solid #6e7681;color:#c9d1d9}.badge:empty{display:none}
+.badge.working{border-color:#d4a017;color:#f4d77c}.badge.quiet{border-style:dashed;border-color:#e3b341;color:#e3b341}.badge.stalled{border-color:#f85149;color:#fff;background:#f85149aa}.badge.complete{border-color:#3fb950;color:#3fb950}.badge.failed{border-color:#f85149;color:#f85149}
+.seat[data-live='stalled']{outline:3px solid #f85149;outline-offset:3px}.seat[data-live='quiet']{outline:2px dashed #e3b341;outline-offset:3px}/* lasting, non-colour-only cue: the pose art reverts after a few seconds */
+@keyframes beat{50%{opacity:.25}}
 @keyframes idle-breathe{from{transform:scale(1)}to{transform:scale(1.004)}}
 @keyframes think-pulse{from{opacity:.26}to{opacity:.58}}
 @keyframes build-pulse{from{opacity:.24}to{opacity:.50}}
@@ -148,6 +169,7 @@ button.stop{background:transparent;border:1px solid #f85149;color:#f85149}
 .seat[data-state='defeated'] .strip-a,.seat[data-state='defeated'] .strip-b{filter:saturate(.7) brightness(.88)}
 .seat[data-state='defeated']:after{opacity:.04}
 @media(prefers-reduced-motion:reduce){
+.nowbadge,.nowbadge:before{animation:none!important}#meterfill{transition:none}
 .seat,.strip-a,.strip-b,.seat:after{animation:none!important}
 .seat{transition:opacity 180ms ease;transform:none!important}
 .seat.dimmed{filter:none}
@@ -176,6 +198,7 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
         `<div class="seat" id="seat-${esc(c.id)}" style="--ac:${c.color}" data-state="idle">` +
         `<img class="strip-a" src="/warroom/card-states/individual/idle-${esc(c.id)}.png" alt="">` +
         `<img class="strip-b" alt="">` +
+        `<span class="badge" id="badge-${esc(c.id)}"></span>` +
         `<div class="sigil">${esc(c.name.slice(0, 1))}</div>` +
         `<b>${esc(c.name)}</b><small class="title">${esc(c.title)}</small><small class="route" id="model-${esc(c.id)}">route: waiting</small><small class="voice">voice: ${esc(c.voice)}</small>` +
         `<button data-pin="${esc(c.id)}">Pin</button></div>`,
@@ -196,6 +219,14 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
 <div id="council">${seats}</div>
 <div id="stages"></div>
 <div id="prog"></div>
+<section id="now" class="now" aria-label="Live status">
+<div class="nowhead"><span id="nowbadge" class="nowbadge idle">\u00b7 IDLE</span><span id="nowlabel" role="status" aria-live="polite">Nothing running. Convene the council or build the verdict.</span><span id="nowclock"></span></div>
+<div id="meter" class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Estimated progress"><div id="meterfill"></div></div>
+<div id="meterlabel"></div>
+<div id="agentlines"></div>
+<div id="caption" class="caption" role="status" aria-live="polite"></div>
+<ol id="feed" class="feed" aria-label="Recent activity"></ol>
+</section>
 <div id="buildlive" class="buildlive" role="status" aria-live="polite" hidden></div>
 <div class="main">
 <section>
@@ -223,6 +254,8 @@ ${CLIENT_MD_JS}
 </script>
 <script src="/warroom/card-director.js${v}"></script>
 <script src="/warroom/warroom-voice.js${v}"></script>
+<script src="/warroom/warroom-live.js${v}"></script>
+<script src="/warroom/warroom-demo.js${v}"></script>
 <script src="/warroom/warroom-app.js${v}"></script>
 </body></html>`;
 }

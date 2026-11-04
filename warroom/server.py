@@ -4,7 +4,8 @@ Browser -> server
   JSON  {"type": "text"|"summit"|"build"|"pin"|"ping"|"voice"|"hush"|"cancel", ...}
   bytes one utterance, 16 kHz mono int16 PCM -> local Whisper -> handled exactly like typed text
 Server -> browser
-  JSON  {"agent_id", "text", "kind"} chat line | {"type": "stage"|"thinking"|"transcript"|"metrics"|"voice"}
+  JSON  {"agent_id", "text", "kind"} chat line | {"type": "stage"|"thinking"|"transcript"|"metrics"|"voice"
+        |"activity" (what an agent is doing right now) |"meter" (overall progress estimate)}
         | {"ok": true, ...} | {"error": "..."}       (agent_id "war-room" = status line)
   bytes  <json header>\n<WAV>  one spoken clip: header {"agent_id", "seq"}
 
@@ -36,7 +37,8 @@ except ImportError:  # run as a script: python warroom/server.py
     from voice import Voice
 
 PROTOCOL = "council-v3"  # bump only when the wire protocol changes
-SERVER_VERSION = 11  # bump on every server.py deploy; shown in the client via pong
+SERVER_VERSION = 12  # bump on every server.py deploy; shown in the client via pong
+NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
 BUILD_RE = re.compile(r"^\s*(build it|build|execute( the plan)?|make it so)[.!]*\s*$", re.IGNORECASE)
@@ -80,6 +82,12 @@ class Session:
         await self.send({"agent_id": agent_id, "text": text, "kind": kind})
         if self.voice_on and (spoken or text):
             self.speech.put_nowait((agent_id, spoken or text))
+
+    async def narrate(self, agent_id, text):
+        """Running commentary: always in the live feed; spoken only if voice is on and nothing important is queued."""
+        await self.send({"type": "activity", "kind": "narration", "agent_id": agent_id, "text": text})
+        if self.voice_on and self.speech.qsize() <= NARRATION_BACKLOG:
+            self.speech.put_nowait((agent_id, text))
 
     # --- speech ---------------------------------------------------------------------
     async def _speak_loop(self):

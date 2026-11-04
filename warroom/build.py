@@ -54,11 +54,13 @@ def preflight(python_exe):
     results = []
     tsc = run_tsc()
     results.append("tsc: " + ("clean" if tsc["ok"] else tsc["output"]))
-    js_files = [PROJECT_ROOT / "public" / name for name in ("warroom-app.js", "warroom-voice.js", "mic-worklet.js")]
+    js_files = [PROJECT_ROOT / "public" / name for name in
+                ("warroom-app.js", "warroom-voice.js", "warroom-live.js", "warroom-demo.js", "mic-worklet.js")]
     js = _node_check(js_files)
     results.append("browser JS: " + js["output"])
     py_files = [PROJECT_ROOT / "warroom" / name for name in
-                ("server.py", "council.py", "agent_bridge.py", "build.py", "router.py", "config.py")]
+                ("server.py", "council.py", "agent_bridge.py", "build.py", "router.py", "config.py",
+                 "live.py", "mindchange.py")]
     p = subprocess.run([python_exe, "-m", "py_compile", *map(str, py_files)], capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=120)
     results.append("python: " + ("clean" if p.returncode == 0 else p.stderr[-1500:]))

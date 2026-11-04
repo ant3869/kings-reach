@@ -147,6 +147,46 @@ try {
   check('five seats can each show a different state at once', cards.every((c) => c.state === mix[c.id] && showsPool(c, mix[c.id]) && c.loaded), cards.map((c) => `${c.id}:${c.state}`).join(' '));
   check('cards never use the removed live-subtitle overlay', (await js(`document.querySelectorAll('[data-sub]').length`)) === 0);
 
+  // --- Live status: replay synthetic events through the real handlers (no agents, no cost) --------
+  const waitFor = async (expr, ms = 9000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await js(expr)) return true; await sleep(100); } return false; };
+  const badge = `document.getElementById('nowbadge').textContent`;
+  const meterNow = `Number(document.getElementById('meter').getAttribute('aria-valuenow'))`;
+
+  await open('/warroom?demo=build&speed=8&still=1', { fake: true });
+  check('mid-build: badge says WORKING and the meter is partway', await waitFor(`/WORKING/.test(${badge}) && ${meterNow} > 0 && ${meterNow} < 100`));
+  check('mid-build: an agent row names the current action with real counts', await waitFor(`!!document.querySelector('.arow.working') && /Editing|Reading|Searching/.test(document.querySelector('.arow.working .txt').textContent)`));
+  check('mid-build: the working agent\'s card carries a text badge, not just a glow', await waitFor(`/working/.test(document.getElementById('badge-ops').textContent)`));
+  check('mid-build: ops is drawn in building art', await waitFor(`document.getElementById('seat-ops').dataset.state === 'building'`));
+  check('mid-build: commentary is visible as a caption even with speech off', await waitFor(`document.getElementById('caption').textContent.length > 10`));
+  check('progress bar is accessible (role, range, live label)', await js(`(() => { const m = document.getElementById('meter'); return m.getAttribute('role') === 'progressbar' && m.getAttribute('aria-valuemax') === '100' && document.getElementById('nowlabel').getAttribute('aria-live') === 'polite'; })()`));
+  check('the demo never sends anything to the server', (await sent()).every((m) => ['ping', 'voice'].includes(m.type)), JSON.stringify(await sent()));
+  check('a finished build ends DONE at exactly 100%', await waitFor(`/DONE/.test(${badge}) && ${meterNow} === 100`, 30000));
+  check('finished build: no seat is left in building art and no badge says working', await js(`[...document.querySelectorAll('.seat')].every((s) => s.dataset.state !== 'building') && ![...document.querySelectorAll('.badge')].some((b) => /working/.test(b.textContent))`));
+  check('finished build: the build panel has no cell stuck on waiting/active', await js(`[...document.querySelectorAll('.buildphase')].length === 4 && [...document.querySelectorAll('.buildphase')].every((c) => c.classList.contains('done'))`));
+  check('finished build: every stage chip is done', await js(`['preflight','execute','gate','review'].every((n) => document.getElementById('st-' + n) && document.getElementById('st-' + n).classList.contains('done'))`));
+
+  await open('/warroom?demo=build-fail&speed=30&still=1', { fake: true });
+  check('failed build ends FAILED (never 100%) with a visible reason', await waitFor(`/FAILED/.test(${badge}) && ${meterNow} < 100`, 15000) && /checks failed/i.test(await js(`document.getElementById('feed').textContent + document.getElementById('caption').textContent`)));
+  check('failed build: the gate chip is FAILED, not success-coloured, and review is skipped', await js(`document.getElementById('st-gate').classList.contains('failed') && document.getElementById('st-review').classList.contains('skipped')`));
+  check('failed build: the build panel shows gate failed + review skipped, nothing stuck', await js(`(() => { const c = [...document.querySelectorAll('.buildphase')].map((x) => x.className.replace('buildphase ', '')); return c.join() === 'done,done,failed,skipped'; })()`));
+  check('failed build: the badge states the actual cause', /Automated checks failed/.test(await js(`document.getElementById('nowlabel').textContent`)));
+  check('failed build: the fallback warning is fully on screen, not clipped', await js(`(() => { const w = document.querySelector('#feed li.warn'); const p = document.getElementById('now').getBoundingClientRect(); if (!w) return false; const r = w.getBoundingClientRect(); return r.height > 0 && r.bottom <= p.bottom + 1; })()`));
+  check('failed build: the cards react (defeated pose)', await waitFor(`[...document.querySelectorAll('.seat')].some((s) => s.dataset.state === 'defeated')`, 4000));
+  check('failed build: the fallback is visible in the feed', await js(`/could not finish/.test(document.getElementById('feed').textContent)`));
+
+  await open('/warroom?demo=stall&speed=20&still=1', { fake: true });
+  const seen = new Set();
+  for (const end = Date.now() + 14000; Date.now() < end && !seen.has('CANCELLED');) {
+    for (const word of ['WORKING', 'QUIET', 'STALLED', 'CANCELLED']) if (new RegExp(word).test(await js(badge))) seen.add(word);
+    await sleep(100);
+  }
+  check('silence escalates WORKING -> QUIET -> STALLED, then CANCELLED is its own state', ['WORKING', 'QUIET', 'STALLED', 'CANCELLED'].every((w) => seen.has(w)), [...seen].join());
+  check('cancelled is not shown as a failure', !/FAILED/.test(await js(badge)));
+  check('the old wall-clock "thinking:" line is gone (the panel owns timing)', (await js(`document.getElementById('prog').textContent`)) === '');
+  await open('/warroom?demo=stall&speed=40&still=1', { fake: true });
+  check('a stalled seat keeps a lasting outline after its pose art reverts', await waitFor(`document.getElementById('seat-ops').dataset.live === 'stalled'`, 9000));
+
+
   // --- Plan Library -----------------------------------------------------------------------------
   await open('/history', { fake: true });
   const rows = () => js(`document.querySelectorAll('#list button').length`);

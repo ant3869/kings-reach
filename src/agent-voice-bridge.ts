@@ -15,6 +15,8 @@ import fs from 'node:fs';
 import { getAgentConfig } from './agent-config.js';
 import { ProviderRoutesError, runAgent, wastedCost } from './agent.js';
 import { getDb, getSession, initDatabase, logConversation, logToHiveMind, openReadOnly, setSession } from './db.js';
+import { providerHasTools } from './provider-config.js';
+import type { Activity } from './activity.js';
 import { buildMemoryContext } from './memory.js';
 import { ingestConversationTurn } from './memory-ingest.js';
 
@@ -36,6 +38,8 @@ interface BridgeRequest {
   tools?: 'required' | 'preferred' | 'none';
   maxTurns?: number;
   schema?: Record<string, unknown>;
+  /** Stream `{event:'activity',...}` lines on stdout while the agent works; the final reply is still the last line. */
+  activity?: boolean;
   memoryQuery?: string;
   query?: string;
   question?: string;
@@ -56,6 +60,11 @@ function memoryCount(): number {
   return (getDb().prepare('SELECT COUNT(*) n FROM memories').get() as { n: number }).n;
 }
 
+/** One line of live progress. Never throws: a broken pipe must not kill the agent it is describing. */
+function emitActivity(a: Activity): void {
+  try { process.stdout.write(`${JSON.stringify({ event: 'activity', ...a })}\n`); } catch { /* observer is gone */ }
+}
+
 async function ask(req: BridgeRequest): Promise<Reply> {
   const agentId = req.agent ?? 'main';
   if (!getAgentConfig(agentId)) return { ok: false, text: `Unknown agent: ${agentId}` };
@@ -69,6 +78,7 @@ async function ask(req: BridgeRequest): Promise<Reply> {
       message: memory ? `${memory}\n\n${req.prompt ?? ''}` : (req.prompt ?? ''),
       agentId, sessionId, chatId, systemPrompt: req.system || undefined,
       readOnly: req.readOnly, toolNeed: req.tools, maxTurns: req.maxTurns, schema: req.schema,
+      onActivity: req.activity ? emitActivity : undefined,
     });
   } catch (err) {
     if (err instanceof ProviderRoutesError) {
@@ -89,6 +99,7 @@ async function ask(req: BridgeRequest): Promise<Reply> {
     durationMs: r.durationMs ?? 0,
     model: r.model ?? '',
     provider: r.provider ?? '',
+    hasTools: r.provider ? providerHasTools(r.provider) : false,
     attempts: r.attempts ?? [],
     memoryUsed: memory ? memory.split('\n').length - 1 : 0,
   };

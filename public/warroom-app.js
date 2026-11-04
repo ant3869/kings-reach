@@ -30,6 +30,11 @@ let defeatedAt = 0;
 
 const desiredCardState = (id) => CardDirector.resolve(cardActivity[id], Date.now(), currentStage);
 
+// Live status panel (warroom-live.js). Its clock is swappable so the demo replay can run on virtual time.
+let liveClock = Date.now;
+const live = WarLive.mount(document, Object.fromEntries(WR.council.map((c) => [c.id, c.name])),
+  { pose: (id, state) => setPose(id, state) }, () => liveClock());
+
 function setPose(id, state, ms) {
   if (!cardActivity[id]) return;
   const hold = ms || director.poseMs(state);
@@ -163,6 +168,7 @@ function seat(id) {
 
 function setThinking(id, on) {
   if (on) thinkingSince[id] = Date.now(); else delete thinkingSince[id];
+  live.thinking(id, on);
   if (!cardActivity[id]) return;
   cardActivity[id].thinking = on;
   applyCardState(id);
@@ -193,8 +199,11 @@ function setStage(name, state, detail) {
   if (state === 'active') currentStage = name; else if (currentStage === name) currentStage = '';
   WR.council.forEach((c) => applyCardState(c.id)); // thinking turns into researching during 'investigate'
   if (state === 'failed' && BUILD_STAGES.includes(name)) defeatAll();
+  if ((name === 'recall' || name === 'preflight') && state === 'active') live.reset(); // a new run starts clean
   if (name === 'recall' && state === 'active') resetStages(COUNCIL_STAGES);
-  if (name === 'execute' && !$('st-execute')) resetStages(BUILD_STAGES);
+  // First build stage seen (any tab, not only the one that clicked Build): swap in the build chips BEFORE styling this one,
+  // otherwise the later swap wipes the chips that already finished (preflight showed blank once execute began).
+  if (BUILD_STAGES.includes(name) && !$('st-' + name)) resetStages(BUILD_STAGES);
   if (name === 'execute' && state === 'active') staggerBuilding(true);
   if (name === 'execute' && (state === 'done' || state === 'failed' || state === 'inactive')) staggerBuilding(false);
   let el = $('st-' + name);
@@ -208,12 +217,9 @@ function setStage(name, state, detail) {
 }
 
 function tick() {
-  const parts = Object.keys(thinkingSince).map((id) => {
-    const s = Math.floor((Date.now() - thinkingSince[id]) / 1000);
-    return (byId[id] ? byId[id].name : id) + ' ' + fmtDuration(s);
-  });
-  $('prog').textContent = parts.length ? 'thinking: ' + parts.join('  \u00b7  ') : '';
-  if (!parts.length && busySince && !document.querySelector('.stage.active')) busySince = 0;
+  live.tick();
+  // (The old 'thinking: X 4s' line is gone: the live panel shows the same facts per agent, on the run's own clock.)
+  if (!Object.keys(thinkingSince).length && busySince && !document.querySelector('.stage.active')) busySince = 0;
 }
 
 function buildProgress(m) {
@@ -314,6 +320,7 @@ function onMessage(m) {
     return;
   }
   if (m.type === 'thinking') return setThinking(m.agent_id, m.on);
+  if (m.type === 'activity' || m.type === 'meter') return live.handle(m);
   if (m.type === 'build_progress') return buildProgress(m);
   if (m.type === 'metrics') return metrics(m);
   if (m.type === 'transcript') {
@@ -379,6 +386,8 @@ function submit(kind) {
     $('buildlive').hidden = false; $('buildlive')._phases = {}; $('buildbtn').disabled = true;
     resetStages(BUILD_STAGES);
     buildProgress({ phase: 'preflight', state: 'active', elapsed: 0, message: 'Requesting baseline checks' });
+    live.reset();
+    live.handle({ type: 'meter', pct: 0, phase: 'requested', label: 'build requested: waiting for the server to confirm' });
     if (!send({ type: 'build' })) $('buildbtn').disabled = false;
     return;
   }
@@ -409,6 +418,21 @@ function bindTalk() {
   window.addEventListener('keyup', (e) => {
     if (e.code === 'Space') up();
   });
+}
+
+// Replays synthetic server events through the real handlers. Browser speech stands in for the Kokoro voice here.
+function runDemo(name, speed, silent) {
+  live.reset(); live.live.s.startedAt = Date.now();
+  bubble('war room', '<b>Demo replay: ' + esc(name) + '</b> at ' + speed + 'x. Synthetic events through the real handlers: ' +
+    'no agents are running and nothing is spent.', 'sys');
+  const player = WarDemo.play(name, (m) => {
+    onMessage(m);
+    const line = m.kind === 'narration' ? m.text : m.spoken;
+    if (line && !silent && $('speak').checked && window.speechSynthesis) speechSynthesis.speak(new SpeechSynthesisUtterance(line));
+  }, { speed });
+  liveClock = player.clock;
+  live.live.s.startedAt = player.clock();
+  window.__demo = player;
 }
 
 function init() {
@@ -463,6 +487,8 @@ function init() {
     freeze.textContent = '*,*:before,*:after{transition:none!important;animation:none!important}';
     document.head.appendChild(freeze);
   }
+  const demo = previewParams.get('demo'); // /warroom?demo=build|build-fail|stall|summit[&speed=20]: no agents, no cost
+  if (demo && WarDemo.NAMES.includes(demo)) runDemo(demo, Number(previewParams.get('speed')) || 1, previewParams.has('still'));
   const preview = previewParams.get('previewCards');
   const poses = previewParams.get('previewPoses'); // "main:offense,research:defense": force art, for visual audits
   ready.then(() => {
