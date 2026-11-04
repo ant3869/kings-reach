@@ -64,7 +64,7 @@
     },
     "council-reasoning": {
       "state": "active",
-      "sha256": "a4498a36342d0fa611e49554a74fb4f6f8b9965babd2aeb66d1a1b4b1cb18323",
+      "sha256": "af3391a3e67a5051b381f6955fae783de10d93124fcdfbfee558ec8e19bd44ca",
       "source": {
         "type": "local",
         "path": "H:\\projects\\claudeclaw\\skillpack\\proposed\\council-reasoning",

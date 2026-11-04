@@ -49,13 +49,19 @@ export interface AgentResult {
   numTurns?: number;
   durationMs?: number;
   provider?: ProviderId;
-  attempts?: Array<{ provider: ProviderId; model: string; error?: string }>;
+  attempts?: Attempt[];
   /** Set when the SDK reported a failed result (max turns, execution error, ...). */
   error?: string;
 }
 
+/** One route tried. `costUsd` is money a FAILED attempt still burned (e.g. a Claude run that hit its turn cap). */
+export interface Attempt { provider: ProviderId; model: string; error?: string; costUsd?: number }
+
+/** Total spend across attempts that produced no answer. */
+export const wastedCost = (attempts: Attempt[]): number => attempts.reduce((sum, a) => sum + (a.costUsd ?? 0), 0);
+
 export class ProviderRoutesError extends Error {
-  constructor(public readonly agentId: string, public readonly attempts: NonNullable<AgentResult['attempts']>) {
+  constructor(public readonly agentId: string, public readonly attempts: Attempt[]) {
     super(`all provider routes failed for ${agentId}`);
     this.name = 'ProviderRoutesError';
   }
@@ -205,7 +211,7 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
     // Tool-less providers cannot load a skill on demand, so their required skills are included in the prompt.
     systemPrompt: [rolePrompt, opts.systemPrompt, await skillContext(agentId, true)].filter(Boolean).join('\n\n'),
   };
-  const attempts: NonNullable<AgentResult['attempts']> = [];
+  const attempts: Attempt[] = [];
   const routes = routesFor(agentId);
   for (const target of routes) {
     if (opts.toolNeed === 'required' && !providerHasTools(target.provider)) {
@@ -213,14 +219,18 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
       continue;
     }
     const started = Date.now();
+    let spent: number | undefined;
     try {
       const result = target.provider === 'claude'
         ? await runClaudeAgent({ ...opts, model: target.model })
         : await runExternalProvider(target, externalOpts);
       if (result.error || (!result.text && result.structured === undefined)) {
+        spent = result.costUsd;
         throw new Error(result.error ?? 'empty result');
       }
       attempts.push({ ...target });
+      const wasted = wastedCost(attempts);
+      if (wasted) result.costUsd = (result.costUsd ?? 0) + wasted; // earlier failed routes were paid for too
       recordProviderOutcome(target.provider, target.model, true);
       if (result.durationMs === undefined) result.durationMs = Date.now() - started;
       result.attempts = attempts;
@@ -241,7 +251,7 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
     } catch (err) {
       // Provider CLIs often prepend hook/MCP noise; the actionable API/schema error is at the end.
       const reason = String(err).slice(-1500);
-      attempts.push({ ...target, error: reason });
+      attempts.push({ ...target, error: reason, ...(spent ? { costUsd: spent } : {}) });
       recordProviderOutcome(target.provider, target.model, false, reason);
       logger.warn({ agentId, provider: target.provider, model: target.model, err: reason }, 'provider route failed; trying fallback');
     }

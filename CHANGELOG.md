@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.13.1 - Summit post-mortem fixes
+
+Found by auditing the first live summit (run `cfac8fa0`) against the Claude Code transcripts.
+
+- **Honest cost.** A route that failed after spending money (a Claude seat that hit its turn cap) is no longer
+  dropped: its cost is recorded on the attempt (`attempts[].costUsd`), added to the answer that finally succeeded,
+  and reported when every route fails. That summit logged $0.95; reconstructing from transcripts it was ~$2.20.
+- **Memory recall in sandboxed agents.** `agent-voice-bridge --recall` now falls back to a read-only database
+  handle when it cannot write (codex agents hit `attempt to write a readonly database`). Writes are still refused.
+- **Turn budget.** `COUNCIL_INVESTIGATE_TURNS` default 16 -> 24. In that summit two Claude seats used all 16 and
+  were discarded, then redone by another provider. 24 is a judgement call, not a measurement; override in `.env`.
+- **council-reasoning skill:** `[verified]` now requires evidence that could have shown the claim false. Package
+  metadata proves *installed*, not *where from*; and never cite a guard/flag/file you did not open. (Ops had labelled
+  "agent-reach came from PyPI" as verified from a `METADATA` file, and cited a "loopback guard" that does not exist.)
+  Re-approved with `skill trust` after the edit, which also exercised the tamper check.
+- Tests: +2 (`tests/cost-recall.test.mjs`).
+
 ## 2.13.0 - Skills and real research
 
 **Skill system** (see `docs/SKILLS.md`)

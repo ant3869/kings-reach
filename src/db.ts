@@ -21,6 +21,13 @@ export function getDb(): Database.Database {
   return db;
 }
 
+/** Read-only handle for callers that cannot write (sandboxed agents recalling memory). No schema work, no WAL pragma. */
+export function openReadOnly(): Database.Database {
+  closeDb();
+  db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
+  return db;
+}
+
 export function closeDb(): void {
   if (db) {
     db.close();

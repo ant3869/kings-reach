@@ -13,8 +13,8 @@
 
 import fs from 'node:fs';
 import { getAgentConfig } from './agent-config.js';
-import { ProviderRoutesError, runAgent } from './agent.js';
-import { getDb, getSession, initDatabase, logConversation, logToHiveMind, setSession } from './db.js';
+import { ProviderRoutesError, runAgent, wastedCost } from './agent.js';
+import { getDb, getSession, initDatabase, logConversation, logToHiveMind, openReadOnly, setSession } from './db.js';
 import { buildMemoryContext } from './memory.js';
 import { ingestConversationTurn } from './memory-ingest.js';
 
@@ -72,7 +72,7 @@ async function ask(req: BridgeRequest): Promise<Reply> {
     });
   } catch (err) {
     if (err instanceof ProviderRoutesError) {
-      return { ok: false, text: `all provider routes failed for ${agentId}`, attempts: err.attempts };
+      return { ok: false, text: `all provider routes failed for ${agentId}`, attempts: err.attempts, costUsd: wastedCost(err.attempts) };
     }
     throw err;
   }
@@ -112,7 +112,13 @@ async function record(req: BridgeRequest): Promise<Reply> {
 
 async function main(): Promise<void> {
   const req = readRequest();
-  initDatabase();
+  try {
+    initDatabase();
+  } catch (err) {
+    // A sandboxed agent (e.g. codex) may run `--recall` where the DB is not writable. Recall only reads, so degrade to that.
+    if (req.op !== 'recall') throw err;
+    openReadOnly();
+  }
   let reply: Reply;
   if (req.op === 'recall') {
     const context = await buildMemoryContext(req.chatId ?? 'warroom', req.query ?? '');

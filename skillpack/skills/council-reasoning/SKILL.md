@@ -16,6 +16,12 @@ Every load-bearing claim carries one of four marks, in your head and in your evi
 - **inferred**: you reasoned to it from verified facts. Show the step.
 - **assumed**: you are taking it as given. Say so, and say what breaks if it is wrong.
 
+**verified needs evidence that shows the fact itself.** A file only proves what it contains. Package metadata
+(`METADATA`, `dist-info`, `package-lock.json`) proves a package is *installed*, not *where it came from*: a pip install from
+a GitHub archive looks identical to one from PyPI. If the source you opened cannot distinguish the claim from its
+alternative, the claim is *inferred*. Before writing "verified", ask: "if I were wrong, would this source look any
+different?" If not, downgrade it. Also, never cite a guard, flag, or file you did not open: name it exactly or leave it out.
+
 Never present inferred or assumed as verified. Recall from memory of your training is *assumed*, not verified:
 versions, APIs, prices and defaults change.
 
