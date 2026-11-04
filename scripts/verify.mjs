@@ -10,6 +10,8 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// The wire protocol is defined once (src/warroom-html.ts); never hardcode it here (it broke when v4 shipped).
+const { WARROOM_PROTOCOL } = await import(new URL('../dist/warroom-html.js', import.meta.url));
 const LOG_DIR = path.join(ROOT, 'store', 'logs');
 const WANT_TURN = process.argv.includes('--turn');
 
@@ -234,7 +236,7 @@ async function main() {
   const s = await wsSession(WANT_TURN ? 180_000 : 10_000);
   const pong = s.seen.find((m) => m.pong);
   check('ws welcome', s.seen[0]?.agent_id === 'war-room', (s.seen[0]?.text || s.why).slice(0, 80));
-  check('ws ping -> pong', pong?.pong === 'council-v3', pong ? `server v${pong.server} pid ${pong.pid}` : s.why);
+  check('ws ping -> pong', pong?.pong === WARROOM_PROTOCOL, pong ? `server v${pong.server} pid ${pong.pid}` : s.why);
   check('pong pid == war room pid file', Boolean(pong) && pong.pid === readPidFile('warroom.pid'), `file ${readPidFile('warroom.pid')}`);
   if (WANT_TURN) {
     const reply = s.seen.slice(2).find(isReply);

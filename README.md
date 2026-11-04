@@ -3,7 +3,7 @@
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.14.0. Working title — formerly claudeclaw.
+and a dashboard. Version 2.14.1. Working title — formerly claudeclaw.
 
 ## The five roles
 
@@ -25,6 +25,12 @@ and a dashboard. Version 2.14.0. Working title — formerly claudeclaw.
 Role cards live in `public/card-states/`; each seat picks its own art
 variant per state from weighted pools (`manifest.json`). Past councils and
 builds are browsable at `/history`.
+
+## Seeing what the agents are doing
+
+The War Room shows a live status panel for every council and build: a badge (working, quiet, stalled, done, failed,
+cancelled), an estimated progress bar, what each agent is doing right now, and spoken plus captioned commentary. Try it
+for free with `/warroom?demo=build`, `build-fail`, `stall` or `summit`. See [`docs/LIVE.md`](docs/LIVE.md).
 
 ## Skills and research
 

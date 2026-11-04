@@ -248,8 +248,13 @@ function metrics(m) {
   if (m.kind === 'summit') {
     const conf = Object.entries(m.confidence || {}).map(([a, v]) => a + ' ' + v[0].toFixed(2) +
       (v[1] !== v[0] ? ' \u2192 ' + v[1].toFixed(2) : '')).join(', ');
+    // Since v2.14 'changed' is measured from the before/after answers; older runs only have the agent's own claim.
+    const measured = m.changed_minds_claimed != null;
+    const minds = measured ? m.changed_minds + ' measured' + (m.changed_minds_claimed !== m.changed_minds ? ' (' + m.changed_minds_claimed + ' claimed)' : '')
+      : m.changed_minds + ' (self-reported)';
     rows.push(['specialists', (m.specialists || []).join(', ')], ['evidence cited', m.evidence],
-      ['challenges', m.challenges], ['minds changed', m.changed_minds], ['confidence', conf || '-'],
+      ['challenges', m.challenges], ['minds changed', minds], ['confidence', conf || '-'],
+      ...((m.takes_without_tools || []).length ? [['answered without tools', m.takes_without_tools.join(', ')]] : []),
       ['verdict confidence', m.verdict_confidence], ['plan steps', m.plan_steps],
       ['memory used / saved', m.memory_lines_used + ' / ' + m.memories_saved], ['hive entries', m.hive_entries]);
   } else {
@@ -261,10 +266,14 @@ function metrics(m) {
   const failure = m.failure_summary ? '<div class="metricfail">' + esc(m.failure_summary) + '</div>' : '';
   const files = m.changed_files && m.changed_files.length ? '<details><summary>Changed files</summary><div class="full">' +
     m.changed_files.map((f) => '<div>' + esc(f) + '</div>').join('') + '</div></details>' : '';
+  const shifts = Object.entries(m.mind_changes || {}).map(([a, x]) => '<div>' + esc(a) + ': ' + x.before.toFixed(2) + ' \u2192 ' +
+    x.after.toFixed(2) + (x.changed ? ' \u00b7 ' + esc(x.reasons.join('; ')) : ' \u00b7 no change') + (x.claimed && !x.changed ? ' \u00b7 claimed a change' : '') +
+    (x.capped ? ' \u00b7 held up (no tools)' : '') + '</div>').join('');
+  const mindBox = shifts ? '<details><summary>Mind changes (measured)</summary><div class="full">' + shifts + '</div></details>' : '';
   const gate = m.gate_output ? '<details><summary>Check output</summary><pre>' + esc(m.gate_output) + '</pre></details>' : '';
   $('score').innerHTML = '<h3>' + (m.kind === 'summit' ? 'Council scoreboard' : 'Build scoreboard') + ' <small>run ' +
     esc(m.id) + '</small></h3><table>' + rows.map((r) => '<tr><td>' + esc(r[0]) + '</td><td>' + esc(String(r[1] ?? '-')) +
-    '</td></tr>').join('').replace(/>undefined</g, '>-<') + '</table><div class="stagetimes">' + esc(stages) + '</div>' + failure + files + gate;
+    '</td></tr>').join('').replace(/>undefined</g, '>-<') + '</table><div class="stagetimes">' + esc(stages) + '</div>' + failure + mindBox + files + gate;
   $('score').hidden = false; $('buildbtn').disabled = false;
 }
 

@@ -98,6 +98,21 @@ test('feed is bounded', () => {
   assert.ok(live.s.feed.length <= 8);
 });
 
+test('browser and server agree on the silence thresholds (they are duplicated, so drift must fail loudly)', () => {
+  const py = readFileSync(join(PROJECT_ROOT, 'warroom', 'live.py'), 'utf8');
+  const m = py.match(/^QUIET_S, STALL_S = (\d+), (\d+)/m);
+  assert.ok(m, 'live.py must define QUIET_S, STALL_S on one line');
+  assert.equal(WarLive.QUIET_S, Number(m[1]));
+  assert.equal(WarLive.STALL_S, Number(m[2]));
+});
+
+test('the wire protocol string matches on both ends', () => {
+  const server = readFileSync(join(PROJECT_ROOT, 'warroom', 'server.py'), 'utf8').match(/^PROTOCOL = "([^"]+)"/m);
+  const page = readFileSync(join(PROJECT_ROOT, 'src', 'warroom-html.ts'), 'utf8').match(/WARROOM_PROTOCOL = '([^']+)'/);
+  assert.ok(server && page);
+  assert.equal(server[1], page[1]);
+});
+
 test('every demo script is ordered, ends in exactly one final meter, and pairs each start with a finish', () => {
   for (const name of plain(WarDemo.NAMES)) {
     const steps = script(name);

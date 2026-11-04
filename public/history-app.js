@@ -91,6 +91,7 @@ function renderList() {
   $('list').innerHTML = runs.length ? runs.map((r) => {
     const facts = r.kind === 'summit'
       ? [duration(r.totalSeconds), money(r.costUsd), r.confidence == null ? '' : 'conf ' + r.confidence.toFixed(2),
+        r.mindsChanged == null ? '' : 'minds changed ' + r.mindsChanged + (r.mindsClaimed !== r.mindsChanged ? ' (claimed ' + r.mindsClaimed + ')' : ''),
         r.builds ? `${r.builds} build${r.builds > 1 ? 's' : ''}` : '']
       : [duration(r.totalSeconds), money(r.costUsd), r.changedFiles + ' files', r.criteriaMet ? r.criteriaMet + ' criteria' : ''];
     return `<li><button data-act="open" data-id="${esc(r.id)}" class="${r.id === selectedId ? 'sel' : ''}">` +

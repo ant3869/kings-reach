@@ -138,6 +138,9 @@ export function summarize(r: RunRecord, runs: RunRecord[], objectives: Map<strin
     costUsd: num(r.total_cost_usd),
     confidence: typeof r.verdict_confidence === 'number' ? r.verdict_confidence : null,
     planSteps: num(r.plan_steps),
+    // Measured since v2.14: null for older runs, whose changed_minds was only the agent's own claim.
+    mindsChanged: typeof r.changed_minds_claimed === 'number' && typeof r.changed_minds === 'number' ? r.changed_minds : null,
+    mindsClaimed: typeof r.changed_minds_claimed === 'number' ? r.changed_minds_claimed : null,
     changedFiles: Array.isArray(r.changed_files) ? r.changed_files.length : 0,
     criteriaMet: typeof r.criteria_met === 'string' ? r.criteria_met : null,
     plan: planId,

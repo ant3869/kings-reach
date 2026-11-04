@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.14.1 - Polish and loose ends for 2.14.0 (War Room client v24, server v13, protocol council-v4)
+
+- **Build panel resolves every phase.** The server now sends `build_progress` for preflight done and execute done/failed;
+  before, a finished build still showed preflight "Waiting" and execute "active". The gate chip is marked failed when the
+  checks fail (it used to stay success-coloured because a failed check is returned, not raised), and the preflight chip is
+  no longer wiped when execute begins.
+- **Warnings stay visible.** The activity feed evicts routine lines first, is no longer height-clipped, and a failed
+  run's badge states the actual cause. The old wall-clock `thinking: X 4s` line is removed (the panel owns timing).
+- **Stalled/quiet seats keep a lasting outline** (dashed amber / solid red), since the pose art reverts after seconds.
+- **Measured mind-changes are visible.** The summit scoreboard shows `N measured (M claimed)`, per-agent confidence
+  shifts with reasons, `held up (no tools)` and `claimed a change` flags, and which seats answered without tools. The
+  Plan Library list shows the measured count for new runs and nothing for old ones (their number was a self-report).
+- **Protocol bumped to `council-v4`** (activity + meter messages); a stale page now gets the hard-refresh notice.
+- **Demo meter moves on every turn** like the real one, and the demo summit includes the measured-minds scoreboard.
+- **Docs:** new `docs/LIVE.md` (event flow, thresholds, what each element means); README section; the handoff prompt is
+  rewritten for the current state; the `C:` rule is corrected to "nothing storage-heavy on C:".
+- **`verify.mjs` no longer hardcodes the protocol string** (it failed the moment v4 shipped); it imports the constant.
+- **Tests:** `npm test` 72 (includes the python suites), python alone 58 (+8 summit wiring, +8 build wiring, shared
+  `tests/fakes.py`), ui-check 55, verify 59. New guards fail if the browser/server silence thresholds or protocol drift. The summit tests were mutation-checked (disabling the tool-less cap makes them fail).
+- Added `scripts/demo-shots.mjs` (real-Chrome screenshots of the replays to `store/logs/live-*.png`).
+
 ## 2.14.0 - Live visibility, salvage, measured minds
 
 The 2.13.1 post-mortem left three design issues and the owner could not tell whether a build was working, stalled

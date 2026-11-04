@@ -158,6 +158,15 @@
     b.done(70, 'research', true); b.off(70, 'research'); b.done(75, 'ops', true); b.off(75, 'ops');
     b.stage(76, 'investigate', 'done', '62s');
     b.narr(76, 'main', 'Both specialists are back with evidence. Cross-examination next.');
+    // Shape of Council.deliberate()'s ledger row, including the measured mind-change fields (v2.14).
+    b.at(80, { type: 'metrics', id: 'de5ca001', kind: 'summit', outcome: 'verdict', total_s: 80, total_tokens: null, total_cost_usd: 0.42,
+      specialists: ['research', 'ops'], evidence: 6, challenges: 3, changed_minds: 1, changed_minds_claimed: 2,
+      claimed_without_change: ['ops'], takes_without_tools: ['ops'], verdict_confidence: 0.84, plan_steps: 3,
+      confidence: { research: [0.91, 0.62], ops: [0.8, 0.7] },
+      mind_changes: {
+        research: { before: 0.91, after: 0.62, delta: -0.29, similarity: 0.7, claimed: true, changed: true, reasons: ['confidence 0.91 -> 0.62'], capped: false, has_tools: true },
+        ops: { before: 0.8, after: 0.7, delta: -0.1, similarity: 0.9, claimed: true, changed: false, reasons: [], capped: true, has_tools: false } },
+      stages: { investigate: 60 } });
     b.final(80, 'complete', true);
     return b.T;
   }

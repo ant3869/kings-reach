@@ -174,6 +174,11 @@ try {
   check('failed build: the cards react (defeated pose)', await waitFor(`[...document.querySelectorAll('.seat')].some((s) => s.dataset.state === 'defeated')`, 4000));
   check('failed build: the fallback is visible in the feed', await js(`/could not finish/.test(document.getElementById('feed').textContent)`));
 
+  await open('/warroom?demo=summit&speed=30&still=1', { fake: true });
+  check('summit scoreboard shows minds changed as MEASURED, with the claim beside it', await waitFor(`/1 measured \\(2 claimed\\)/.test(document.getElementById('score').textContent)`, 9000));
+  check('scoreboard flags the answer that came from a route without tools', await js(`/answered without tools/.test(document.getElementById('score').textContent)`));
+  check('scoreboard lists per-agent confidence shifts, including a tool-less hold-up', await js(`(() => { const t = document.getElementById('score').textContent; return /research: 0\\.91 \\u2192 0\\.62/.test(t) && /held up \\(no tools\\)/.test(t) && /claimed a change/.test(t); })()`));
+
   await open('/warroom?demo=stall&speed=20&still=1', { fake: true });
   const seen = new Set();
   for (const end = Date.now() + 14000; Date.now() < end && !seen.has('CANCELLED');) {

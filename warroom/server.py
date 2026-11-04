@@ -36,8 +36,8 @@ except ImportError:  # run as a script: python warroom/server.py
     from router import COUNCIL, read_pin, route, write_pin
     from voice import Voice
 
-PROTOCOL = "council-v3"  # bump only when the wire protocol changes
-SERVER_VERSION = 12  # bump on every server.py deploy; shown in the client via pong
+PROTOCOL = "council-v4"  # bump only when the wire protocol changes (v4: activity + meter messages)
+SERVER_VERSION = 13  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
