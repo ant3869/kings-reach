@@ -1,11 +1,11 @@
 // public/warroom-app.js - council chamber UI. Needs (inline, before this file): WR config, md(), esc().
 // Wire protocol is documented at the top of warroom/server.py.
-/* global WR, md, esc, WarVoice */
+/* global WR, md, esc, WarVoice, CardDirector */
 'use strict';
 
 const $ = (id) => document.getElementById(id);
 const COUNCIL_STAGES = ['recall', 'plan', 'investigate', 'debate', 'verdict', 'record'];
-const BUILD_STAGES = ['execute', 'gate', 'review'];
+const BUILD_STAGES = ['preflight', 'execute', 'gate', 'review'];
 const KIND_LABEL = { plan: 'plan', take: 'take', critique: 'cross-examination', verdict: 'verdict',
   build: 'build', review: 'review', error: 'error' };
 const byId = Object.fromEntries(WR.council.map((c) => [c.id, c]));
@@ -16,10 +16,108 @@ let lastPong = 0;
 let busySince = 0;
 const thinkingSince = {};
 
+// Card art: WHICH image a seat shows is CardDirector's call (weighted variants per state, see card-director.js and
+// card-states/manifest.json). `pose` is a timed one-shot (offense/defense/confused/defeated) layered under speaking.
+const cardActivity = Object.fromEntries(WR.council.map((c) => [c.id,
+  { thinking: false, speaking: false, building: false, pose: null }]));
+const layerState = {};
+const stateRequest = {};
+const nextRotate = {};
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let director = CardDirector.create(null); // legacy art until the manifest arrives
+let currentStage = '';
+let defeatedAt = 0;
+
+const desiredCardState = (id) => CardDirector.resolve(cardActivity[id], Date.now(), currentStage);
+
+function setPose(id, state, ms) {
+  if (!cardActivity[id]) return;
+  const hold = ms || director.poseMs(state);
+  cardActivity[id].pose = { state, until: Date.now() + hold };
+  applyCardState(id);
+  setTimeout(() => applyCardState(id), hold + 60);
+}
+
+function defeatAll() {
+  if (Date.now() - defeatedAt < 2000) return; // execute + build_progress both report the same failure
+  defeatedAt = Date.now();
+  WR.council.forEach((c, i) => setTimeout(() => setPose(c.id, 'defeated'), i * 70));
+}
+
+// While a state lasts, now and then swap to another variant of it (gesture changes while talking, a new idle look).
+function rotateCards() {
+  if (REDUCED_MOTION || document.hidden) return;
+  const now = Date.now();
+  for (const c of WR.council) {
+    const el = seat(c.id);
+    if (el && nextRotate[c.id] && now >= nextRotate[c.id]) setCardState(c.id, el.dataset.state, true);
+  }
+}
+
+function setCardState(id, next, force) {
+  const el = seat(id);
+  if (!el || (el.dataset.state === next && !force)) return;
+  const request = (stateRequest[id] || 0) + 1;
+  stateRequest[id] = request;
+  const url = director.pick(next, id);
+  const preload = new Image();
+  preload.onerror = () => { if (stateRequest[id] === request) nextRotate[id] = Date.now() + 5000; };
+  preload.onload = () => {
+    if (stateRequest[id] !== request) return;
+    const delay = director.rotateDelayMs(next);
+    nextRotate[id] = delay && !REDUCED_MOTION ? Date.now() + delay : 0;
+    const a = el.querySelector('.strip-a');
+    const b = el.querySelector('.strip-b');
+    const aIsActive = (layerState[id] || 'a') === 'a';
+    const front = aIsActive ? a : b, back = aIsActive ? b : a;
+    back.src = url;
+    back.getBoundingClientRect();
+    back.style.opacity = '1';
+    front.style.opacity = '0';
+    layerState[id] = aIsActive ? 'b' : 'a';
+    el.dataset.state = next;
+    if (next === 'speaking') dimOthers(id);
+    else if (!Object.values(cardActivity).some((activity) => activity.speaking)) undimAll();
+  };
+  preload.src = url;
+}
+
+function applyCardState(id) { setCardState(id, desiredCardState(id)); }
+function staggerBuilding(on) {
+  WR.council.forEach((c, index) => setTimeout(() => {
+    cardActivity[c.id].building = on;
+    applyCardState(c.id);
+  }, index * 70));
+}
+
+function dimOthers(heroId) {
+  document.querySelectorAll('.seat').forEach((s) =>
+    s.classList.toggle('dimmed', s.id !== 'seat-' + heroId));
+}
+function undimAll() {
+  document.querySelectorAll('.seat').forEach((s) => s.classList.remove('dimmed'));
+}
+
 // --- rendering ------------------------------------------------------------------------
 function clock() {
   const d = new Date();
   return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function fmtDuration(value) {
+  const total = Math.max(0, Math.round(Number(value) || 0));
+  const hours = Math.floor(total / 3600); const minutes = Math.floor((total % 3600) / 60); const seconds = total % 60;
+  if (hours) return hours + 'h ' + minutes + 'm ' + seconds + 's';
+  if (minutes) return minutes + 'm ' + seconds + 's';
+  return seconds + 's';
+}
+
+function fmtTokens(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 'not reported';
+  if (n >= 1000000) return (n / 1000000).toFixed(2).replace(/\\.00$/, '') + 'm';
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\\.0$/, '') + 'k';
+  return String(n);
 }
 
 function bubble(who, html, cls, color, label) {
@@ -33,10 +131,30 @@ function bubble(who, html, cls, color, label) {
   return d;
 }
 
+function briefText(text) {
+  const plain = String(text || '').replace(/```[\s\S]*?```/g, ' [code] ').replace(/[#*_`>\[\]]/g, '')
+    .replace(/\s+/g, ' ').trim();
+  if (plain.length <= 260) return plain;
+  const cut = plain.slice(0, 260); const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; '));
+  return cut.slice(0, stop > 100 ? stop + 1 : 257) + '...';
+}
+
+function disclosure(text, label) {
+  return '<div class="brief">' + esc(briefText(text)) + '</div><details><summary>' + esc(label || 'Read full analysis') +
+    '</summary><div class="full">' + md(text) + '</div></details>';
+}
+
 function agentLine(id, text, kind) {
+  if (kind === 'critique') { // the critic goes on offense; whoever they name ("to **research**: ...") defends
+    setPose(id, 'offense');
+    for (const hit of String(text).matchAll(/\bto \*\*([a-z]+)\*\*/gi)) setPose(hit[1].toLowerCase(), 'defense');
+  }
+  if (kind === 'error') setPose(id, 'confused');
   const c = byId[id];
   if (!c) return bubble(id, md(text), 'sys');
-  return bubble(c.name + ' \u00b7 ' + c.title, md(text), kind === 'error' ? 'err' : kind || '', c.color, KIND_LABEL[kind]);
+  const compact = ['plan', 'take', 'critique', 'verdict', 'build', 'review'].includes(kind);
+  return bubble(c.name + ' \u00b7 ' + c.title, compact ? disclosure(text) : md(text),
+    kind === 'error' ? 'err' : kind || '', c.color, KIND_LABEL[kind]);
 }
 
 function seat(id) {
@@ -44,16 +162,22 @@ function seat(id) {
 }
 
 function setThinking(id, on) {
-  const el = seat(id);
-  if (!el) return;
-  el.classList.toggle('thinking', on);
-  if (on) thinkingSince[id] = Date.now();
-  else delete thinkingSince[id];
+  if (on) thinkingSince[id] = Date.now(); else delete thinkingSince[id];
+  if (!cardActivity[id]) return;
+  cardActivity[id].thinking = on;
+  applyCardState(id);
 }
 
 function setSpeaking(id, on) {
-  const el = seat(id);
-  if (el) el.classList.toggle('speaking', on);
+  if (!cardActivity[id]) return;
+  cardActivity[id].speaking = on;
+  applyCardState(id);
+}
+
+function setBuilding(id, on) {
+  if (!cardActivity[id]) return;
+  cardActivity[id].building = on;
+  applyCardState(id);
 }
 
 function setLevel(id, level) {
@@ -66,8 +190,13 @@ function resetStages(names) {
 }
 
 function setStage(name, state, detail) {
+  if (state === 'active') currentStage = name; else if (currentStage === name) currentStage = '';
+  WR.council.forEach((c) => applyCardState(c.id)); // thinking turns into researching during 'investigate'
+  if (state === 'failed' && BUILD_STAGES.includes(name)) defeatAll();
   if (name === 'recall' && state === 'active') resetStages(COUNCIL_STAGES);
   if (name === 'execute' && !$('st-execute')) resetStages(BUILD_STAGES);
+  if (name === 'execute' && state === 'active') staggerBuilding(true);
+  if (name === 'execute' && (state === 'done' || state === 'failed' || state === 'inactive')) staggerBuilding(false);
   let el = $('st-' + name);
   if (!el) {
     $('stages').insertAdjacentHTML('beforeend', '<span class="stage" id="st-' + name + '">' + name + '<i></i></span>');
@@ -81,15 +210,35 @@ function setStage(name, state, detail) {
 function tick() {
   const parts = Object.keys(thinkingSince).map((id) => {
     const s = Math.floor((Date.now() - thinkingSince[id]) / 1000);
-    return (byId[id] ? byId[id].name : id) + ' ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    return (byId[id] ? byId[id].name : id) + ' ' + fmtDuration(s);
   });
   $('prog').textContent = parts.length ? 'thinking: ' + parts.join('  \u00b7  ') : '';
   if (!parts.length && busySince && !document.querySelector('.stage.active')) busySince = 0;
 }
 
+function buildProgress(m) {
+  if (m.state === 'failed') defeatAll();
+  const panel = $('buildlive'); panel.hidden = false;
+  panel._phases = panel._phases || {};
+  if (m.phase !== 'complete') panel._phases[m.phase] = m;
+  const cells = BUILD_STAGES.map((phase) => {
+    const p = panel._phases[phase] || { state: 'waiting', message: 'Waiting' };
+    const elapsed = p.elapsed ? ' \u00b7 ' + fmtDuration(p.elapsed) : '';
+    return '<div class="buildphase ' + esc(p.state) + '"><b>' + esc(phase) + elapsed + '</b><span>' + esc(p.message) + '</span></div>';
+  }).join('');
+  const detail = m.detail ? '<details class="builddetail"><summary>Technical detail</summary><pre>' + esc(m.detail) + '</pre></details>' : '';
+  const files = m.files && m.files.length ? '<div class="builddetail">Files: ' + m.files.map(esc).join(', ') + '</div>' : '';
+  panel.innerHTML = '<h3>' + (m.phase === 'complete' ? esc(m.message) : 'Build in progress') +
+    '</h3><div class="buildphases">' + cells + '</div>' + detail + files;
+}
+
 function metrics(m) {
   const money = (x) => '$' + Number(x || 0).toFixed(2);
-  const rows = [['outcome', m.outcome], ['time', m.total_s + 's'], ['cost', money(m.total_cost_usd)]];
+  const coverage = m.total_calls ? ' · ' + Number(m.token_calls_reported || 0) + '/' + m.total_calls + ' calls reported' : '';
+  const tokenText = m.total_tokens == null ? 'not reported' : fmtTokens(m.total_tokens) +
+    ' (in ' + fmtTokens(m.input_tokens) + ' / out ' + fmtTokens(m.output_tokens) + ')' + coverage;
+  const rows = [['outcome', m.outcome], ['time', fmtDuration(m.total_s)], ['tokens', tokenText],
+    ['recorded cost', money(m.total_cost_usd)]];
   if (m.kind === 'summit') {
     const conf = Object.entries(m.confidence || {}).map(([a, v]) => a + ' ' + v[0].toFixed(2) +
       (v[1] !== v[0] ? ' \u2192 ' + v[1].toFixed(2) : '')).join(', ');
@@ -99,14 +248,18 @@ function metrics(m) {
       ['memory used / saved', m.memory_lines_used + ' / ' + m.memories_saved], ['hive entries', m.hive_entries]);
   } else {
     rows.push(['files changed', (m.changed_files || []).length], ['checks', m.checks_ok ? 'pass' : 'FAIL'],
-      ['review', m.approved ? 'approved' : 'not approved'], ['criteria met', m.criteria_met],
+      ['review', m.review_status || (m.approved ? 'approved' : 'not approved')], ['criteria met', m.criteria_met],
       ['core rebooted', m.rebooted ? 'yes' : 'no']);
   }
-  const stages = Object.entries(m.stages || {}).map(([s, t]) => s + ' ' + t + 's').join(' \u00b7 ');
+  const stages = Object.entries(m.stages || {}).map(([s, t]) => s + ' ' + fmtDuration(t)).join(' \u00b7 ');
+  const failure = m.failure_summary ? '<div class="metricfail">' + esc(m.failure_summary) + '</div>' : '';
+  const files = m.changed_files && m.changed_files.length ? '<details><summary>Changed files</summary><div class="full">' +
+    m.changed_files.map((f) => '<div>' + esc(f) + '</div>').join('') + '</div></details>' : '';
+  const gate = m.gate_output ? '<details><summary>Check output</summary><pre>' + esc(m.gate_output) + '</pre></details>' : '';
   $('score').innerHTML = '<h3>' + (m.kind === 'summit' ? 'Council scoreboard' : 'Build scoreboard') + ' <small>run ' +
     esc(m.id) + '</small></h3><table>' + rows.map((r) => '<tr><td>' + esc(r[0]) + '</td><td>' + esc(String(r[1] ?? '-')) +
-    '</td></tr>').join('').replace(/>undefined</g, '>-<') + '</table><div class="stagetimes">' + esc(stages) + '</div>';
-  $('score').hidden = false;
+    '</td></tr>').join('').replace(/>undefined</g, '>-<') + '</table><div class="stagetimes">' + esc(stages) + '</div>' + failure + files + gate;
+  $('score').hidden = false; $('buildbtn').disabled = false;
 }
 
 function voiceInfo(v) {
@@ -161,6 +314,7 @@ function onMessage(m) {
     return;
   }
   if (m.type === 'thinking') return setThinking(m.agent_id, m.on);
+  if (m.type === 'build_progress') return buildProgress(m);
   if (m.type === 'metrics') return metrics(m);
   if (m.type === 'transcript') {
     $('heard').textContent = m.text ? 'heard: \u201c' + m.text + '\u201d' : 'heard nothing intelligible';
@@ -181,6 +335,7 @@ function connect() {
     setConn(true, 'connected');
     send({ type: 'ping' });
     send({ type: 'voice', on: $('speak').checked });
+    runPlanLibraryBuild();
   };
   ws.onmessage = (e) => {
     if (e.data instanceof ArrayBuffer) return onBinary(e.data);
@@ -206,14 +361,30 @@ function markPin(id) {
   for (const c of WR.council) seat(c.id).classList.toggle('pinned', c.id === id);
 }
 
+// The Plan Library's "Build this plan" button (after its confirm dialog) leaves a fresh, single-use
+// same-tab token. A URL flag would let any web page navigate you into a ~$1 build; sessionStorage can't be forged.
+function runPlanLibraryBuild() {
+  let launch = null;
+  try { launch = JSON.parse(sessionStorage.getItem('kr-autobuild') || 'null'); sessionStorage.removeItem('kr-autobuild'); } catch (e) { return; }
+  if (!launch || Date.now() - launch.t > 120000) return;
+  bubble('war room', 'Building plan <b>' + esc(String(launch.plan)) + '</b> from the Plan Library.', 'sys');
+  submit('build');
+}
+
 function submit(kind) {
   const input = $('msg');
   const text = input.value.trim();
   WarVoice.unlock();
-  if (kind === 'build') return send({ type: 'build' });
+  if (kind === 'build') {
+    $('buildlive').hidden = false; $('buildlive')._phases = {}; $('buildbtn').disabled = true;
+    resetStages(BUILD_STAGES);
+    buildProgress({ phase: 'preflight', state: 'active', elapsed: 0, message: 'Requesting baseline checks' });
+    if (!send({ type: 'build' })) $('buildbtn').disabled = false;
+    return;
+  }
   if (!text) return input.focus();
   if (!send({ type: kind, text })) return;
-  bubble(kind === 'summit' ? 'you \u2192 council' : 'you', esc(text), 'you');
+  bubble(kind === 'summit' ? 'you \u2192 council' : 'you', text.length > 500 ? disclosure(text, 'Read full request') : esc(text), 'you');
   input.value = '';
 }
 
@@ -280,6 +451,28 @@ function init() {
   };
   bindTalk();
   resetStages(COUNCIL_STAGES);
+  const ready = CardDirector.load().then((loaded) => {
+    director = loaded;
+    for (const c of WR.council) { layerState[c.id] = 'a'; setCardState(c.id, 'idle', true); }
+  });
+  const previewParams = new URLSearchParams(location.search);
+  const ask = previewParams.get('ask'); // Plan Library "reconvene": prefill only, never auto-send
+  if (ask) { $('msg').value = ask.slice(0, 4000); history.replaceState(null, '', location.pathname); }
+  if (previewParams.has('still')) { // deterministic visual audits: no transitions or animations in flight
+    const freeze = document.createElement('style');
+    freeze.textContent = '*,*:before,*:after{transition:none!important;animation:none!important}';
+    document.head.appendChild(freeze);
+  }
+  const preview = previewParams.get('previewCards');
+  const poses = previewParams.get('previewPoses'); // "main:offense,research:defense": force art, for visual audits
+  ready.then(() => {
+    if (preview === 'thinking') setThinking('research', true);
+    if (preview === 'speaking') setSpeaking('main', true);
+    if (preview === 'building') WR.council.forEach((c) => setBuilding(c.id, true));
+    if (preview === 'building-speaking') { WR.council.forEach((c) => setBuilding(c.id, true)); setSpeaking('main', true); }
+    if (poses) poses.split(',').forEach((pair) => { const [id, state] = pair.split(':'); if (byId[id]) setCardState(id, state, true); });
+  });
+  setInterval(rotateCards, 1000);
   setInterval(tick, 1000);
   setInterval(() => {
     if (connected()) send({ type: 'ping' });

@@ -12,6 +12,7 @@ import { classifyError } from './errors.js';
 import { logger } from './logger.js';
 import { providerHasTools, recordProviderOutcome, routesFor, type ProviderId, type ToolNeed } from './provider-config.js';
 import { runExternalProvider } from './provider-runner.js';
+import { agentEnv, claudeSkillOptions, skillContext } from './skills.js';
 
 /** Deliberation stages may read and research, never mutate. */
 export const WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
@@ -113,6 +114,8 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
 
   try {
     const mcpServers = loadMcpServers(agent?.mcpAllowlist);
+    const skillText = await skillContext(opts.agentId ?? 'main');
+    const appended = [opts.systemPrompt, skillText].filter(Boolean).join('\n\n');
     let text: string | null = null;
     let newSessionId: string | undefined = opts.sessionId;
     let inputTokens: number | undefined;
@@ -133,7 +136,9 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
         permissionMode: 'bypassPermissions',
         maxTurns,
         mcpServers: mcpServers as never,
-        systemPrompt: { type: 'preset', preset: 'claude_code', ...(opts.systemPrompt ? { append: opts.systemPrompt } : {}) },
+        env: agentEnv(),
+        ...claudeSkillOptions(opts.agentId ?? 'main'),
+        systemPrompt: { type: 'preset', preset: 'claude_code', ...(appended ? { append: appended } : {}) },
         ...(model ? { model } : {}),
         ...(opts.readOnly ? { disallowedTools: WRITE_TOOLS } : {}),
         ...(opts.schema ? { outputFormat: { type: 'json_schema', schema: opts.schema } } : {}),
@@ -197,7 +202,8 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
   const externalOpts: AgentOptions = {
     ...opts,
     cwd: opts.cwd ?? agent?.cwd ?? PROJECT_ROOT,
-    systemPrompt: [rolePrompt, opts.systemPrompt].filter(Boolean).join('\n\n'),
+    // Tool-less providers cannot load a skill on demand, so their required skills are included in the prompt.
+    systemPrompt: [rolePrompt, opts.systemPrompt, await skillContext(agentId, true)].filter(Boolean).join('\n\n'),
   };
   const attempts: NonNullable<AgentResult['attempts']> = [];
   const routes = routesFor(agentId);
@@ -219,6 +225,14 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
       if (result.durationMs === undefined) result.durationMs = Date.now() - started;
       result.attempts = attempts;
       result.provider = target.provider;
+      if (target.provider !== 'claude' && opts.chatId && (result.inputTokens || result.outputTokens)) {
+        try {
+          logTokenUsage(opts.chatId, agentId, result.model ?? target.model,
+            result.inputTokens ?? 0, result.outputTokens ?? 0, result.costUsd);
+        } catch (err) {
+          logger.warn({ err }, 'external provider token usage logging failed (non-fatal)');
+        }
+      }
       if (target.provider !== 'claude' && opts.chatId) {
         // APIs/CLIs do not all expose token counts; still record the selected model/provider in logs.
         logger.info({ chatId: opts.chatId, agentId, provider: target.provider, model: target.model }, 'provider fallback answered');

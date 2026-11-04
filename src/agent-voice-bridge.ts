@@ -83,6 +83,8 @@ async function ask(req: BridgeRequest): Promise<Reply> {
     text: ok ? (r.text ?? '') : `agent ${agentId} failed (${r.error ?? 'no result'})${r.text ? `: ${r.text}` : ''}`,
     data: r.structured ?? null,
     costUsd: r.costUsd ?? 0,
+    inputTokens: r.inputTokens ?? null,
+    outputTokens: r.outputTokens ?? null,
     numTurns: r.numTurns ?? 0,
     durationMs: r.durationMs ?? 0,
     model: r.model ?? '',

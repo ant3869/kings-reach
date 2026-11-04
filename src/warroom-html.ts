@@ -7,11 +7,30 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROJECT_ROOT, WARROOM_PORT } from './config.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
+import { activePlan, type PlanSummary } from './history.js';
 
-export const WARROOM_CLIENT_VERSION = 9;
+export const WARROOM_CLIENT_VERSION = 21;
 export const WARROOM_PROTOCOL = 'council-v3'; // must match PROTOCOL in warroom/server.py
-export const WARROOM_STATIC = ['warroom-app.js', 'warroom-voice.js', 'mic-worklet.js',
-  'warroom-council-cards.png', 'warroom-chamber-bg.png'] as const;
+const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
+const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
+const CARD_ASSETS = CARD_STATES.flatMap((state) =>
+  CARD_ROLES.map((role) => `card-states/individual/${state}-${role}.png`));
+/** Every file the manifest can hand out (variant art), plus the manifest itself. Read once at startup. */
+function manifestAssets(): string[] {
+  try {
+    const m = JSON.parse(readFileSync(join(PROJECT_ROOT, 'public', 'card-states', 'manifest.json'), 'utf8')) as
+      { roles: string[]; pools: Record<string, [string, number][]> };
+    const files = new Set<string>();
+    for (const pool of Object.values(m.pools)) {
+      for (const [template] of pool) for (const role of m.roles) files.add(`card-states/${template.replace('{role}', role)}`);
+    }
+    return ['card-states/manifest.json', ...files];
+  } catch {
+    return []; // no manifest: the client falls back to the original four-state art
+  }
+}
+export const WARROOM_STATIC: readonly string[] = ['warroom-app.js', 'warroom-voice.js', 'card-director.js', 'mic-worklet.js',
+  'warroom-council-cards.png', 'warroom-chamber-bg.png', ...CARD_ASSETS, ...manifestAssets()];
 
 const COLORS: Record<string, string> = {
   main: '#d4a017', research: '#79c0ff', comms: '#a371f7', content: '#3fb950', ops: '#f85149',
@@ -42,6 +61,7 @@ function loadCouncil(): Seat[] {
 }
 
 const CSS = `
+@property --lvl{syntax:'<number>';inherits:false;initial-value:0}
 :root{--gold:#d4a017;--bg:#07070d;--panel:#11111b;--line:#3a3020}
 *{box-sizing:border-box}
 body{background:#05070b;color:#eadfbe;font-family:Georgia,'Times New Roman',serif;margin:0;padding:14px;min-height:100vh;position:relative}
@@ -54,18 +74,17 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#f85149;margin-right:6px}
 .dot.on{background:#3fb950;box-shadow:0 0 8px #3fb950}
 .vstat{display:block;font:12px system-ui;color:#8b949e;margin-top:3px}.vstat.ready{color:#3fb950}.vstat.failed{color:#f85149}
-#council{display:flex;gap:9px;justify-content:center;margin:10px 0 6px;flex-wrap:wrap}
-.seat{--lvl:0;position:relative;width:184px;height:310px;text-align:center;border-radius:18px;background-image:url('/warroom/warroom-council-cards.png?v=1');background-size:920px 270px;background-repeat:no-repeat;background-position:var(--card-pos) 0;transition:transform .2s,filter .2s;filter:drop-shadow(0 8px 9px #000);isolation:isolate}
-.seat:after{content:'';position:absolute;inset:2px 1px 39px;border-radius:17px;box-shadow:0 0 calc(4px + var(--lvl)*38px) calc(var(--lvl)*7px) var(--ac);pointer-events:none;z-index:-1}
+#council{display:flex;gap:9px;justify-content:center;margin:40px 0 10px;flex-wrap:wrap}/* headroom: the speaker lifts 14px and grows 9%, and transforms take no layout space */
+.seat{--lvl:0;position:relative;width:184px;height:310px;text-align:center;border-radius:18px;transition:transform 320ms cubic-bezier(.2,.8,.2,1),opacity 360ms ease,filter 360ms ease;filter:drop-shadow(0 8px 9px #000);isolation:isolate}
+.strip-a,.strip-b{position:absolute;left:0;top:0;width:184px;height:270px;border-radius:18px;object-fit:fill;transition:opacity 260ms ease,filter 320ms ease;will-change:opacity;z-index:1;pointer-events:none}
+.strip-a{opacity:1}.strip-b{opacity:0}
+.seat:after{content:'';position:absolute;inset:12px 8px 51px;border-radius:22px;background:var(--ac);filter:blur(16px);box-shadow:0 0 24px 7px var(--ac),0 0 52px 12px var(--ac);opacity:.10;transition:opacity 420ms ease;pointer-events:none;z-index:0}
 .seat .sigil,.seat>b,.seat>.title{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-.seat .route{position:absolute;top:272px;left:3px;right:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbbd96;font:10px system-ui;text-shadow:0 1px #000}
-.seat .voice{position:absolute;top:289px;left:3px;right:3px;color:#8f856c;font:10px system-ui}
-.seat button{position:absolute;top:236px;left:50%;transform:translateX(-50%);width:62px;height:25px;font:11px Georgia;background:#090806bb;border:1px solid #b78a33;color:#f0d88e;border-radius:9px;cursor:pointer;box-shadow:inset 0 0 7px #d4a01722}
+.seat .route{position:absolute;z-index:3;top:272px;left:3px;right:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbbd96;font:10px system-ui;text-shadow:0 1px #000}
+.seat .voice{position:absolute;z-index:3;top:289px;left:3px;right:3px;color:#8f856c;font:10px system-ui}
+.seat button{position:absolute;z-index:3;top:236px;left:50%;transform:translateX(-50%);width:62px;height:25px;font:11px Georgia;background:#090806bb;border:1px solid #b78a33;color:#f0d88e;border-radius:9px;cursor:pointer;box-shadow:inset 0 0 7px #d4a01722}
 .seat button:before{content:' ';font-size:9px}.seat.pinned button{background:#7b5819;color:#fff2bc;box-shadow:0 0 13px var(--ac)}
-.seat.thinking:before{content:'';position:absolute;inset:-3px 0 35px;border-radius:18px;border:2px solid transparent;border-top-color:var(--ac);border-bottom-color:var(--ac);animation:spin 1.5s linear infinite}
-.seat.speaking{transform:translateY(-7px) scale(1.025);filter:drop-shadow(0 10px 13px #000) brightness(calc(1 + var(--lvl)*.35))}
-@keyframes spin{to{transform:rotate(360deg)}}
-@media(max-width:1050px){.seat{width:164px;height:284px;background-size:820px 241px}.seat button{top:210px}.seat .route{top:243px}.seat .voice{top:260px}}
+@media(max-width:1050px){.seat{width:164px;height:284px}.strip-a,.strip-b{width:164px;height:241px}.seat button{top:210px}.seat .route{top:243px}.seat .voice{top:260px}}
 #stages{display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin:8px 0}
 .stage{font:12px Georgia;padding:5px 14px;border-radius:9px;border:1px solid #735628;color:#9d8b65;background:linear-gradient(#16140f,#090a0e);box-shadow:inset 0 0 9px #d4a01712}
 .stage.active{color:#1a1103;background:linear-gradient(#f4d77c,#a26b16);border-color:#ffe29a;animation:pulse 1.4s ease-in-out infinite}
@@ -75,6 +94,7 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 #prog{text-align:center;font:12px system-ui;color:var(--gold);min-height:18px}
 .main{display:grid;grid-template-columns:1fr 300px;gap:14px;margin-top:8px}
 @media(max-width:900px){.main{grid-template-columns:1fr}}
+@media(max-width:700px){.topnav{position:static;justify-content:center;margin:0 0 8px}}
 #log{height:45vh;min-height:310px;overflow-y:auto;border:2px solid #8e6a2c;border-radius:4px;padding:18px;background:linear-gradient(#060a11ed,#080b12f5);font:14px/1.55 system-ui;display:flex;flex-direction:column;gap:12px;box-shadow:inset 0 0 0 3px #05060a,inset 0 0 30px #000,0 8px 24px #000}
 .bubble{--ac:var(--gold);border-left:3px solid var(--ac);padding:2px 0 2px 12px;max-width:96%}
 .bubble .who{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--ac)}
@@ -85,6 +105,8 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 .bubble code{background:#000;padding:1px 5px;border-radius:4px;font-size:12px}.bubble pre code{padding:0}.bubble a{color:#79c0ff}
 .bubble.you{--ac:#8b949e;align-self:flex-end;text-align:right}.bubble.sys{--ac:#555;font-style:italic;color:#8b949e}
 .bubble.err{--ac:#f85149;color:#f85149}.bubble.verdict{background:#d4a01712;border-radius:0 10px 10px 0;padding:8px 12px}
+.bubble .brief{font:600 14px/1.5 system-ui;color:#eadfbe;margin:5px 0}.bubble details{margin-top:7px;border-top:1px solid #8e6a2c55;padding-top:6px}.bubble summary{cursor:pointer;color:#d9b85d;font:11px system-ui;text-transform:uppercase;letter-spacing:.5px}.bubble .full{margin-top:8px;color:#bdb6a5}.bubble.you .full{text-align:left}
+.buildlive{border:1px solid #8e6a2c;border-radius:8px;background:#080b12e8;margin:8px auto;padding:10px 12px;max-width:980px;font:12px system-ui;box-shadow:inset 0 0 18px #000}.buildlive h3{margin:0 0 8px;color:#e4c468;font:600 13px Georgia}.buildphases{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.buildphase{border:1px solid #302b22;border-radius:6px;padding:7px;color:#7f786a}.buildphase.active{border-color:#c28b31;color:#f0d78f;box-shadow:inset 0 0 10px #d4a01718}.buildphase.done{border-color:#3fb95088;color:#72d487}.buildphase.failed{border-color:#f85149;color:#ff7b72}.buildphase.skipped{text-decoration:line-through}.buildphase b,.buildphase span{display:block}.buildphase span{margin-top:3px;color:inherit}.builddetail{margin-top:7px;color:#9d9481}.metricfail{margin-top:9px;border-left:3px solid #f85149;padding:6px 9px;color:#ff9b94;background:#f8514910}@media(max-width:700px){.buildphases{grid-template-columns:1fr 1fr}}
 aside{display:flex;flex-direction:column;gap:12px}
 .panel{border:2px solid #8e6a2c;border-radius:4px;background:linear-gradient(#090d15ee,#0c0e14f5);padding:14px;font:13px system-ui;box-shadow:inset 0 0 0 3px #05060a,inset 0 0 22px #000}
 .panel h3{margin:0 0 8px;font:600 13px system-ui;color:var(--gold);letter-spacing:.5px}.panel h3 small{color:#6e7681;font-weight:400}
@@ -101,15 +123,60 @@ button.go{background:linear-gradient(#755724,#3d2d12);color:#fff0bd;border:1px s
 button.go:hover{background:linear-gradient(#977335,#4e3815)}button.alt{background:#090b10dd;border:1px solid var(--gold);color:#e9c96e}
 button.stop{background:transparent;border:1px solid #f85149;color:#f85149}
 .hint{font:11px system-ui;color:#6e7681;margin-top:6px}
+.planline{font:12px/1.5 system-ui;color:#b2a47d;margin-top:8px}.planline a{color:#e2bf62}.planline b{color:#f0d88e}.planline.none{color:#8f856c}
+@keyframes idle-breathe{from{transform:scale(1)}to{transform:scale(1.004)}}
+@keyframes think-pulse{from{opacity:.26}to{opacity:.58}}
+@keyframes build-pulse{from{opacity:.24}to{opacity:.50}}
+.seat[data-state='idle'] .strip-a,.seat[data-state='idle'] .strip-b{animation:idle-breathe 4200ms ease-in-out alternate infinite}
+.seat[data-state='thinking']{transform:translateY(-3px)}
+.seat[data-state='thinking']:after{opacity:.26;animation:think-pulse 1700ms ease-in-out alternate infinite;will-change:opacity}
+.seat[data-state='speaking']{transform:translateY(-14px) scale(1.09);z-index:4}
+.seat[data-state='speaking'] .strip-a,.seat[data-state='speaking'] .strip-b{filter:saturate(1.12) brightness(1.06)}
+.seat[data-state='speaking']:after{opacity:calc(0.52 + var(--lvl) * 0.38);transition:opacity 70ms linear;will-change:opacity}
+.seat[data-state='building']{transform:translateY(-2px) scale(1.012)}
+.seat[data-state='building']:after{opacity:.24;animation:build-pulse 2300ms ease-in-out alternate infinite}
+.seat.dimmed{opacity:.82;filter:saturate(.72) brightness(.86);transition:opacity 420ms ease,filter 420ms ease}
+.seat[data-state='researching']{transform:translateY(-4px)}
+.seat[data-state='researching']:after{opacity:.3;animation:think-pulse 1300ms ease-in-out alternate infinite;will-change:opacity}
+.seat[data-state='offense']{transform:translateY(-8px) scale(1.045);z-index:3}
+.seat[data-state='offense']:after{opacity:.5}
+.seat[data-state='defense']{transform:translateY(1px) scale(.985)}
+.seat[data-state='defense']:after{opacity:.2}
+.seat[data-state='confused']{transform:rotate(-1.4deg) translateY(-2px)}
+.seat[data-state='confused']:after{opacity:.16}
+.seat[data-state='defeated']{transform:translateY(4px) scale(.975)}
+.seat[data-state='defeated'] .strip-a,.seat[data-state='defeated'] .strip-b{filter:saturate(.7) brightness(.88)}
+.seat[data-state='defeated']:after{opacity:.04}
+@media(prefers-reduced-motion:reduce){
+.seat,.strip-a,.strip-b,.seat:after{animation:none!important}
+.seat{transition:opacity 180ms ease;transform:none!important}
+.seat.dimmed{filter:none}
+.seat[data-state='idle']:after{opacity:.08}
+.seat[data-state='thinking']:after{opacity:.30}
+.seat[data-state='speaking']:after{opacity:.70}
+.seat[data-state='speaking'],.seat[data-state='offense']{outline:2px solid var(--ac);outline-offset:4px}
+.seat[data-state='building']:after{opacity:.34}
+}
 `;
 
+/** Which plan the Build button will execute (the archive lives on the Plan Library page). */
+function planLine(plan: PlanSummary | null): string {
+  if (!plan) return `<div class="planline none">No plan on file: convene the council first. <a href="/history">Plan Library</a></div>`;
+  const objective = plan.objective.length > 150 ? `${plan.objective.slice(0, 150)}...` : plan.objective;
+  return `<div class="planline">Build will execute plan <b>${esc(plan.run)}</b> (${plan.steps} steps): <i>${esc(objective)}</i> &middot; ` +
+    `<a href="/history#run=${esc(plan.run)}">review it</a> &middot; <a href="/history">Plan Library</a></div>`;
+}
+
 /** Full-page War Room: council seats, stage tracker, log, voice + scoreboard panels. */
-export function renderWarRoom(): string {
+export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
   const council = loadCouncil();
   const seats = council
     .map(
-      (c, index) =>
-        `<div class="seat" id="seat-${esc(c.id)}" style="--ac:${c.color};--card-pos:${index * 25}%"><div class="sigil">${esc(c.name.slice(0, 1))}</div>` +
+      (c) =>
+        `<div class="seat" id="seat-${esc(c.id)}" style="--ac:${c.color}" data-state="idle">` +
+        `<img class="strip-a" src="/warroom/card-states/individual/idle-${esc(c.id)}.png" alt="">` +
+        `<img class="strip-b" alt="">` +
+        `<div class="sigil">${esc(c.name.slice(0, 1))}</div>` +
         `<b>${esc(c.name)}</b><small class="title">${esc(c.title)}</small><small class="route" id="model-${esc(c.id)}">route: waiting</small><small class="voice">voice: ${esc(c.voice)}</small>` +
         `<button data-pin="${esc(c.id)}">Pin</button></div>`,
     )
@@ -122,19 +189,21 @@ export function renderWarRoom(): string {
 <title>War Room v${WARROOM_CLIENT_VERSION} - King's Reach Council</title>
 <style>${CSS}</style></head><body>
 <div class="wrap">
-<nav class="topnav"><a class="navbtn" href="/providers">Settings / Models</a><a class="navbtn" href="/">Mission Control</a></nav>
+<nav class="topnav"><a class="navbtn" href="/history">Plan Library</a><a class="navbtn" href="/providers">Settings / Models</a><a class="navbtn" href="/">Mission Control</a></nav>
 <h1>THE WAR ROOM</h1>
 <p class="sub">Plan. Investigate. Cross-examine. Decide. Build. <a href="/">dashboard</a> &middot; client v${WARROOM_CLIENT_VERSION} &middot; <span id="sver">server ?</span></p>
 <div id="status"><span class="dot" id="dot"></span><span id="stext">connecting...</span><span class="vstat" id="vstat">voice: ?</span></div>
 <div id="council">${seats}</div>
 <div id="stages"></div>
 <div id="prog"></div>
+<div id="buildlive" class="buildlive" role="status" aria-live="polite" hidden></div>
 <div class="main">
 <section>
 <div id="log"></div>
 <div class="composer"><input id="msg" placeholder="Speak to one agent (Enter), or convene the council (Ctrl+Enter)..." autocomplete="off">
 <button class="go" id="send">Send</button><button class="go alt" id="summitbtn">Convene council</button></div>
 <div class="composer"><button class="go alt" id="buildbtn">Build the verdict</button><button class="go stop" id="cancelbtn">Cancel / hush</button></div>
+${planLine(plan)}
 <div class="hint">Voice tips: say "council, ..." for a full deliberation, "hey Ops, ..." for one agent, "build it" to execute the plan.</div>
 </section>
 <aside>
@@ -152,6 +221,7 @@ export function renderWarRoom(): string {
 var WR = ${config.replace(/</g, '\\u003c')};
 ${CLIENT_MD_JS}
 </script>
+<script src="/warroom/card-director.js${v}"></script>
 <script src="/warroom/warroom-voice.js${v}"></script>
 <script src="/warroom/warroom-app.js${v}"></script>
 </body></html>`;

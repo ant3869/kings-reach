@@ -1,0 +1,9 @@
+{
+  "name": "kings-reach-browser-tools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated browser tooling for the War Room research agents (playwright-cli). Kept out of the main package so the app's dependency tree stays small; its bin dir is put on the agents' PATH by src/skills.ts.",
+  "dependencies": {
+    "@playwright/cli": "0.1.23"
+  }
+}

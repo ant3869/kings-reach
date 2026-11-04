@@ -1,5 +1,5 @@
 // src/provider-runner.ts - execute one non-Claude route. Provider selection/fallback stays in agent.ts.
-// Full local tools: Codex CLI. Advisory structured calls: Meta/9Router/Gemini/OpenAI/OpenRouter/Ollama.
+// Full local tools: Codex CLI. Advisory calls: ChatGPT/Meta/9Router/Gemini/OpenAI/OpenRouter/Ollama.
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -66,7 +66,7 @@ async function runCodex(target: RouteTarget, opts: AgentOptions): Promise<AgentR
   const id = randomUUID();
   const output = join(tmp, `${id}.out`), schemaFile = join(tmp, `${id}.schema.json`);
   if (opts.schema) writeFileSync(schemaFile, JSON.stringify(normalizeSchema(opts.schema, 'openai')), 'utf8');
-  const args = ['exec', '--skip-git-repo-check', '-C', opts.cwd ?? process.cwd(), '--sandbox', opts.readOnly ? 'read-only' : 'workspace-write',
+  const args = ['exec', '--json', '--skip-git-repo-check', '-C', opts.cwd ?? process.cwd(), '--sandbox', opts.readOnly ? 'read-only' : 'workspace-write',
     '--color', 'never'];
   // `default` respects the model attached to the user's Codex subscription/config. Public model names
   // are not universally valid for ChatGPT-authenticated Codex accounts.
@@ -81,7 +81,19 @@ async function runCodex(target: RouteTarget, opts: AgentOptions): Promise<AgentR
     const r = await command(exe, realArgs, fullPrompt(opts));
     const text = (() => { try { return readFileSync(output, 'utf8').trim(); } catch { return r.stdout.trim(); } })();
     if (r.code !== 0) throw new Error((r.stderr || r.stdout || `Codex exited ${r.code}`).slice(-1000));
-    return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: 'codex' };
+    let inputTokens = 0, outputTokens = 0;
+    for (const line of r.stdout.split(/\r?\n/)) {
+      try {
+        const event = JSON.parse(line) as Record<string, unknown>;
+        const usage = event['usage'] as Record<string, unknown> | undefined;
+        if (usage) {
+          inputTokens = Math.max(inputTokens, Number(usage['input_tokens'] ?? usage['prompt_tokens'] ?? 0));
+          outputTokens = Math.max(outputTokens, Number(usage['output_tokens'] ?? usage['completion_tokens'] ?? 0));
+        }
+      } catch { /* non-JSON diagnostic line */ }
+    }
+    return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: 'codex',
+      inputTokens: inputTokens || undefined, outputTokens: outputTokens || undefined };
   } finally {
     rmSync(output, { force: true });
     rmSync(schemaFile, { force: true });
@@ -109,7 +121,10 @@ async function runGemini(target: RouteTarget, opts: AgentOptions): Promise<Agent
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (data.error) throw new Error(data.error.message ?? 'Gemini error');
   const text = (data.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('').trim();
-  return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: 'gemini' };
+  const usage = data.usageMetadata ?? {};
+  return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: 'gemini',
+    inputTokens: Number(usage.promptTokenCount ?? 0) || undefined,
+    outputTokens: Number(usage.candidatesTokenCount ?? 0) || undefined };
 }
 
 async function runOpenAICompatible(target: RouteTarget, opts: AgentOptions, openrouter = false): Promise<AgentResult> {
@@ -125,7 +140,9 @@ async function runOpenAICompatible(target: RouteTarget, opts: AgentOptions, open
     ...(openrouter ? { 'HTTP-Referer': 'http://localhost/claudeclaw', 'X-Title': 'ClaudeClaw' } : {}),
   }, body: JSON.stringify(body) });
   const text = data.choices?.[0]?.message?.content ?? '';
-  return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: target.provider };
+  return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: target.provider,
+    inputTokens: Number(data.usage?.prompt_tokens ?? 0) || undefined,
+    outputTokens: Number(data.usage?.completion_tokens ?? 0) || undefined };
 }
 
 function nineRouterKey(): string {
@@ -153,7 +170,9 @@ async function run9Router(target: RouteTarget, opts: AgentOptions): Promise<Agen
   }, body: JSON.stringify(body) }, 10 * 60_000);
   const raw = data.choices?.[0]?.message?.content ?? '';
   const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
-  return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: target.provider };
+  return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: target.provider,
+    inputTokens: Number(data.usage?.prompt_tokens ?? 0) || undefined,
+    outputTokens: Number(data.usage?.completion_tokens ?? 0) || undefined };
 }
 
 async function runOllama(target: RouteTarget, opts: AgentOptions): Promise<AgentResult> {
@@ -162,12 +181,14 @@ async function runOllama(target: RouteTarget, opts: AgentOptions): Promise<Agent
       ...(opts.systemPrompt ? [{ role: 'system', content: opts.systemPrompt }] : []), { role: 'user', content: opts.message },
     ], ...(opts.schema ? { format: opts.schema } : {}) }) }, 10 * 60_000);
   const text = data.message?.content ?? '';
-  return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: 'ollama' };
+  return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: 'ollama',
+    inputTokens: Number(data.prompt_eval_count ?? 0) || undefined,
+    outputTokens: Number(data.eval_count ?? 0) || undefined };
 }
 
 export async function runExternalProvider(target: RouteTarget, opts: AgentOptions): Promise<AgentResult> {
   if (target.provider === 'codex') return runCodex(target, opts);
-  if (target.provider === 'meta' || target.provider === '9router') return run9Router(target, opts);
+  if (target.provider === 'meta' || target.provider === '9router' || target.provider === 'chatgpt') return run9Router(target, opts);
   if (target.provider === 'gemini') return runGemini(target, opts);
   if (target.provider === 'openai') return runOpenAICompatible(target, opts);
   if (target.provider === 'openrouter') return runOpenAICompatible(target, opts, true);
@@ -197,8 +218,11 @@ export async function getProviderHealth(catalog?: RouterModel[]): Promise<Provid
   const routerModels = catalog ?? await get9RouterCatalog();
   const routerReady = Boolean(nineRouterKey()) && routerModels.length > 0;
   const metaCount = routerModels.filter((m) => /^(meta\/|cf\/@cf\/meta\/)/.test(m.id)).length;
+  const chatgptCount = routerModels.filter((m) => /^cx\//.test(m.id)).length;
   const base: ProviderHealth[] = [
     { id: 'claude', available: true, detail: 'SDK/CLI installed; quota is checked per call' }, codex,
+    { id: 'chatgpt', available: routerReady && chatgptCount > 0,
+      detail: routerReady ? `${chatgptCount} ChatGPT/Codex models through 9Router` : '9Router/credential unavailable' },
     { id: 'meta', available: routerReady && metaCount > 0, detail: routerReady ? `${metaCount} Meta models through 9Router` : '9Router/credential unavailable' },
     { id: '9router', available: routerReady, detail: routerReady ? `${routerModels.length} models discovered` : 'gateway/credential unavailable' },
     { id: 'gemini', available: Boolean(GOOGLE_API_KEY), detail: GOOGLE_API_KEY ? `configured (${GEMINI_TEXT_MODEL})` : 'GOOGLE_API_KEY missing' },
@@ -210,6 +234,11 @@ export async function getProviderHealth(catalog?: RouterModel[]): Promise<Provid
   return base.map((item) => {
     const last = observed[item.id];
     if (!last) return item;
+    const ageMs = Date.now() - Date.parse(last.at);
+    const stickyFailure = /quota|credit|auth|api[_ ]?key/i.test(last.detail);
+    if (!last.ok && !stickyFailure && ageMs > 30 * 60_000) {
+      return { ...item, detail: `${item.detail}; previous failure cooldown expired (${last.model})` };
+    }
     return { ...item, available: item.available && last.ok,
       detail: `${item.detail}; ${last.detail} (${last.model}, ${last.at.replace('T', ' ').slice(0, 19)})` };
   });

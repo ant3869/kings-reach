@@ -1,0 +1,5 @@
+{
+  "name": "kings-reach",
+  "version": "1.0.0",
+  "description": "Vetted skills for the King's Reach War Room agents: reasoning, research, browser use, and code discipline. Managed by `node dist/skill-cli.js`; never edit skills/ by hand."
+}

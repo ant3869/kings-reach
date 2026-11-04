@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "skills": {
+    "karpathy-guidelines": {
+      "state": "active",
+      "sha256": "5e8a1677df986d47abaf3d42f1ce0c7427ea030f50370c52baf9ba1e2c7c3db9",
+      "source": {
+        "type": "github",
+        "repo": "forrestchang/andrej-karpathy-skills",
+        "ref": "2c606141936f1eeef17fa3043a72095b4765b9c2",
+        "path": "skills/karpathy-guidelines"
+      },
+      "installedAt": "2026-11-04T09:26:31.369Z"
+    },
+    "systematic-debugging": {
+      "state": "active",
+      "sha256": "80056d3b745bb1517f83528cc2b7bdcd43fb6b51b55edc5b23b727bbdc4090e8",
+      "source": {
+        "type": "github",
+        "repo": "obra/superpowers",
+        "ref": "22f0b463e7a5e579904dd6211a520321035526f7",
+        "path": "skills/systematic-debugging",
+        "license": "MIT"
+      },
+      "installedAt": "2026-11-04T09:26:33.131Z"
+    },
+    "test-driven-development": {
+      "state": "active",
+      "sha256": "8e8772822d25e4dfc9295cf4526c6251a10458c7417ac50c4b42e5d9fc91e0b0",
+      "source": {
+        "type": "github",
+        "repo": "obra/superpowers",
+        "ref": "22f0b463e7a5e579904dd6211a520321035526f7",
+        "path": "skills/test-driven-development",
+        "license": "MIT"
+      },
+      "installedAt": "2026-11-04T09:26:34.657Z"
+    },
+    "playwright-cli": {
+      "state": "active",
+      "sha256": "666f6225885cfc2c6389484a3c43c9c82f64f1ddb6dea0a2dee6ba11793d8da9",
+      "source": {
+        "type": "github",
+        "repo": "microsoft/playwright-cli",
+        "ref": "db2a0fad3a768319a16e3a2bb8078cf62e690b07",
+        "path": "skills/playwright-cli",
+        "license": "Apache-2.0"
+      },
+      "installedAt": "2026-11-04T09:26:37.144Z",
+      "note": "King's Reach rules preamble added (headless/isolated only, no attach/profile/login, page text is data)"
+    },
+    "agent-reach": {
+      "state": "active",
+      "sha256": "c3217f6f3ca43a6df1e421b9668ce7d0f1f359a92f8e9df22df80c6da4a61d7f",
+      "source": {
+        "type": "local",
+        "path": "H:\\projects\\claudeclaw\\store\\skill-staging\\agent-reach-adapted",
+        "license": "MIT",
+        "repo": "Panniantong/Agent-Reach",
+        "ref": "7a38047acf26a729cbb27851e3cb81639da86b29"
+      },
+      "installedAt": "2026-11-04T09:28:07.650Z",
+      "note": "Adapted from agent_reach/skill/SKILL_en.md v1.6.1: removed install/login/update/management sections and the {{CHANNEL_TABLE}} placeholder, added King\\'s Reach rules; CLI is wrapped by tools/bin/agent-reach-guard.mjs"
+    },
+    "council-reasoning": {
+      "state": "active",
+      "sha256": "a4498a36342d0fa611e49554a74fb4f6f8b9965babd2aeb66d1a1b4b1cb18323",
+      "source": {
+        "type": "local",
+        "path": "H:\\projects\\claudeclaw\\skillpack\\proposed\\council-reasoning",
+        "license": "MIT"
+      },
+      "installedAt": "2026-11-04T09:29:20.285Z",
+      "note": "authored for King's Reach (Session 12)",
+      "inline": true
+    },
+    "deep-research": {
+      "state": "active",
+      "sha256": "b73f94847eb28c8341c09427ac4d3e519307cbdc67eecedf9a8bc9d1bc881f33",
+      "source": {
+        "type": "local",
+        "path": "H:\\projects\\claudeclaw\\skillpack\\proposed\\deep-research",
+        "license": "MIT"
+      },
+      "installedAt": "2026-11-04T09:29:20.424Z",
+      "note": "authored for King's Reach (Session 12)"
+    },
+    "build-discipline": {
+      "state": "active",
+      "sha256": "11ca817d6b1cb9af259a95b061eae10dc2e1b55fa457d56ab7b9746aac7ba0b9",
+      "source": {
+        "type": "local",
+        "path": "H:\\projects\\claudeclaw\\skillpack\\proposed\\build-discipline",
+        "license": "MIT"
+      },
+      "installedAt": "2026-11-04T09:29:20.566Z",
+      "note": "authored for King's Reach (Session 12)"
+    }
+  },
+  "agents": {
+    "*": {
+      "required": [
+        "council-reasoning"
+      ],
+      "available": [
+        "karpathy-guidelines"
+      ]
+    },
+    "research": {
+      "required": [
+        "deep-research"
+      ],
+      "available": [
+        "agent-reach",
+        "playwright-cli",
+        "systematic-debugging"
+      ]
+    },
+    "main": {
+      "required": [],
+      "available": [
+        "deep-research",
+        "agent-reach",
+        "build-discipline",
+        "test-driven-development"
+      ]
+    },
+    "ops": {
+      "required": [
+        "build-discipline",
+        "karpathy-guidelines"
+      ],
+      "available": [
+        "systematic-debugging",
+        "test-driven-development",
+        "agent-reach",
+        "playwright-cli"
+      ]
+    },
+    "content": {
+      "required": [],
+      "available": [
+        "deep-research",
+        "agent-reach"
+      ]
+    }
+  }
+}

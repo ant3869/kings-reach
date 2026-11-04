@@ -1,0 +1,222 @@
+{
+ "roles": [
+  "main",
+  "research",
+  "comms",
+  "content",
+  "ops"
+ ],
+ "pools": {
+  "idle": [
+   [
+    "sets/set_2/idle-{role}.webp",
+    5
+   ],
+   [
+    "sets/set_1/idle-{role}.webp",
+    3
+   ],
+   [
+    "composed/idle-detail-{role}.webp",
+    1
+   ],
+   [
+    "composed/idle-obscured-{role}.webp",
+    1
+   ]
+  ],
+  "thinking": [
+   [
+    "sets/set_2/thinking-{role}.webp",
+    4
+   ],
+   [
+    "sets/set_1/thinking-{role}.webp",
+    3
+   ],
+   [
+    "composed/thinking-detail-{role}.webp",
+    1
+   ],
+   [
+    "composed/thinking-obscured-{role}.webp",
+    1
+   ],
+   [
+    "composed/thinking2-detail-{role}.webp",
+    1
+   ],
+   [
+    "composed/thinking2-obscured-{role}.webp",
+    1
+   ],
+   [
+    "composed/thinking3-detail-{role}.webp",
+    1
+   ],
+   [
+    "composed/thinking3-obscured-{role}.webp",
+    1
+   ]
+  ],
+  "researching": [
+   [
+    "sets/set_2/researching-{role}.webp",
+    4
+   ],
+   [
+    "sets/set_1/researching-{role}.webp",
+    3
+   ]
+  ],
+  "speaking": [
+   [
+    "sets/set_2/talking-{role}.webp",
+    4
+   ],
+   [
+    "sets/set_1/talking-{role}.webp",
+    3
+   ],
+   [
+    "sets/set_2/explaining-{role}.webp",
+    3
+   ],
+   [
+    "sets/set_1/explaining-{role}.webp",
+    2
+   ],
+   [
+    "composed/talking-detail-{role}.webp",
+    1
+   ],
+   [
+    "composed/talking-obscured-{role}.webp",
+    1
+   ],
+   [
+    "composed/explaining-detail-{role}.webp",
+    1
+   ],
+   [
+    "composed/explaining-obscured-{role}.webp",
+    1
+   ]
+  ],
+  "building": [
+   [
+    "sets/set_2/building-{role}.webp",
+    4
+   ],
+   [
+    "sets/set_1/building-{role}.webp",
+    3
+   ]
+  ],
+  "offense": [
+   [
+    "sets/set_2/offense-{role}.webp",
+    4
+   ],
+   [
+    "sets/set_1/offense-{role}.webp",
+    3
+   ],
+   [
+    "composed/offense-detail-{role}.webp",
+    2
+   ],
+   [
+    "composed/offense-obscured-{role}.webp",
+    2
+   ]
+  ],
+  "defense": [
+   [
+    "sets/set_2/defense-{role}.webp",
+    4
+   ],
+   [
+    "sets/set_1/defense-{role}.webp",
+    3
+   ],
+   [
+    "composed/defense-detail-{role}.webp",
+    2
+   ],
+   [
+    "composed/defense-obscured-{role}.webp",
+    2
+   ]
+  ],
+  "confused": [
+   [
+    "sets/set_2/confused-{role}.webp",
+    4
+   ],
+   [
+    "sets/set_1/confused-{role}.webp",
+    3
+   ]
+  ],
+  "defeated": [
+   [
+    "sets/set_2/defeated-{role}.webp",
+    4
+   ],
+   [
+    "sets/set_1/defeated-{role}.webp",
+    3
+   ],
+   [
+    "composed/defeated-detail-{role}.webp",
+    1
+   ],
+   [
+    "composed/defeated-obscured-{role}.webp",
+    1
+   ],
+   [
+    "composed/defeated2-detail-{role}.webp",
+    1
+   ],
+   [
+    "composed/defeated2-obscured-{role}.webp",
+    1
+   ]
+  ]
+ },
+ "rotateSeconds": {
+  "idle": [
+   24,
+   55
+  ],
+  "thinking": [
+   14,
+   26
+  ],
+  "researching": [
+   14,
+   26
+  ],
+  "speaking": [
+   6,
+   11
+  ],
+  "building": [
+   18,
+   32
+  ],
+  "offense": null,
+  "defense": null,
+  "confused": null,
+  "defeated": null
+ },
+ "poseMs": {
+  "offense": 7000,
+  "defense": 7000,
+  "confused": 9000,
+  "defeated": 15000
+ },
+ "fallback": "individual/{state}-{role}.png"
+}

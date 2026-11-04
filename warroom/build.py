@@ -39,6 +39,32 @@ def run_tsc():
         return {"ok": False, "output": f"{type(exc).__name__}: {exc}"}
 
 
+def _node_check(files):
+    results = []
+    for path in files:
+        p = subprocess.run(["node", "--check", str(path)], cwd=PROJECT_ROOT, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=60)
+        if p.returncode != 0:
+            results.append(f"{path.name}: {(p.stderr or p.stdout)[-1200:]}")
+    return {"ok": not results, "output": "; ".join(results) or "clean"}
+
+
+def preflight(python_exe):
+    """Cheap baseline gate before an agent spends tokens or mutates files."""
+    results = []
+    tsc = run_tsc()
+    results.append("tsc: " + ("clean" if tsc["ok"] else tsc["output"]))
+    js_files = [PROJECT_ROOT / "public" / name for name in ("warroom-app.js", "warroom-voice.js", "mic-worklet.js")]
+    js = _node_check(js_files)
+    results.append("browser JS: " + js["output"])
+    py_files = [PROJECT_ROOT / "warroom" / name for name in
+                ("server.py", "council.py", "agent_bridge.py", "build.py", "router.py", "config.py")]
+    p = subprocess.run([python_exe, "-m", "py_compile", *map(str, py_files)], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=120)
+    results.append("python: " + ("clean" if p.returncode == 0 else p.stderr[-1500:]))
+    return {"ok": tsc["ok"] and js["ok"] and p.returncode == 0, "output": "; ".join(results)}
+
+
 def gate(changed_files, python_exe):
     """Automated checks for what actually changed: tsc for TypeScript, py_compile for Python.
     Returns {ok, output}. Nothing checkable changed -> ok with a note (reviewers still read it)."""
@@ -48,6 +74,11 @@ def gate(changed_files, python_exe):
         tsc = run_tsc()
         ok &= tsc["ok"]
         results.append("tsc: " + ("clean" if tsc["ok"] else tsc["output"]))
+    js_files = [PROJECT_ROOT / f for f in rel if f.endswith((".js", ".mjs")) and (PROJECT_ROOT / f).exists()]
+    if js_files:
+        js = _node_check(js_files)
+        ok &= js["ok"]
+        results.append(f"node --check ({len(js_files)} files): {js['output']}")
     py = [str(PROJECT_ROOT / f) for f in rel if f.endswith(".py") and (PROJECT_ROOT / f).exists()]
     if py:
         p = subprocess.run([python_exe, "-m", "py_compile", *py], capture_output=True, text=True,

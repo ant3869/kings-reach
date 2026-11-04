@@ -8,6 +8,9 @@ import { getAgentRegistry } from './orchestrator.js';
 import { DASHBOARD_CLIENT_VERSION } from './dashboard-html.js';
 import { WARROOM_CLIENT_VERSION } from './warroom-html.js';
 import { warroomStatus } from './warroom-supervisor.js';
+import { probeResearch } from './research-probe.js';
+import { readRegistry, skillsFor } from './skills.js';
+import { loadAgentConfigs } from './agent-config.js';
 
 const STARTED_AT = Date.now();
 const COUNTED_TABLES = ['memories', 'scheduled_tasks', 'hive_mind', 'sessions', 'token_usage'] as const;
@@ -37,6 +40,19 @@ function fileBytes(file: string): number | null {
   }
 }
 
+function skillsHealth(): Record<string, unknown> {
+  const registry = readRegistry();
+  const perAgent: Record<string, unknown> = {};
+  let rejected = 0;
+  for (const agent of loadAgentConfigs()) {
+    const r = skillsFor(agent.id, registry);
+    rejected += r.rejected.length;
+    perAgent[agent.id] = { required: r.required, available: r.available, rejected: r.rejected };
+  }
+  const states = Object.values(registry.skills).map((s) => s.state);
+  return { active: states.filter((s) => s === 'active').length, quarantined: states.filter((s) => s === 'quarantined').length, rejected, perAgent };
+}
+
 export async function collectHealth(): Promise<Record<string, unknown>> {
   return {
     ok: true,
@@ -49,6 +65,8 @@ export async function collectHealth(): Promise<Record<string, unknown>> {
     dashboard: { host: DASHBOARD_HOST, port: DASHBOARD_PORT },
     warroom: await warroomStatus(),
     agents: getAgentRegistry().size,
+    skills: skillsHealth(),
+    research: await probeResearch(),
     db: {
       counts: Object.fromEntries(COUNTED_TABLES.map((t) => [t, count(t)])),
       bytes: fileBytes(DB_PATH),

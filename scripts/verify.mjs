@@ -152,6 +152,9 @@ async function main() {
     console.log(`      war room ${JSON.stringify(health.warroom)} | db ${JSON.stringify(health.db?.counts)}`);
     check('core pid file == serving core pid', readPidFile('claudeclaw.pid') === health.pid, `file ${readPidFile('claudeclaw.pid')}`);
     check('war room running + pid known', health.warroom?.running === true && Boolean(health.warroom?.pid));
+    check('skills: library loaded, none rejected', (health.skills?.active ?? 0) >= 8 && health.skills?.rejected === 0, `${health.skills?.active} active, ${health.skills?.rejected} rejected`);
+    check('skills: research agent holds deep-research + browser + agent-reach', ['deep-research', 'playwright-cli', 'agent-reach'].every((n) => [...(health.skills?.perAgent?.research?.required ?? []), ...(health.skills?.perAgent?.research?.available ?? [])].includes(n)));
+    check('research: internet + browser + agent-reach ready', health.research?.ok === true, health.research?.summary);
   }
 
   twinRefuses('core', process.execPath, ['dist/index.js'], /Another core is running/);
@@ -180,18 +183,35 @@ async function main() {
     try { execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' }); } catch { ok = false; }
     check(`GET /warroom/${name} (+ node --check)`, ok, `HTTP ${r.status}, ${r.body.length} bytes`);
   }
-  for (const name of ['warroom-council-cards.png', 'warroom-chamber-bg.png']) {
+  const cardAssets = ['idle', 'thinking', 'speaking', 'building'].flatMap((state) =>
+    ['main', 'research', 'comms', 'content', 'ops'].map((role) => `card-states/individual/${state}-${role}.png`));
+  for (const name of ['warroom-council-cards.png', 'warroom-chamber-bg.png', ...cardAssets]) {
     const asset = await request({ port: DASH, method: 'HEAD', urlPath: `/warroom/${name}` });
     check(`HEAD /warroom/${name}`, asset.status === 200 && asset.headers?.['content-type'] === 'image/png',
       `HTTP ${asset.status}, ${asset.headers?.['content-type'] ?? 'no content-type'}`);
   }
+  const historyPage = await request({ port: DASH, urlPath: '/history' });
+  check('GET /history (Plan Library page)', historyPage.status === 200 && historyPage.body.includes('Plan Library'), `HTTP ${historyPage.status}`);
+  const historyJs = await request({ port: DASH, urlPath: '/history/history-app.js' });
+  const historyFile = path.join(LOG_DIR, 'served-history-app.js');
+  fs.writeFileSync(historyFile, historyJs.body, 'utf8');
+  let historyJsOk = historyJs.status === 200;
+  try { execFileSync(process.execPath, ['--check', historyFile], { stdio: 'pipe' }); } catch { historyJsOk = false; }
+  check('GET /history/history-app.js (+ node --check)', historyJsOk, `HTTP ${historyJs.status}, ${historyJs.body.length} bytes`);
+  const overview = await request({ port: DASH, urlPath: '/api/history', headers: authed() });
+  let overviewJson = {};
+  try { overviewJson = JSON.parse(overview.body); } catch { /* reported by the check below */ }
+  check('GET /api/history lists runs and stats', overview.status === 200 && Array.isArray(overviewJson.runs) && overviewJson.stats?.runs === overviewJson.runs.length,
+    `HTTP ${overview.status}, ${overviewJson.runs?.length ?? '?'} runs`);
+  const badActivate = await request({ port: DASH, method: 'POST', urlPath: '/api/history/..%2f..%2fx/activate', headers: authed() });
+  check('plan activation refuses a malformed run id', badActivate.status === 404 || badActivate.status === 400, `HTTP ${badActivate.status}`);
   const traversal = await request({ port: DASH, urlPath: '/warroom/..%2f.env' });
   check('static route refuses traversal', traversal.status === 404 && !/TOKEN|API_KEY/.test(traversal.body), `HTTP ${traversal.status}`);
 
   const providerApi = await request({ port: DASH, urlPath: '/api/providers', headers: authed() });
   let providerData = {};
   try { providerData = JSON.parse(providerApi.body); } catch { /* reported below */ }
-  check('provider network API (no secrets)', providerApi.status === 200 && providerData.providers?.length >= 8
+  check('provider network API (no secrets)', providerApi.status === 200 && providerData.providers?.length >= 9
     && !/OPENAI_API_KEY\s*[:=]\s*[^m]/.test(providerApi.body), `HTTP ${providerApi.status}, ${providerData.providers?.length ?? 0} providers`);
 
   const evilHost = await request({ port: DASH, urlPath: '/api/agents', headers: authed({ Host: 'evil.example:' + DASH }) });

@@ -29,7 +29,7 @@ const CORE_PID_FILE = join(STORE_DIR, 'claudeclaw.pid');
 
 function showBanner(): void {
   const bannerPath = join(PROJECT_ROOT, 'banner.txt');
-  logger.info(existsSync(bannerPath) ? readFileSync(bannerPath, 'utf8') : '=== King's Reach ===');
+  logger.info(existsSync(bannerPath) ? readFileSync(bannerPath, 'utf8') : "=== King's Reach ===");
 }
 
 function ensureDirs(): void {

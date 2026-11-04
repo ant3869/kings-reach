@@ -36,7 +36,7 @@ except ImportError:  # run as a script: python warroom/server.py
     from voice import Voice
 
 PROTOCOL = "council-v3"  # bump only when the wire protocol changes
-SERVER_VERSION = 8  # bump on every server.py deploy; shown in the client via pong
+SERVER_VERSION = 11  # bump on every server.py deploy; shown in the client via pong
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
 BUILD_RE = re.compile(r"^\s*(build it|build|execute( the plan)?|make it so)[.!]*\s*$", re.IGNORECASE)

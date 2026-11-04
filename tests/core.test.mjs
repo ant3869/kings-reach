@@ -10,6 +10,7 @@ import { md, esc, CLIENT_MD_JS } from '../dist/client-md.js';
 import { psLiteral } from '../dist/voice.js';
 import { defaultProviderRouting, providerHasTools, saveProviderRouting } from '../dist/provider-config.js';
 import { renderProviderSettings } from '../dist/provider-html.js';
+import { renderWarRoom, WARROOM_STATIC } from '../dist/warroom-html.js';
 
 test('env: inline comments, empty-with-comment, quotes', () => {
   assert.equal(parseEnvValue('7860          # War Room websocket port'), '7860');
@@ -93,6 +94,7 @@ test('providers: defaults have diverse fallbacks and capability gates', () => {
   assert.equal(providerHasTools('codex'), true);
   assert.equal(providerHasTools('gemini'), false);
   assert.equal(providerHasTools('meta'), false);
+  assert.equal(providerHasTools('chatgpt'), false);
   assert.equal(providerHasTools('9router'), false);
   assert.throws(() => saveProviderRouting({ agents: { ops: [{ provider: 'gemini', model: '' }] } }), /needs at least one/);
 });
@@ -102,6 +104,17 @@ test('providers: settings page never embeds credentials', () => {
   assert.ok(html.includes('Provider Network') && html.includes('Capability-aware fallback'));
   assert.ok(!html.includes('OPENAI_API_KEY='));
   assert.ok(!html.includes('GOOGLE_API_KEY='));
+});
+
+test('war room: card states use role-specific assets without sprite bleed or build bars', () => {
+  const html = renderWarRoom();
+  const cardAssets = WARROOM_STATIC.filter((name) => name.startsWith('card-states/individual/'));
+  assert.equal(cardAssets.length, 20);
+  assert.ok(html.includes('individual/idle-main.png'));
+  assert.ok(!html.includes('--card-pos:'));
+  assert.ok(!html.includes('build-bar'));
+  assert.ok(!html.includes('build-sweep'));
+  assert.ok(!html.includes('data-sub')); // every card paints its own title; no live-text overlay to double-print
 });
 
 test('voice: PowerShell literal cannot expand $() or break out', () => {

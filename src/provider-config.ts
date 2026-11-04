@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { GEMINI_TEXT_MODEL, STORE_DIR } from './config.js';
 
-export const PROVIDER_IDS = ['claude', 'codex', 'meta', '9router', 'gemini', 'openai', 'openrouter', 'ollama'] as const;
+export const PROVIDER_IDS = ['claude', 'codex', 'chatgpt', 'meta', '9router', 'gemini', 'openai', 'openrouter', 'ollama'] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type ToolNeed = 'required' | 'preferred' | 'none';
 
@@ -33,8 +33,10 @@ export const PROVIDERS: ProviderDefinition[] = [
     local: false, note: 'Excellent tool use and long-context synthesis. Best for Main, Ops and code-changing work.', examples: ['claude-sonnet-4-6', 'claude-opus-4-6'] },
   { id: 'codex', name: 'Codex CLI', auth: 'Codex subscription login', tools: true, structured: true,
     local: false, note: 'Strong coding, shell and repository work. Ideal fallback for Ops and execution-heavy roles.', examples: ['default', 'gpt-5-codex'] },
+  { id: 'chatgpt', name: 'ChatGPT / Codex via 9Router', auth: 'local 9Router session', tools: false, structured: true,
+    local: false, note: 'Independent OpenAI-family advisory route through the authenticated 9Router catalog. Codex CLI remains the tool-capable route.', examples: ['cx/gpt-5.6-terra', 'cx/gpt-5.4-mini', 'cx/gpt-5.3-codex-spark'] },
   { id: 'meta', name: 'Meta Muse / Llama via 9Router', auth: 'local 9Router credential', tools: false, structured: true,
-    local: true, note: 'Independent Meta training and long-context reasoning. Great debate/research voice; advisory until King's Reach adds a 9Router tool loop.', examples: ['meta/muse-spark-1.3', 'meta/muse-spark-1.2', 'cf/@cf/meta/llama-3.3-70b-instruct-fp8-fast'] },
+    local: true, note: "Independent Meta training and long-context reasoning. Great debate/research voice; advisory until King's Reach adds a 9Router tool loop.", examples: ['meta/muse-spark-1.3', 'meta/muse-spark-1.2', 'cf/@cf/meta/llama-3.3-70b-instruct-fp8-fast'] },
   { id: '9router', name: '9Router model network', auth: 'local 9Router credential', tools: false, structured: true,
     local: true, note: 'Live local gateway to many labs and tiers. Catalog is discovered at runtime; advisory models are safe in plan/debate/content stages.', examples: ['cx/gpt-5.6-terra', 'openrouter/deepseek/deepseek-v4-flash-0731:free', 'gc/gemini-2.5-pro'] },
   { id: 'gemini', name: 'Google Gemini API', auth: 'GOOGLE_API_KEY', tools: false, structured: true,
@@ -84,11 +86,11 @@ export function recordProviderOutcome(provider: ProviderId, model: string, ok: b
 const DEFAULTS: ProviderRouting = {
   version: 1,
   agents: {
-    main: [{ provider: 'claude', model: 'claude-sonnet-4-6' }, { provider: 'codex', model: 'default' }, { provider: 'meta', model: 'meta/muse-spark-1.3' }, { provider: 'gemini', model: GEMINI_TEXT_MODEL }],
+    main: [{ provider: 'claude', model: 'claude-sonnet-4-6' }, { provider: 'codex', model: 'default' }, { provider: 'chatgpt', model: 'cx/gpt-5.6-terra' }, { provider: 'meta', model: 'meta/muse-spark-1.3' }, { provider: 'gemini', model: GEMINI_TEXT_MODEL }],
     ops: [{ provider: 'claude', model: 'claude-sonnet-4-6' }, { provider: 'codex', model: 'default' }],
-    research: [{ provider: 'gemini', model: GEMINI_TEXT_MODEL }, { provider: 'claude', model: 'claude-sonnet-4-6' }, { provider: 'codex', model: 'default' }, { provider: 'meta', model: 'meta/muse-spark-1.3' }],
-    comms: [{ provider: 'meta', model: 'meta/muse-spark-1.3' }, { provider: 'claude', model: 'claude-sonnet-4-6' }, { provider: 'gemini', model: GEMINI_TEXT_MODEL }, { provider: 'openai', model: 'gpt-4.1-mini' }],
-    content: [{ provider: 'meta', model: 'meta/muse-spark-1.3' }, { provider: 'gemini', model: GEMINI_TEXT_MODEL }, { provider: 'claude', model: 'claude-sonnet-4-6' }, { provider: 'openai', model: 'gpt-4.1-mini' }],
+    research: [{ provider: 'chatgpt', model: 'cx/gpt-5.6-terra' }, { provider: 'gemini', model: GEMINI_TEXT_MODEL }, { provider: 'claude', model: 'claude-sonnet-4-6' }, { provider: 'codex', model: 'default' }, { provider: 'meta', model: 'meta/muse-spark-1.3' }],
+    comms: [{ provider: 'meta', model: 'meta/muse-spark-1.3' }, { provider: 'chatgpt', model: 'cx/gpt-5.6-terra' }, { provider: 'claude', model: 'claude-sonnet-4-6' }, { provider: 'gemini', model: GEMINI_TEXT_MODEL }, { provider: 'openai', model: 'gpt-4.1-mini' }],
+    content: [{ provider: 'meta', model: 'meta/muse-spark-1.3' }, { provider: 'chatgpt', model: 'cx/gpt-5.6-terra' }, { provider: 'gemini', model: GEMINI_TEXT_MODEL }, { provider: 'claude', model: 'claude-sonnet-4-6' }, { provider: 'openai', model: 'gpt-4.1-mini' }],
   },
 };
 

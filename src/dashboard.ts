@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { renderWarRoom, WARROOM_STATIC } from './warroom-html.js';
 import { renderProviderSettings } from './provider-html.js';
+import { mountHistory } from './history-routes.js';
 import { defaultProviderRouting, loadProviderRouting, PROVIDERS, ROLE_GUIDANCE, saveProviderRouting } from './provider-config.js';
 import { get9RouterCatalog, getProviderHealth } from './provider-runner.js';
 import { apiGuard } from './http-guard.js';
@@ -35,8 +36,10 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
   // Allowlisted static client files only (no path joins from user input).
   for (const name of WARROOM_STATIC) {
     app.get(`/warroom/${name}`, (c) => {
-      const image = name.endsWith('.png');
-      c.header('Content-Type', image ? 'image/png' : 'text/javascript; charset=utf-8');
+      const image = name.endsWith('.png') || name.endsWith('.webp');
+      const type = name.endsWith('.webp') ? 'image/webp' : name.endsWith('.png') ? 'image/png'
+        : name.endsWith('.json') ? 'application/json; charset=utf-8' : 'text/javascript; charset=utf-8';
+      c.header('Content-Type', type);
       c.header('Cache-Control', image ? 'public, max-age=86400' : 'no-cache');
       const path = join(PROJECT_ROOT, 'public', name);
       return image ? c.body(readFileSync(path) as unknown as string) : c.body(readFileSync(path, 'utf8'));
@@ -47,10 +50,13 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
 
   app.use('/api/*', apiGuard({ token: DASHBOARD_TOKEN, loopbackOnly: DASHBOARD_LOOPBACK }));
 
+  mountHistory(app);
+
   app.get('/api/health', async (c) => c.json(await collectHealth()));
   app.get('/api/providers', async (c) => {
     const models = await get9RouterCatalog();
-    const catalog = { '9router': models, meta: models.filter((m) => /^(meta\/|cf\/@cf\/meta\/)/.test(m.id)) };
+    const catalog = { '9router': models, chatgpt: models.filter((m) => /^cx\//.test(m.id)),
+      meta: models.filter((m) => /^(meta\/|cf\/@cf\/meta\/)/.test(m.id)) };
     return c.json({ config: loadProviderRouting(), providers: PROVIDERS, guidance: ROLE_GUIDANCE,
       health: await getProviderHealth(models), catalog });
   });

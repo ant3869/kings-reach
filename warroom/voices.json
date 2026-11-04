@@ -8,10 +8,10 @@
   },
   "research": {
     "name": "Research",
-    "title": "Grand Maester",
+    "title": "Grand Master",
     "kokoro_voice": "bm_fable",
     "speed": 0.95,
-    "personality": "Grand Maester. Knowledge is power. Finds facts, reads the code and the sources, cites evidence, distrusts claims without proof."
+    "personality": "Grand Master. Knowledge is power. Finds facts, reads the code and the sources, cites evidence, distrusts claims without proof."
   },
   "comms": {
     "name": "Comms",

@@ -53,6 +53,17 @@ Thumbs.db
 .cache/
 coverage/
 
+# Raw art originals (100+ MB): kept locally, regenerated assets in public/card-states ship instead
+assets-src/
+
+# Third-party design skills of unknown provenance, local-only until the owner reviews their licenses
+.agents/
+.taste-skill/
+
+# Research tooling is installed by scripts/setup-research-tools.mjs, never committed
+tools/agent-reach/venv/
+.playwright-cli/
+
 # King's Reach publish exclusions — local-only files, never commit these
 workspace/
 agents/*/workspace/

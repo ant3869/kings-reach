@@ -16,18 +16,32 @@ try:
     from . import agent_bridge as ab
     from . import build
     from .config import (AGENT_BRIDGE_PATH, COUNCIL_DIR, DEBATE_ROUNDS, INVESTIGATE_TURNS, PROJECT_ROOT,
-                         RUNS_FILE, VERDICT_FILE, VERDICT_JSON)
+                         RUNS_FILE, VERDICT_ARCHIVE_DIR, VERDICT_FILE, VERDICT_JSON)
+    from .ledger import archive_verdict, build_outcome, criteria_tally
     from .personas import AGENT_IDS, SPECIALISTS, persona_prompt
 except ImportError:  # run as a script
     import agent_bridge as ab
     import build
     from config import (AGENT_BRIDGE_PATH, COUNCIL_DIR, DEBATE_ROUNDS, INVESTIGATE_TURNS, PROJECT_ROOT,
-                        RUNS_FILE, VERDICT_FILE, VERDICT_JSON)
+                        RUNS_FILE, VERDICT_ARCHIVE_DIR, VERDICT_FILE, VERDICT_JSON)
+    from ledger import archive_verdict, build_outcome, criteria_tally
     from personas import AGENT_IDS, SPECIALISTS, persona_prompt
 
 STAGES = ("recall", "plan", "investigate", "debate", "verdict", "record")
 # Turn budgets per stage. The structured answer itself costs a turn; 6 proved too tight in a real run.
 TURNS = {"plan": 10, "debate": 12, "verdict": 12, "execute": 40, "review": 16}
+
+
+def human_time(seconds):
+    """Compact user-facing duration; raw metrics remain numeric seconds."""
+    total = max(0, int(round(float(seconds or 0))))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m {secs}s"
+    if minutes:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
 STR, NUM, BOOL = {"type": "string"}, {"type": "number", "minimum": 0, "maximum": 1}, {"type": "boolean"}
 
 
@@ -92,6 +106,10 @@ class Run:
         a = self.data["agents"].setdefault(agent, {"cost_usd": 0.0, "turns": 0, "seconds": 0.0, "calls": 0,
                                                     "providers": [], "models": []})
         a["cost_usd"] = round(a["cost_usd"] + float(reply.get("costUsd") or 0), 4)
+        if reply.get("inputTokens") is not None or reply.get("outputTokens") is not None:
+            a["input_tokens"] = a.get("input_tokens", 0) + int(reply.get("inputTokens") or 0)
+            a["output_tokens"] = a.get("output_tokens", 0) + int(reply.get("outputTokens") or 0)
+            a["token_calls_reported"] = a.get("token_calls_reported", 0) + 1
         a["turns"] += int(reply.get("numTurns") or 0)
         a["seconds"] = round(a["seconds"] + float(reply.get("durationMs") or 0) / 1000, 1)
         a["calls"] += 1
@@ -108,6 +126,12 @@ class Run:
         self.data.update(extra)
         self.data["total_s"] = round(time.monotonic() - self._t0, 1)
         self.data["total_cost_usd"] = round(sum(a["cost_usd"] for a in self.data["agents"].values()), 4)
+        reported = sum(a.get("token_calls_reported", 0) for a in self.data["agents"].values())
+        self.data["input_tokens"] = sum(a.get("input_tokens", 0) for a in self.data["agents"].values()) if reported else None
+        self.data["output_tokens"] = sum(a.get("output_tokens", 0) for a in self.data["agents"].values()) if reported else None
+        self.data["total_tokens"] = ((self.data["input_tokens"] or 0) + (self.data["output_tokens"] or 0)) if reported else None
+        self.data["token_calls_reported"] = reported
+        self.data["total_calls"] = sum(a.get("calls", 0) for a in self.data["agents"].values())
         RUNS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(RUNS_FILE, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(self.data) + "\n")
@@ -144,8 +168,26 @@ class Council:
             await self.room.stage(name, "failed")
             raise
         run.end(name)
-        await self.room.stage(name, "done", f"{run.data['stages'][name]}s")
+        await self.room.stage(name, "done", human_time(run.data["stages"][name]))
         return result
+
+    async def _progress(self, phase, message, coro, interval=10):
+        """Await a long agent call while giving the browser honest, low-noise heartbeats."""
+        task = asyncio.ensure_future(coro)
+        started = asyncio.get_running_loop().time()
+        await self.room.send({"type": "build_progress", "phase": phase, "state": "active",
+                              "elapsed": 0, "message": message})
+        try:
+            while not task.done():
+                done, _ = await asyncio.wait({task}, timeout=interval)
+                if not done:
+                    elapsed = int(asyncio.get_running_loop().time() - started)
+                    await self.room.send({"type": "build_progress", "phase": phase, "state": "active",
+                                          "elapsed": elapsed, "message": message})
+            return await task
+        except BaseException:
+            task.cancel()
+            raise
 
     # --- deliberation ---------------------------------------------------------------
     async def deliberate(self, question, convo=""):
@@ -267,11 +309,12 @@ class Council:
         rec = await self._stage(run, "record", ab.record(question=f"Council question: {question}",
                                                          answer=f"Council verdict: {verdict['verdict']}", hive=hive))
         before = {a: t["confidence"] for a, t in takes.items()}
+        final_providers = sorted({p for a in takes for p in run.data["agents"].get(a, {}).get("providers", [])})
         data = run.finish(outcome="verdict", memory_lines_used=memory_lines,
                           assignments=plan["assignments"], assigned_specialists=list(assigned),
                           specialists=list(takes), failed_specialists=failed_specialists,
-                          debate_failed_specialists=debate_failed_specialists, providers=successful_providers,
-                          provider_diversity=len(successful_providers),
+                          debate_failed_specialists=debate_failed_specialists, providers=final_providers,
+                          provider_diversity=len(final_providers),
                           changed_minds=sum(d["changed_mind"] for d in debates.values()),
                           challenges=sum(len(d["challenges"]) for d in debates.values()),
                           evidence=sum(len(t["evidence"]) for t in takes.values()),
@@ -291,19 +334,21 @@ class Council:
 
     def _save_verdict(self, question, plan, takes, debates, verdict, run_id):
         VERDICT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        VERDICT_JSON.write_text(json.dumps({"run": run_id, "question": question, "objective": plan["objective"],
-                                            "success_criteria": plan.get("success_criteria", []), **verdict},
-                                           indent=2), encoding="utf-8")
+        verdict_json = json.dumps({"run": run_id, "question": question, "objective": plan["objective"],
+                                   "success_criteria": plan.get("success_criteria", []), **verdict}, indent=2)
+        VERDICT_JSON.write_text(verdict_json, encoding="utf-8")
         takes_md = "\n".join(f"### {a}\n{t['recommendation']}\n\n{bullets(t['findings'])}\n\nEvidence:\n"
                              f"{bullets(t['evidence'])}\n" + (f"\nAfter debate: {debates[a]['revised_recommendation']}\n"
                                                              if a in debates else "") for a, t in takes.items())
         steps = "\n".join(f"{i}. **{s['owner']}**: {s['step']} (done when: {s['done_when']})"
                           for i, s in enumerate(verdict["plan"], 1))
-        VERDICT_FILE.write_text(
+        verdict_md = (
             f"# Summit verdict ({run_id})\n\nQuestion: {question}\n\nObjective: {plan['objective']}\n\n## Takes\n"
             f"{takes_md}\n## Verdict (Main, confidence {verdict['confidence']:.2f})\n{verdict['verdict']}\n\n"
             f"Decided by: {', '.join(verdict['decided_by'])}\n\nDissent:\n{bullets(verdict['dissent'])}\n\n## Plan\n"
-            f"{steps}\n\n## Success metrics\n{bullets(verdict['success_metrics'])}\n", encoding="utf-8")
+            f"{steps}\n\n## Success metrics\n{bullets(verdict['success_metrics'])}\n")
+        VERDICT_FILE.write_text(verdict_md, encoding="utf-8")
+        archive_verdict(VERDICT_ARCHIVE_DIR, run_id, verdict_json, verdict_md)
 
     # --- execution ------------------------------------------------------------------
     async def execute(self):
@@ -313,41 +358,87 @@ class Council:
         v = json.loads(VERDICT_JSON.read_text(encoding="utf-8"))
         run = Run("build", v.get("question", ""))
         out_dir = COUNCIL_DIR / v.get("run", run.data["id"])
+        success_metrics = v.get("success_metrics", [])
+        run.begin("preflight")
+        await self.room.stage("preflight", "active", "checking clean baseline")
+        preflight = await asyncio.to_thread(build.preflight, sys.executable)
+        run.end("preflight")
+        if not preflight["ok"]:
+            await self.room.stage("preflight", "failed", "baseline is broken")
+            await self.room.send({"type": "build_progress", "phase": "preflight", "state": "failed",
+                                  "elapsed": 0, "message": "Build stopped before any agent ran.",
+                                  "detail": preflight["output"][:2000]})
+            data = run.finish(outcome="preflight_failed", changed_files=[], checks_ok=False, approved=False,
+                              criteria_met=f"0/{len(success_metrics)}", rebooted=False,
+                              failure_summary="Baseline checks failed before execution.",
+                              gate_output=preflight["output"][:3000], review_status="not started")
+            await self.room.send({"type": "metrics", **data})
+            return data
+        await self.room.stage("preflight", "done", "baseline clean")
         owners = list(dict.fromkeys(s["owner"] for s in v.get("plan", [])))
         changed, reports = [], {}
+        run.begin("execute")
+        await self.room.stage("execute", "active", "starting implementation")
         for owner in owners:
             steps = "\n".join(f"- {s['step']} (done when: {s['done_when']})" for s in v["plan"] if s["owner"] == owner)
-            await self.room.stage("execute", "active", owner)
-            r, _ = await self._ask(run, owner, (
+            r, _ = await self._progress("execute", f"{owner} is implementing its assigned steps", self._ask(run, owner, (
                 f"The council decided:\n{v['verdict']}\n\n[Your steps]\n{steps}\n\n[Already done by others]\n"
                 + (bullets(f"{o}: {rep['spoken']}" for o, rep in reports.items()) if reports else "- nothing yet")
                 + f"\n\nDo your steps now with minimal, surgical changes. Code changes go in the repo, any other "
                 f"deliverable goes in {out_dir}. Keep files under 600 lines. Never restart servers, kill processes "
                 f"or touch store/. Report every file you changed (repo-relative).\n{TOOLS_NOTE}"),
-                EXECUTE, tools="required", max_turns=TURNS["execute"]) 
+                EXECUTE, tools="required", max_turns=TURNS["execute"]))
             if r:
                 reports[owner] = r
                 changed += r["changed_files"]
+                await self.room.send({"type": "build_progress", "phase": "execute", "state": "active",
+                                      "elapsed": int(run.data["agents"][owner]["seconds"]),
+                                      "message": f"{owner} finished; {len(r['changed_files'])} file(s) reported"})
                 await self.room.say(owner, "\n".join(f"- {d['step']}: {d['result']}" for d in r["done"])
                                     + (f"\n\n**Blocked:** {'; '.join(r['blocked'])}" if r["blocked"] else ""),
                                     spoken=r["spoken"], kind="build")
-        await self.room.stage("execute", "done")
+            else:
+                await self.room.send({"type": "build_progress", "phase": "execute", "state": "failed",
+                                      "elapsed": 0, "message": f"{owner} returned no usable build report"})
+        run.end("execute")
+        execution_failures = [owner for owner in owners if owner not in reports]
+        await self.room.stage("execute", "done" if not execution_failures else "failed",
+                              f"{len(reports)}/{len(owners)} owners; {len(set(changed))} files")
+        await self.room.send({"type": "build_progress", "phase": "gate", "state": "active",
+                              "elapsed": 0, "message": "Running automated checks"})
         gate = await self._stage(run, "gate", asyncio.to_thread(build.gate, changed, sys.executable))
+        if execution_failures:
+            gate = {"ok": False, "output": gate["output"] + "; missing reports: " + ", ".join(execution_failures)}
+        await self.room.send({"type": "build_progress", "phase": "gate",
+                              "state": "done" if gate["ok"] else "failed", "elapsed": 0,
+                              "message": "Automated checks passed" if gate["ok"] else "Automated checks failed",
+                              "detail": gate["output"][:2000]})
         await self.room.status(("checks passed: " if gate["ok"] else "checks FAILED: ") + gate["output"][:1500])
-        review, _ = await self._stage(run, "review", self._ask(run, "research", (
-            f"Review the council's build.\n[Verdict]\n{v['verdict']}\n\n[Success metrics]\n"
-            f"{bullets(v.get('success_metrics', []))}\n\n[Reports]\n" + "\n".join(
-                f"- {o}: {json.dumps(r['done'])[:1200]}" for o, r in reports.items())
-            + f"\n\n[Changed files]\n{bullets(changed)}\n[Automated checks]\n{gate['output'][:1500]}\n\nOpen the changed "
-            f"files and verify each success metric yourself. {READ_ONLY_NOTE}\n{TOOLS_NOTE}"), REVIEW,
-            read_only=True, tools="required", max_turns=TURNS["review"]))
+        review = None
+        if gate["ok"]:
+            review, _ = await self._stage(run, "review", self._progress("review",
+                "Research is checking changed files against the verdict", self._ask(run, "research", (
+                    f"Review the council's build.\n[Verdict]\n{v['verdict']}\n\n[Success metrics]\n"
+                    f"{bullets(success_metrics)}\n\n[Reports]\n" + "\n".join(
+                        f"- {o}: {json.dumps(r['done'])[:1200]}" for o, r in reports.items())
+                    + f"\n\n[Changed files]\n{bullets(changed)}\n[Automated checks]\n{gate['output'][:1500]}\n\n"
+                    f"Open the changed files and verify each success metric yourself. {READ_ONLY_NOTE}\n{TOOLS_NOTE}"),
+                    REVIEW, read_only=True, tools="required", max_turns=TURNS["review"])))
+        else:
+            await self.room.stage("review", "skipped", "gate failed")
+            await self.room.send({"type": "build_progress", "phase": "review", "state": "skipped",
+                                  "elapsed": 0, "message": "Review skipped because automated checks failed"})
         if review:
             met = "\n".join(f"- {'PASS' if c['met'] else 'FAIL'} {c['criterion']}: {c['how']}" for c in review["criteria"])
+            await self.room.send({"type": "build_progress", "phase": "review",
+                                  "state": "done" if review["approved"] else "failed", "elapsed": 0,
+                                  "message": "Research approved the build" if review["approved"] else "Research found issues"})
             await self.room.say("research", f"**{'Approved' if review['approved'] else 'Not approved'}**\n\n{met}"
                                 + (f"\n\n**Issues**\n{bullets(review['issues'])}" if review["issues"] else ""),
                                 spoken=review["spoken"], kind="review")
         rebooted = None
-        if gate["ok"] and any(f.replace("\\", "/").lstrip("./").startswith("src/") for f in changed):
+        if gate["ok"] and review and review["approved"] and any(
+                f.replace("\\", "/").lstrip("./").startswith("src/") for f in changed):
             await self.room.status("core code changed and checks pass: rebooting core...")
             rebooted = await asyncio.to_thread(build.reboot_core)
             await self.room.status(("core rebooted: " if rebooted["ok"] else "reboot FAILED: ") + rebooted["detail"])
@@ -356,9 +447,24 @@ class Council:
         await ab.record(hive=[{"agent": o, "action": "council_build", "summary": r["spoken"][:600],
                                "meta": {"run": v.get("run"), "files": r["changed_files"][:20]}} for o, r in reports.items()])
         criteria = review["criteria"] if review else []
-        data = run.finish(outcome="built" if gate["ok"] and review and review["approved"] else "needs_work",
-                          changed_files=changed, checks_ok=gate["ok"], approved=bool(review and review["approved"]),
-                          criteria_met=f"{sum(c['met'] for c in criteria)}/{len(criteria)}",
-                          rebooted=bool(rebooted and rebooted["ok"]))
+        approved = bool(review and review["approved"])
+        failure = ("" if gate["ok"] and approved else
+                   ("Automated checks failed; changes remain on disk but were not activated." if not gate["ok"]
+                    else "Research review did not approve the build."))
+        changed = list(dict.fromkeys(changed))
+        outcome = build_outcome(gate["ok"], approved, changed)
+        if outcome == "no_changes":
+            failure = "Research approved, but no file changed: nothing was built."
+        data = run.finish(outcome=outcome, verdict_run=v.get("run"),
+                          changed_files=changed, checks_ok=gate["ok"], approved=approved,
+                          criteria_met=criteria_tally(criteria), metrics_total=len(success_metrics),
+                          rebooted=bool(rebooted and rebooted["ok"]), failure_summary=failure,
+                          gate_output=gate["output"][:3000],
+                          review_status="approved" if approved else ("not approved" if review else "skipped"),
+                          execution_failures=execution_failures)
+        await self.room.send({"type": "build_progress", "phase": "complete",
+                              "state": "done" if outcome == "built" else "failed", "elapsed": 0,
+                              "message": "Build completed and approved" if outcome == "built" else failure,
+                              "files": changed})
         await self.room.send({"type": "metrics", **data})
         return data

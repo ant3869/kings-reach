@@ -7,9 +7,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "warroom"))
 
 import router  # noqa: E402
-from council import DEBATE, PLAN, TAKE, VERDICT, debate_schema  # noqa: E402
+from council import DEBATE, PLAN, TAKE, VERDICT, debate_schema, human_time  # noqa: E402
+from ledger import archive_verdict, build_outcome, criteria_tally  # noqa: E402
 from personas import SPECIALISTS, get_persona  # noqa: E402
 from voice import sentence_chunks, speakable  # noqa: E402
+
+
+class DurationTests(unittest.TestCase):
+    def test_human_time(self):
+        self.assertEqual(human_time(701.4), "11m 41s")
+        self.assertEqual(human_time(59.2), "59s")
+        self.assertEqual(human_time(3661), "1h 1m 1s")
 
 
 class RouteTests(unittest.TestCase):
@@ -72,6 +80,61 @@ class SchemaTests(unittest.TestCase):
     def test_every_persona_has_a_voice(self):
         for agent in ("main", *SPECIALISTS):
             self.assertTrue(get_persona(agent)["kokoro_voice"])
+
+
+class CardArtTests(unittest.TestCase):
+    """The served card art must be complete, uniform and share the idle layout (the audit's two root causes:
+    nobody measured the pixels, and the cards did not line up)."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import numpy  # noqa: F401
+            from PIL import Image  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("Pillow/numpy not installed in this interpreter")
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+        import build_card_art
+        cls.art = build_card_art
+
+    def test_every_state_card_exists_at_2x_with_transparent_corners(self):
+        from PIL import Image
+        for state in ("thinking", "speaking", "building"):
+            for role in ("main", "research", "comms", "content", "ops"):
+                path = self.art.OUT / f"{state}-{role}.png"
+                self.assertTrue(path.exists(), f"missing {path.name}")
+                img = Image.open(path).convert("RGBA")
+                self.assertEqual(img.size, self.art.SIZE, path.name)
+                self.assertEqual(img.getpixel((0, 0))[3], 0, f"{path.name}: corner should be transparent")
+                self.assertEqual(img.getpixel((img.width // 2, img.height // 2))[3], 255, path.name)
+
+    def test_state_cards_share_the_idle_nameplate_layout(self):
+        self.assertEqual(self.art.layout_report(self.art.OUT, 0.02), 0)
+
+
+class LedgerTests(unittest.TestCase):
+    def test_criteria_tally_counts_returned_criteria_not_verdict_metrics(self):
+        # regression: 18 reviewer criteria over 7 verdict metrics used to print "18/7"
+        criteria = [{"met": True}] * 18 + [{"met": False}] * 2
+        self.assertEqual(criteria_tally(criteria), "18/20")
+        self.assertEqual(criteria_tally([]), "0/0")
+
+    def test_build_outcome_needs_a_changed_file_to_count_as_built(self):
+        self.assertEqual(build_outcome(True, True, ["src/a.ts"]), "built")
+        self.assertEqual(build_outcome(True, True, []), "no_changes")  # approved, built nothing
+        self.assertEqual(build_outcome(False, True, ["src/a.ts"]), "needs_work")
+        self.assertEqual(build_outcome(True, False, ["src/a.ts"]), "needs_work")
+
+    def test_archive_verdict_keeps_one_copy_per_run_and_rejects_bad_ids(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "verdicts"
+            archive_verdict(archive, "a1b2c3d4", '{"run": "a1b2c3d4"}', "# md")
+            self.assertEqual((archive / "a1b2c3d4.json").read_text(encoding="utf-8"), '{"run": "a1b2c3d4"}')
+            self.assertEqual((archive / "a1b2c3d4.md").read_text(encoding="utf-8"), "# md")
+            for bad in ("../evil", "A1B2C3D4", "short", ""):
+                with self.assertRaises(ValueError):
+                    archive_verdict(archive, bad, "{}", "")
 
 
 if __name__ == "__main__":
