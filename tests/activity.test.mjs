@@ -73,6 +73,14 @@ test('TurnCounter counts model turns, not content blocks', () => {
   assert.ok(counter.n <= 12, 'never exceeds the cap the SDK enforces');
 });
 
+test('the SDK\'s thrown turn-cap error is recognised so salvage can run; other errors are not swallowed', async () => {
+  const { turnCapMessage } = await import('../dist/agent.js');
+  // Exact text from a real run: the SDK throws this, it does not only yield an error result.
+  assert.match(turnCapMessage(new Error('Claude Code returned an error result: Reached maximum number of turns (6)')), /maximum number of turns/);
+  assert.match(turnCapMessage('Reached maximum number of turns (6)'), /turns/);
+  for (const other of [new Error('401 unauthorized'), new Error('network down'), 'boom']) assert.equal(turnCapMessage(other), null);
+});
+
 test('TurnCounter falls back to counting events when there is no message id', () => {
   const counter = new TurnCounter();
   counter.see({}); counter.see(undefined); counter.see({ message: {} }); counter.see({ message: { id: '' } });

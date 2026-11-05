@@ -146,6 +146,11 @@ class SummitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved["verdict"], "keep it")
         self.assertNotEqual(council.RUNS_FILE.parent.name, "store")
 
+    async def test_toolless_provider_excluded_from_diversity(self):
+        _, data = await self.convene()
+        self.assertEqual(data["provider_diversity"], 1)
+        self.assertNotIn("chatgpt", data["providers"])
+
     async def test_cancelling_mid_summit_reports_cancelled(self):
         room = Room()
         task = asyncio.ensure_future(council.Council(room).deliberate("q"))

@@ -60,6 +60,16 @@ export interface AgentResult {
 }
 
 const TURN_CAP = /maximum number of turns/i;
+
+/**
+ * The real SDK THROWS at the turn cap ("Claude Code returned an error result: Reached maximum number of turns (6)")
+ * instead of only yielding an error result, so salvage was never reached (found on a real run, 2.14.3). Returns the
+ * message when `err` is that cap, else null so every other failure still propagates.
+ */
+export function turnCapMessage(err: unknown): string | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  return TURN_CAP.test(msg) ? msg : null;
+}
 const WRAP_UP = 'You have run out of tool budget. Do NOT call any more tools. Using ONLY what you have already gathered ' +
   'in this session, give your final answer now in the required format. Anything you did not get to verify must be ' +
   'labelled unverified, and your confidence must reflect that.';
@@ -163,6 +173,7 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
       } as never,
     });
 
+    try {
     for await (const event of q as AsyncIterable<Record<string, unknown>>) {
       const type = event['type'] as string | undefined;
       if (type === 'system' && event['subtype'] === 'init') {
@@ -206,6 +217,11 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
           error = `${String(event['subtype'])}${errors ? `: ${errors}` : ''}`;
         }
       }
+    }
+    } catch (err) {
+      const cap = turnCapMessage(err);
+      if (!cap) throw err;
+      error = error ?? cap; // keep the session id and cost gathered so far: runAgent() can now resume and salvage
     }
 
     if (opts.chatId && (inputTokens || outputTokens)) {

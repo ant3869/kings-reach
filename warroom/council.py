@@ -122,7 +122,7 @@ class Run:
         failures = [x for x in reply.get("attempts", []) if x.get("error")]
         if failures:
             a.setdefault("failures", []).extend(failures)
-        if reply.get("provider") and reply["provider"] not in a["providers"]:
+        if reply.get("provider") and reply.get("hasTools", True) and reply["provider"] not in a["providers"]:
             a["providers"].append(reply["provider"])
         if reply.get("model") and reply["model"] not in a["models"]:
             a["models"].append(reply["model"])

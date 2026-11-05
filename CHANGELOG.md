@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.14.4 - First successful Build + the real salvage bug (summit `edcd1990`, build `8fa32ddd`)
+
+- **First real Build succeeded**: preflight clean, 1/1 owners, 2 files, gate (py_compile) pass, Research approved, criteria 6/6,
+  $1.03, 5m16s. Plan came from the summit (provider diversity should count only tool-verified providers). The Build's own
+  change is `warroom/council.py` `Run.charge()` (`hasTools` gate on the provider list) + a regression test in
+  `tests/test_summit.py`; independently re-verified (python 65 tests, diff read). Plan flaws it tolerated: used `pytest`
+  (not installed) and a wrong line number.
+- **Salvage never ran on a real turn cap.** The SDK *throws* "Claude Code returned an error result: Reached maximum number of
+  turns (N)" instead of only yielding an error result; `runClaudeAgent` let it escape, so `runAgent` fell through to the next
+  route and discarded the paid-for research (Ops and Research both did this at `COUNCIL_INVESTIGATE_TURNS=6`). The unit tests
+  used the yielded shape, so they passed. Now the cap exception is caught (`turnCapMessage`), the session id and cost are kept,
+  and salvage resumes the session. Other exceptions still propagate. Not yet seen working on a real run.
+- Tests: npm 86, python 65.
+
 ## 2.14.3 - Fixes from the second real summit (run `241424d9`; client v29, server v14)
 
 The council (asked about "28 connected War Room clients") found that the number was a mistake of mine: `/api/health`'s
