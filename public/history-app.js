@@ -118,8 +118,9 @@ function agentsTable(agents) {
   return '<table><tr><th>Agent</th><th>Model</th><th class="num">Calls</th><th class="num">Turns</th><th class="num">Time</th><th class="num">Cost</th></tr>' +
     rows.map(([id, a]) => {
       const failed = (a.failures || []).length;
+      const wasSalvaged = (a.attempts || []).some((x) => x.salvaged);
       return `<tr><td><span class="owner" style="color:${ROLE_COLOR[id] || '#ccc'}">${esc(id)}</span></td>` +
-        `<td>${esc((a.models || []).join(', ') || '-')}${failed ? ` <span class="bad" title="provider attempts that errored before a fallback succeeded">(${failed} failed attempt${failed > 1 ? 's' : ''})</span>` : ''}</td>` +
+        `<td>${esc((a.models || []).join(', ') || '-')}${failed ? ` <span class="bad" title="provider attempts that errored before a fallback succeeded">(${failed} failed attempt${failed > 1 ? 's' : ''})</span>` : ''}${wasSalvaged ? ' <span class="tag" title="a turn-capped attempt was recovered and answered before fallback">salvaged</span>' : ''}</td>` +
         `<td class="num">${a.calls || 0}</td><td class="num">${a.turns || 0}</td><td class="num">${duration(a.seconds)}</td><td class="num">${money(a.cost_usd)}</td></tr>`;
     }).join('') + '</table>';
 }

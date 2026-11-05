@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.14.5 - Second successful Build: salvage hardening and provenance (summit `0bb2cb86`, build `d1fc1b47`; client v30)
+
+The summit ran while Claude's usage quota was exhausted, so every seat fell back to Codex (a clean fallback demo; salvage itself was
+not exercised). The council still found real holes in the 2.14.4 salvage fix; Build `d1fc1b47` (6 files, gate pass, review approved,
+criteria 5/5, about 19 min, recorded $3.47) implemented the plan, re-verified independently (diff read, npm 99, python 65).
+
+- `salvage()` now returns null when the wrap-up call itself fails, so the original capped result keeps its cost and handoff for the
+  next route instead of the whole attempt being lost.
+- `ProviderRoutesError` carries the final handoff; the bridge's failed reply includes it.
+- War Room labels a salvaged reply "recovered after turn cap"; the Plan Library marks the agent as salvaged. Both read the existing
+  `attempts[].salvaged` flag.
+- Tests: +13 node (99 total). Still unproven on a real run: salvage actually rescuing a capped seat.
+- Note: the summit's recorded cost ($0.16) excludes Codex usage; Codex cost is not priced.
+
 ## 2.14.4 - First successful Build + the real salvage bug (summit `edcd1990`, build `8fa32ddd`)
 
 - **First real Build succeeded**: preflight clean, 1/1 owners, 2 files, gate (py_compile) pass, Research approved, criteria 6/6,

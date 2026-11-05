@@ -82,7 +82,7 @@ async function ask(req: BridgeRequest): Promise<Reply> {
     });
   } catch (err) {
     if (err instanceof ProviderRoutesError) {
-      return { ok: false, text: `all provider routes failed for ${agentId}`, attempts: err.attempts, costUsd: wastedCost(err.attempts) };
+      return { ok: false, text: `all provider routes failed for ${agentId}`, attempts: err.attempts, costUsd: wastedCost(err.attempts), handoff: err.handoff ?? null };
     }
     throw err;
   }

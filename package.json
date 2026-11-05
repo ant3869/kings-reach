@@ -1,6 +1,6 @@
 {
   "name": "kings-reach",
-  "version": "2.14.4",
+  "version": "2.14.5",
   "type": "module",
   "description": "King's Reach - personal AI assistant hub (Telegram + voice + memory v2 + scheduler + WhatsApp + multi-agent + war room + dashboard)",
   "scripts": {

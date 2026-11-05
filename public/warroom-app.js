@@ -15,6 +15,7 @@ let retryTimer = null;
 let lastPong = 0;
 let busySince = 0;
 const thinkingSince = {};
+const pendingSalvaged = {};
 
 // Card art: WHICH image a seat shows is CardDirector's call (weighted variants per state, see card-director.js and
 // card-states/manifest.json). `pose` is a timed one-shot (offense/defense/confused/defeated) layered under speaking.
@@ -156,10 +157,12 @@ function agentLine(id, text, kind) {
   }
   if (kind === 'error') setPose(id, 'confused');
   const c = byId[id];
+  const salvaged = pendingSalvaged[id]; delete pendingSalvaged[id];
   if (!c) return bubble(id, md(text), 'sys');
   const compact = ['plan', 'take', 'critique', 'verdict', 'build', 'review'].includes(kind);
+  const label = salvaged ? 'recovered after turn cap' : KIND_LABEL[kind];
   return bubble(c.name + ' \u00b7 ' + c.title, compact ? disclosure(text) : md(text),
-    kind === 'error' ? 'err' : kind || '', c.color, KIND_LABEL[kind]);
+    kind === 'error' ? 'err' : kind || '', c.color, label);
 }
 
 function seat(id) {
@@ -340,6 +343,7 @@ function onMessage(m) {
   if (m.type === 'provider') {
     const el = $('model-' + m.agent_id);
     if (el) el.textContent = 'route: ' + m.provider + ' / ' + m.model;
+    if ((m.attempts || []).some((a) => a.salvaged)) pendingSalvaged[m.agent_id] = true;
     return;
   }
   if (m.type === 'thinking') return setThinking(m.agent_id, m.on);

@@ -3,7 +3,7 @@
 
 import { CLIENT_MD_JS } from './client-md.js';
 
-export const HISTORY_CLIENT_VERSION = 2;
+export const HISTORY_CLIENT_VERSION = 3;
 
 const CSS = `
 :root{--gold:#d4a017;--bg:#06080d;--panel:#0d111a;--line:#3a3020;--text:#eadfbe;--muted:#8f856c;--good:#3fb950;--warn:#d29922;--bad:#f85149;--blue:#79c0ff}

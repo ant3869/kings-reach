@@ -81,7 +81,7 @@ export interface Attempt { provider: ProviderId; model: string; error?: string; 
 export const wastedCost = (attempts: Attempt[]): number => attempts.reduce((sum, a) => sum + (a.costUsd ?? 0), 0);
 
 export class ProviderRoutesError extends Error {
-  constructor(public readonly agentId: string, public readonly attempts: Attempt[]) {
+  constructor(public readonly agentId: string, public readonly attempts: Attempt[], public readonly handoff?: string) {
     super(`all provider routes failed for ${agentId}`);
     this.name = 'ProviderRoutesError';
   }
@@ -249,7 +249,12 @@ async function salvage(opts: AgentOptions, model: string, failed: AgentResult): 
   if (!failed.newSessionId || !TURN_CAP.test(failed.error ?? '')) return null;
   opts.onActivity?.({ kind: 'route', state: 'salvage', provider: 'claude', model,
     text: 'Out of turns: asking Claude to answer from what it already gathered' });
-  const wrap = await runClaudeAgent({ ...opts, model, sessionId: failed.newSessionId, message: WRAP_UP, maxTurns: 4 });
+  let wrap: AgentResult;
+  try {
+    wrap = await runClaudeAgent({ ...opts, model, sessionId: failed.newSessionId, message: WRAP_UP, maxTurns: 4 });
+  } catch {
+    return null;
+  }
   failed.costUsd = (failed.costUsd ?? 0) + (wrap.costUsd ?? 0);
   if (wrap.error || (!wrap.text && wrap.structured === undefined)) return null;
   wrap.costUsd = failed.costUsd;
@@ -328,7 +333,7 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
       logger.warn({ agentId, provider: target.provider, model: target.model, err: reason }, 'provider route failed; trying fallback');
     }
   }
-  throw new ProviderRoutesError(agentId, attempts);
+  throw new ProviderRoutesError(agentId, attempts, handoff || undefined);
 }
 
 export async function runAgentWithRetry(opts: AgentOptions, maxRetries = 2): Promise<AgentResult> {
