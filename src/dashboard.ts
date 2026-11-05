@@ -11,7 +11,7 @@ import { getAgentRegistry } from './orchestrator.js';
 import { renderDashboard } from './dashboard-html.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { renderWarRoom, WARROOM_STATIC } from './warroom-html.js';
+import { renderPlanLine, renderWarRoom, WARROOM_STATIC } from './warroom-html.js';
 import { renderProviderSettings } from './provider-html.js';
 import { mountHistory } from './history-routes.js';
 import { defaultProviderRouting, loadProviderRouting, PROVIDERS, ROLE_GUIDANCE, saveProviderRouting } from './provider-config.js';
@@ -33,6 +33,11 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
   const app = new Hono();
 
   app.get('/warroom', (c) => c.html(renderWarRoom()));
+  // The page asks for this after a summit locks a verdict, so "Build will execute plan X" never names an old plan.
+  app.get('/warroom/planline', (c) => {
+    c.header('Cache-Control', 'no-store');
+    return c.html(renderPlanLine());
+  });
   // Allowlisted static client files only (no path joins from user input).
   for (const name of WARROOM_STATIC) {
     app.get(`/warroom/${name}`, (c) => {

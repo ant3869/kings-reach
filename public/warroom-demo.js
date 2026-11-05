@@ -158,16 +158,25 @@
     b.done(70, 'research', true); b.off(70, 'research'); b.done(75, 'ops', true); b.off(75, 'ops');
     b.stage(76, 'investigate', 'done', '62s');
     b.narr(76, 'main', 'Both specialists are back with evidence. Cross-examination next.');
+    // The remaining stages, as the real server emits them: a finished summit has every chip resolved.
+    b.stage(77, 'debate', 'active'); b.meter(77, 58, 'debate', 'debate');
+    b.on(77, 'research'); b.on(77, 'ops'); b.done(118, 'research', true); b.off(118, 'research'); b.done(120, 'ops', true); b.off(120, 'ops');
+    b.stage(121, 'debate', 'done', '44s');
+    b.stage(122, 'verdict', 'active'); b.meter(122, 78, 'verdict', 'verdict'); b.on(122, 'main'); b.done(138, 'main', true); b.off(138, 'main');
+    b.stage(139, 'verdict', 'done', '17s');
+    b.stage(140, 'record', 'active'); b.meter(140, 95, 'record', 'record'); b.stage(146, 'record', 'done', '6s');
     // Shape of Council.deliberate()'s ledger row, including the measured mind-change fields (v2.14).
-    b.at(80, { type: 'metrics', id: 'de5ca001', kind: 'summit', outcome: 'verdict', total_s: 80, total_tokens: null, total_cost_usd: 0.42,
-      specialists: ['research', 'ops'], evidence: 6, challenges: 3, changed_minds: 1, changed_minds_claimed: 2,
-      claimed_without_change: ['ops'], takes_without_tools: ['ops'], verdict_confidence: 0.84, plan_steps: 3,
+    b.at(148, { type: 'metrics', id: 'de5ca001', kind: 'summit', outcome: 'verdict', total_s: 148, total_tokens: null, total_cost_usd: 0.42,
+      memory_lines_used: 12, memories_saved: 2, hive_entries: 3,
+      specialists: ['research', 'ops'], evidence: 6, challenges: 3, mind_rule: 2, changed_minds: 1, changed_minds_claimed: 2,
+      claimed_without_change: ['ops'], reworded_agents: ['content'], takes_without_tools: ['ops'], verdict_confidence: 0.84, plan_steps: 3,
       confidence: { research: [0.91, 0.62], ops: [0.8, 0.7] },
       mind_changes: {
-        research: { before: 0.91, after: 0.62, delta: -0.29, similarity: 0.7, claimed: true, changed: true, reasons: ['confidence 0.91 -> 0.62'], capped: false, has_tools: true },
-        ops: { before: 0.8, after: 0.7, delta: -0.1, similarity: 0.9, claimed: true, changed: false, reasons: [], capped: true, has_tools: false } },
-      stages: { investigate: 60 } });
-    b.final(80, 'complete', true);
+        research: { before: 0.91, after: 0.62, delta: -0.29, similarity: 0.7, claimed: true, changed: true, reworded: false, reasons: ['confidence 0.91 -> 0.62'], capped: false, has_tools: true },
+        ops: { before: 0.8, after: 0.7, delta: -0.1, similarity: 0.9, claimed: true, changed: false, reworded: false, reasons: [], capped: true, has_tools: false },
+        content: { before: 0.8, after: 0.78, delta: -0.02, similarity: 0.21, claimed: false, changed: false, reworded: true, reasons: [], capped: false, has_tools: false } },
+      stages: { investigate: 62, debate: 44, verdict: 17, record: 6 } });
+    b.final(149, 'complete', true);
     return b.T;
   }
 

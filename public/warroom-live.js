@@ -12,6 +12,7 @@
 
   const QUIET_S = 45, STALL_S = 90; // keep in step with warroom/live.py (the server speaks the same thresholds)
   const FEED_MAX = 8;
+  const CAPTION_STALE_MS = 15000; // a caption says what is happening NOW; on a clean finish an older one is just wrong
   // Non-colour cues: every state has a glyph AND a word, so the page reads correctly without colour or sound.
   const BADGES = {
     idle: ['\u00b7', 'IDLE'], working: ['\u25b6', 'WORKING'], quiet: ['\u2026', 'QUIET'], stalled: ['\u26a0', 'STALLED'],
@@ -48,6 +49,9 @@
       if (m.type === 'meter') {
         if (m.phase !== s.phase && !m.final) { s.phase = m.phase; s.phaseSince = clock(); }
         s.meter = m;
+        // A successful run ended: drop a stale caption (a real summit finished under "Still working. 1 actions so far").
+        // A failed run keeps it: that caption is the reason it failed.
+        if (m.final && m.state === 'complete' && s.caption && clock() - s.caption.at > CAPTION_STALE_MS) s.caption = null;
         return hints;
       }
       const a = agent(m.agent_id || 'main');
@@ -59,6 +63,8 @@
       if (m.kind === 'result') {
         a.outcome = m.ok ? 'ok' : 'failed';
         a.working = false;
+        // A route that streamed no events never replaced the placeholder; a finished agent must not read "Starting".
+        if (a.text === 'Starting') a.text = m.ok ? 'Answered' : 'Gave no usable answer';
         push(m.ok ? 'ok' : 'bad', a.id, m.ok ? 'finished with a structured answer' : 'returned no usable answer');
         if (!m.ok) hints.pose = [a.id, 'defeated'];
         return hints;
@@ -183,5 +189,5 @@
     };
   }
 
-  return { create, mount, BADGES, QUIET_S, STALL_S, fmt };
+  return { create, mount, BADGES, QUIET_S, STALL_S, CAPTION_STALE_MS, fmt };
 });

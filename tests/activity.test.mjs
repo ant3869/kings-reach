@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PROJECT_ROOT } from '../dist/config.js';
-import { codexActivity, describeTool, redact, shortPath, WorkLog } from '../dist/activity.js';
+import { codexActivity, describeTool, redact, shortPath, TurnCounter, WorkLog } from '../dist/activity.js';
 import { join } from 'node:path';
 
 test('describeTool turns raw tool calls into short sentences', () => {
@@ -57,6 +57,26 @@ test('WorkLog hands a dead attempt\'s work to the next route, labelled unverifie
   assert.match(h, /pins @playwright\/cli 0\.1\.23/);
   assert.ok(!h.includes('ghp_' + 'q'.repeat(30)), 'a secret in a failed attempt\'s notes must not be forwarded');
   assert.ok(log.edited.has('src/a.ts'));
+});
+
+// The Agent SDK streams one `assistant` event per content block, all sharing a message id. A real Ops debate call
+// (cap 12) produced 18 such events for 6 messages and the page said "turn 18/12".
+test('TurnCounter counts model turns, not content blocks', () => {
+  const counter = new TurnCounter();
+  const started = [];
+  for (let msg = 1; msg <= 6; msg++) {
+    for (const _block of ['thinking', 'text', 'tool_use']) started.push(counter.see({ message: { id: 'msg_' + msg } }));
+  }
+  assert.equal(counter.n, 6);
+  assert.equal(started.filter(Boolean).length, 6, 'exactly one event per message starts a turn');
+  assert.equal(started.length, 18);
+  assert.ok(counter.n <= 12, 'never exceeds the cap the SDK enforces');
+});
+
+test('TurnCounter falls back to counting events when there is no message id', () => {
+  const counter = new TurnCounter();
+  counter.see({}); counter.see(undefined); counter.see({ message: {} }); counter.see({ message: { id: '' } });
+  assert.equal(counter.n, 4);
 });
 
 test('WorkLog is bounded', () => {

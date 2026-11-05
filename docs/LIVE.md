@@ -30,9 +30,10 @@ Wire protocol `council-v4` adds two message types: `activity` (`kind`: `turn`, `
 |---|---|
 | Badge | `WORKING` an agent produced news in the last 45 s; `QUIET` 45-90 s of silence; `STALLED` 90 s or more; `RUNNING` between agent calls (preflight, gate, reboot); `DONE`, `FAILED`, `CANCELLED` are final and distinct |
 | Bar | An **estimate** (`~37% (estimate)`). Phase weights are guesses; it never reaches 100% until the run really ends, and a failed run freezes where it got to |
-| Agent rows | Current action, `turn N/M`, files read / edited (measured), seconds since last news |
+| Agent rows | Current action, `turn N/M` (model turns, as the SDK's cap counts them: one per message id, not per content block), files read / edited (measured), seconds since last news |
+| Plan line | "Build will execute plan X" under the buttons; re-fetched from `/warroom/planline` when a summit locks a verdict |
 | Seat badge + outline | Text badge per card; a lasting dashed (quiet) or solid (stalled) outline, because pose art reverts after a few seconds |
-| Caption | The last spoken line, shown even when speech is off |
+| Caption | The last spoken line, shown even when speech is off. Dropped on a clean finish if older than 15 s; kept on failure (it is the reason) |
 | Feed | Last 8 notable events; warnings and failures are evicted last |
 
 Thresholds live in `warroom/live.py` (`QUIET_S, STALL_S = 45, 90`) and `public/warroom-live.js`; a test fails if they differ.
@@ -53,8 +54,12 @@ already queued, so commentary never lags behind the screen. Narration always rea
    prepended to the next route's prompt.
 3. Replies carry `hasTools`. A tool-less debate answer can lower a position's confidence by at most 0.10
    (`warroom/mindchange.py`), and tool-less takes are flagged `NO TOOLS: unverified` to Main.
-4. `changed_minds` is **measured** (confidence moved >= 0.15, or the recommendation was rewritten to < 45% shared
-   wording). The agent's own claim is kept as `changed_minds_claimed`.
+4. `changed_minds` is **measured** (rule 2, `mind_rule: 2` on the ledger row): confidence moved by 0.15 or more, OR the
+   agent claimed a change AND the recommendation really was rewritten (under 45% shared wording). A rewrite nobody
+   claims is only **reworded** (`reworded_agents`, shown separately). Rule 1 counted any rewrite, which scored two
+   councillors who kept the same design as having changed their minds (run `9a7edfa0`); rows without `mind_rule: 2`
+   are not shown as measurements. Limit: a silent stance flip with a small confidence move shows only as reworded.
+   The agent's own claim is kept as `changed_minds_claimed`.
 
 ## Try it without spending anything
 
@@ -68,5 +73,6 @@ already queued, so commentary never lags behind the screen. Narration always rea
 `tests/activity.test.mjs` (redaction, handoff), `tests/live.test.mjs` (state machine, demos, threshold + protocol sync),
 `tests/test_live.py` (Tracker/Meter/Live, mind changes, bridge stream), `tests/test_execute.py` (build event order and
 failure handling), `tests/test_summit.py` (summit wiring), `tests/minds.test.mjs`, and `scripts/ui-check.mjs` (real
-Chrome against the replays). Not covered until a paid run: the real SDK's `assistant` event shape feeding activity, and
-`salvage()` against a real turn-capped session.
+Chrome against the replays). Proven on a real paid summit (`9a7edfa0`): the SDK event stream feeding the panel; that run
+also exposed the turn-count and mind-change bugs fixed in 2.14.2. Still unproven: `salvage()` against a real turn-capped
+session and the failed-route handoff (no seat hit its cap; force it with `COUNCIL_INVESTIGATE_TURNS=4`).

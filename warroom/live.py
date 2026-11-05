@@ -24,6 +24,11 @@ BUILD_PHASES = (("preflight", 4), ("execute", 72), ("gate", 8), ("review", 12), 
 PROVIDER_NAMES = {"claude": "Claude", "codex": "Codex", "chatgpt": "ChatGPT", "gemini": "Gemini", "meta": "Meta"}
 
 
+def count(n, noun):
+    """'1 file' / '2 files': spoken and shown text must not say '1 actions'."""
+    return f"{n} {noun}{'' if n == 1 else 's'}"
+
+
 def spoken_name(path):
     """'src/agent-voice-bridge.ts' -> 'agent voice bridge': something a voice can say."""
     base = re.split(r"[\\/]", path or "")[-1]
@@ -128,10 +133,10 @@ class Tracker:
                 and self.idle_s() < QUIET_S):
             self._summary_t, self._summary_events = now, self.events
             if self.edited:
-                return f"Still on it. {len(self.reads)} files read, {len(self.edited)} changed.", False
+                return f"Still on it. {count(len(self.reads), 'file')} read, {len(self.edited)} changed.", False
             if self.reads:
-                return f"Still on it. {len(self.reads)} files read so far.", False
-            return f"Still working. {sum(self.tools.values())} actions so far.", False
+                return f"Still on it. {count(len(self.reads), 'file')} read so far.", False
+            return f"Still working. {count(sum(self.tools.values()), 'action')} so far.", False
         return None
 
     def compare(self, claimed):

@@ -91,6 +91,27 @@ class SummitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["claimed_without_change"], ["ops"])
         self.assertEqual(data["changed_minds_agents"], ["research"])
 
+    async def test_the_ledger_row_records_which_mind_rule_measured_it(self):
+        _, data = await self.convene()
+        self.assertEqual(data["mind_rule"], 2, "old rows (rule 1) counted any rewrite; this tags the new ones apart")
+        self.assertEqual(data["reworded_agents"], [])
+
+    async def test_a_reworded_but_unclaimed_answer_is_not_a_changed_mind(self):
+        original = council.ab.ask
+
+        async def ask(agent, prompt, *, schema=None, **kw):
+            r = await original(agent, prompt, schema=schema, **kw)
+            if r.get("ok") and agent == "research" and schema not in (council.PLAN, council.TAKE, council.VERDICT):
+                r["data"].update(changed_mind=False, confidence=0.88,
+                                 revised_recommendation="Fully different words about an identical position entirely")
+            return r
+
+        council.ab.ask = ask
+        _, data = await self.convene()
+        self.assertNotIn("research", data["changed_minds_agents"])
+        self.assertEqual(data["reworded_agents"], ["research"])
+        self.assertTrue(data["mind_changes"]["research"]["reworded"])
+
     async def test_toolless_take_is_flagged_everywhere_it_matters(self):
         room, data = await self.convene()
         self.assertEqual(data["takes_without_tools"], ["ops"])

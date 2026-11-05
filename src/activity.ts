@@ -141,3 +141,24 @@ export class WorkLog {
     return parts.join('\n\n');
   }
 }
+
+/**
+ * Counts MODEL turns the way the SDK's `maxTurns` does. The SDK streams one `assistant` event per content block
+ * (thinking, text, tool_use), all sharing the same message id, so counting events overstated turns 2-3x
+ * (a real run showed "turn 18/12"). Events without an id are counted individually.
+ */
+export class TurnCounter {
+  private seen = new Set<string>();
+  n = 0;
+
+  /** Feed every assistant event; returns true when it started a new turn. */
+  see(event: { message?: { id?: unknown } } | undefined): boolean {
+    const id = event?.message?.id;
+    if (typeof id === 'string' && id) {
+      if (this.seen.has(id)) return false;
+      this.seen.add(id);
+    }
+    this.n += 1;
+    return true;
+  }
+}

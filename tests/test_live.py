@@ -118,8 +118,20 @@ class TrackerTests(unittest.TestCase):
         clock.t += 51
         t.last = clock.t - 1  # recent activity, so this is a summary and not a stall
         text, urgent = t.propose()
-        self.assertEqual(text, "Still on it. 1 files read, 1 changed.")
+        self.assertEqual(text, "Still on it. 1 file read, 1 changed.")
         self.assertFalse(urgent)
+
+    def test_commentary_uses_correct_plurals(self):
+        from live import count
+        self.assertEqual([count(0, "file"), count(1, "file"), count(2, "file")], ["0 files", "1 file", "2 files"])
+        for n, want in ((1, "Still working. 1 action so far."), (3, "Still working. 3 actions so far.")):
+            clock = Clock()
+            t = Tracker("main", clock)
+            for i in range(n):
+                t.feed(tool("Searching x", name="Grep"))
+            clock.t += 51
+            t.last = clock.t - 1
+            self.assertEqual(t.propose()[0], want)
 
     def test_report_vs_observed_edits(self):
         t = Tracker("ops", Clock())
@@ -206,11 +218,36 @@ class MindChangeTests(unittest.TestCase):
         s = mindchange.summarize({"ops": a})
         self.assertEqual(s["changed_without_claim"], ["ops"])
 
-    def test_rewritten_recommendation_counts(self):
+    def test_a_claimed_change_backed_by_a_real_rewrite_counts(self):
         a = mindchange.assess(0.8, "Retain the existing browser command line wrapper", 0.8,
                               "Replace everything with the MCP server immediately", True)
         self.assertTrue(a["changed"])
-        self.assertIn("rewritten", a["reasons"][0])
+        self.assertFalse(a["reworded"])
+        self.assertIn("claimed a change and rewrote", a["reasons"][0])
+
+    def test_a_rewrite_nobody_claims_is_only_reworded(self):
+        a = mindchange.assess(0.8, "Retain the existing browser command line wrapper", 0.8,
+                              "Replace everything with the MCP server immediately", False)
+        self.assertEqual((a["changed"], a["reworded"], a["reasons"]), (False, True, []))
+        s = mindchange.summarize({"ops": a})
+        self.assertEqual((s["changed_minds"], s["reworded_agents"], s["mind_rule"]), (0, ["ops"], 2))
+
+    def test_the_first_real_summit_was_not_a_changed_mind(self):
+        # Ops, run 9a7edfa0, copied from its transcripts: same design, same call sites, detail refined, said changed_mind=false.
+        take = ("Apply Design B: wrap the two `asyncio.to_thread` calls for preflight (council.py:414) and gate (council.py:477) "
+                "with the already-working `self._progress()` method. This is a 2-line change to one file. Design A (streaming "
+                "subprocess output) is larger, riskier on Windows, and delivers nothing useful because tsc, node --check, and "
+                "py_compile are batch-output tools that produce no incremental lines during compilation.")
+        revised = ("Design B: wrap the preflight asyncio.to_thread at council.py:414 and the gate asyncio.to_thread at "
+                   "council.py:477 with self._progress(), and delete the now-dead manual gate build_progress message at lines "
+                   "473-474. Four lines changed in council.py only. No build.py edits, no new dependencies, fully reversible.")
+        a = mindchange.assess(0.95, take, 0.92, revised, False)
+        self.assertLess(a["similarity"], mindchange.WORDING_SIMILARITY, "the old rule would have called this a change")
+        self.assertEqual((a["changed"], a["reworded"]), (False, True))
+
+    def test_a_big_confidence_move_still_counts_without_any_claim_or_rewrite(self):
+        a = mindchange.assess(0.92, "Keep it", 0.70, "Keep it", False)
+        self.assertEqual((a["changed"], a["reworded"]), (True, False))
 
     def test_toolless_answer_cannot_talk_a_verified_position_down(self):
         a = mindchange.assess(0.91, "Keep it", 0.68, "Keep it", True, has_tools=False)

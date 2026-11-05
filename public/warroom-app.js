@@ -238,7 +238,16 @@ function buildProgress(m) {
     '</h3><div class="buildphases">' + cells + '</div>' + detail + files;
 }
 
+// "Build will execute plan X" is rendered once at page load; a summit that locks a new verdict makes it stale.
+async function refreshPlanLine() {
+  try {
+    const r = await fetch('/warroom/planline', { cache: 'no-store' });
+    if (r.ok && $('planbox')) $('planbox').innerHTML = await r.text();
+  } catch (e) { /* keep the old line; a page refresh fixes it */ }
+}
+
 function metrics(m) {
+  if (m.kind === 'summit' && m.outcome === 'verdict') refreshPlanLine();
   const money = (x) => '$' + Number(x || 0).toFixed(2);
   const coverage = m.total_calls ? ' · ' + Number(m.token_calls_reported || 0) + '/' + m.total_calls + ' calls reported' : '';
   const tokenText = m.total_tokens == null ? 'not reported' : fmtTokens(m.total_tokens) +
@@ -250,13 +259,15 @@ function metrics(m) {
       (v[1] !== v[0] ? ' \u2192 ' + v[1].toFixed(2) : '')).join(', ');
     // Since v2.14 'changed' is measured from the before/after answers; older runs only have the agent's own claim.
     const measured = m.changed_minds_claimed != null;
-    const minds = measured ? m.changed_minds + ' measured' + (m.changed_minds_claimed !== m.changed_minds ? ' (' + m.changed_minds_claimed + ' claimed)' : '')
-      : m.changed_minds + ' (self-reported)';
+    // Rule 2 (v2.14.2): wording alone is not a changed mind. Rows without mind_rule used rule 1, which counted any rewrite.
+    const minds = measured ? m.changed_minds + ' measured' + (m.changed_minds_claimed !== m.changed_minds ? ' (' + m.changed_minds_claimed + ' claimed)' : '') +
+      (m.mind_rule === 2 ? '' : ' (old rule, overcounts rewording)') : m.changed_minds == null ? '-' : m.changed_minds + ' (self-reported)';
     rows.push(['specialists', (m.specialists || []).join(', ')], ['evidence cited', m.evidence],
       ['challenges', m.challenges], ['minds changed', minds], ['confidence', conf || '-'],
+      ...((m.reworded_agents || []).length ? [['reworded only', m.reworded_agents.join(', ')]] : []),
       ...((m.takes_without_tools || []).length ? [['answered without tools', m.takes_without_tools.join(', ')]] : []),
       ['verdict confidence', m.verdict_confidence], ['plan steps', m.plan_steps],
-      ['memory used / saved', m.memory_lines_used + ' / ' + m.memories_saved], ['hive entries', m.hive_entries]);
+      ['memory used / saved', (m.memory_lines_used ?? '-') + ' / ' + (m.memories_saved ?? '-')], ['hive entries', m.hive_entries ?? '-']);
   } else {
     rows.push(['files changed', (m.changed_files || []).length], ['checks', m.checks_ok ? 'pass' : 'FAIL'],
       ['review', m.review_status || (m.approved ? 'approved' : 'not approved')], ['criteria met', m.criteria_met],
@@ -267,8 +278,10 @@ function metrics(m) {
   const files = m.changed_files && m.changed_files.length ? '<details><summary>Changed files</summary><div class="full">' +
     m.changed_files.map((f) => '<div>' + esc(f) + '</div>').join('') + '</div></details>' : '';
   const shifts = Object.entries(m.mind_changes || {}).map(([a, x]) => '<div>' + esc(a) + ': ' + x.before.toFixed(2) + ' \u2192 ' +
-    x.after.toFixed(2) + (x.changed ? ' \u00b7 ' + esc(x.reasons.join('; ')) : ' \u00b7 no change') + (x.claimed && !x.changed ? ' \u00b7 claimed a change' : '') +
-    (x.capped ? ' \u00b7 held up (no tools)' : '') + '</div>').join('');
+    x.after.toFixed(2) + (x.changed ? ' \u00b7 ' + esc(x.reasons.join('; '))
+      : x.reworded ? ' \u00b7 reworded only, position unchanged (' + Math.round(x.similarity * 100) + '% wording kept)' : ' \u00b7 no change') +
+    (x.claimed && !x.changed ? ' \u00b7 claimed a change' : '') +
+    (x.capped ? ' \u00b7 held up (no tools)' : x.has_tools === false ? ' \u00b7 answered without tools' : '') + '</div>').join('');
   const mindBox = shifts ? '<details><summary>Mind changes (measured)</summary><div class="full">' + shifts + '</div></details>' : '';
   const gate = m.gate_output ? '<details><summary>Check output</summary><pre>' + esc(m.gate_output) + '</pre></details>' : '';
   $('score').innerHTML = '<h3>' + (m.kind === 'summit' ? 'Council scoreboard' : 'Build scoreboard') + ' <small>run ' +

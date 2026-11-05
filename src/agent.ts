@@ -13,7 +13,7 @@ import { logger } from './logger.js';
 import { providerHasTools, recordProviderOutcome, routesFor, type ProviderId, type ToolNeed } from './provider-config.js';
 import { runExternalProvider } from './provider-runner.js';
 import { agentEnv, claudeSkillOptions, skillContext } from './skills.js';
-import { describeTool, redact, WorkLog, type ActivitySink } from './activity.js';
+import { describeTool, redact, TurnCounter, WorkLog, type ActivitySink } from './activity.js';
 
 /** Deliberation stages may read and research, never mutate. */
 export const WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
@@ -143,7 +143,7 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
     let durationMs: number | undefined;
     let error: string | undefined;
     const log = new WorkLog();
-    let turn = 0;
+    const turns = new TurnCounter();
 
     const q = query({
       prompt: opts.message,
@@ -171,8 +171,9 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
           newSessionId = sid;
         }
       } else if (type === 'assistant') {
-        turn += 1;
-        opts.onActivity?.({ kind: 'turn', text: `turn ${turn}/${maxTurns}`, turn, maxTurns });
+        if (turns.see(event as { message?: { id?: unknown } })) {
+          opts.onActivity?.({ kind: 'turn', text: `turn ${turns.n}/${maxTurns}`, turn: turns.n, maxTurns });
+        }
         const blocks = ((event['message'] as { content?: unknown[] } | undefined)?.content ?? []) as Array<Record<string, unknown>>;
         for (const b of blocks) {
           if (b['type'] === 'tool_use') {

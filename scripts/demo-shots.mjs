@@ -16,12 +16,13 @@ mkdirSync(PROFILES, { recursive: true });
 const profile = mkdtempSync(join(PROFILES, 'shots-'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// [file, demo, speed, virtual second to capture]
+// [file, demo, speed, virtual second to capture, viewport height (summit needs room for the scoreboard)]
 const SHOTS = [
   ['live-build-working.png', 'build', 8, 36],
   ['live-build-done.png', 'build', 40, 142],
   ['live-build-failed.png', 'build-fail', 40, 110],
   ['live-stall-stalled.png', 'stall', 20, 105],
+  ['live-summit-scoreboard.png', 'summit', 40, 152, 1900],
 ];
 
 const chrome = spawn(CHROME, ['--no-sandbox', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
@@ -44,9 +45,13 @@ try {
   await cdp('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1100, deviceScaleFactor: 1, mobile: false });
   // Fake socket: the shot must never talk to the real council.
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: 'window.WebSocket = class { constructor(){ this.readyState = 1; setTimeout(() => this.onopen && this.onopen({}), 40); } send(){} close(){} };' });
-  for (const [file, demo, speed, at] of SHOTS) {
+  for (const [file, demo, speed, at, height = 1100] of SHOTS) {
+    await cdp('Emulation.setDeviceMetricsOverride', { width: 1440, height, deviceScaleFactor: 1, mobile: false });
     await cdp('Page.navigate', { url: `${BASE}/warroom?demo=${demo}&speed=${speed}&still=1` });
     await sleep(900 + (at * 1000) / speed);
+    // Open every collapsed block so the shot shows what is hidden behind a click (the checks read hidden text).
+    await cdp('Runtime.evaluate', { expression: "document.querySelectorAll('details').forEach((d) => { d.open = true; })" });
+    await sleep(150);
     const shot = await cdp('Page.captureScreenshot', { format: 'png' });
     writeFileSync(join(OUT, file), Buffer.from(shot.result.data, 'base64'));
     console.log('wrote', join('store', 'logs', file));

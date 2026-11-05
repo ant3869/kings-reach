@@ -175,9 +175,23 @@ try {
   check('failed build: the fallback is visible in the feed', await js(`/could not finish/.test(document.getElementById('feed').textContent)`));
 
   await open('/warroom?demo=summit&speed=30&still=1', { fake: true });
+  // Make the footer deliberately stale; a verdict must refresh it (a real summit left it naming the previous plan).
+  await js(`document.getElementById('planbox').innerHTML = '<b>STALE</b>'`);
+  check('a locked verdict refreshes the "Build will execute plan" line', await waitFor(`!/STALE/.test(document.getElementById('planbox').textContent) && /Build will execute plan|No plan on file/.test(document.getElementById('planbox').textContent)`, 9000));
+  check('the plan line endpoint serves the same fragment the page renders', (await (await fetch(`${BASE}/warroom/planline`)).text()).includes('planline'));
   check('summit scoreboard shows minds changed as MEASURED, with the claim beside it', await waitFor(`/1 measured \\(2 claimed\\)/.test(document.getElementById('score').textContent)`, 9000));
+  check('a reworded-only seat is listed apart from changed minds and says its position is unchanged', await js(`(() => { const t = document.getElementById('score').textContent; return /reworded only\\s*content/.test(t) && /content: 0\\.80 \\u2192 0\\.78 \\u00b7 reworded only, position unchanged \\(21% wording kept\\)/.test(t) && !/content: .*claimed a change/.test(t); })()`));
+  check('a finished summit has every stage chip resolved under its DONE badge', await waitFor(`['recall','plan','investigate','debate','verdict','record'].every((n) => document.getElementById('st-' + n) && document.getElementById('st-' + n).classList.contains('done'))`, 9000));
+  check('a finished summit keeps a row for every agent that worked (main, research, ops), all DONE', await waitFor(`['main','research','ops'].every((id) => [...document.querySelectorAll('.arow')].some((r) => r.textContent.includes(id === 'main' ? 'Main' : id === 'research' ? 'Research' : 'Ops') && /DONE/.test(r.textContent)))`, 9000));
+  check('no finished agent row still says "Starting"', await js(`![...document.querySelectorAll('.arow')].some((r) => /Starting/.test(r.textContent))`));
+  check('an emptied caption leaves no styled empty bar behind', await js(`(() => { const c = document.getElementById('caption'); if (c.textContent.trim()) return true; const s = getComputedStyle(c); return s.backgroundColor === 'rgba(0, 0, 0, 0)' && (s.borderLeftColor === 'rgba(0, 0, 0, 0)' || s.borderLeftWidth === '0px'); })()`));
+  check('the scoreboard never prints "undefined" or "NaN"', await js(`!/undefined|NaN/.test(document.getElementById('score').textContent)`));
+  check('an uncapped tool-less debate answer is still labelled as such', await js(`/content: .*answered without tools/.test(document.getElementById('score').textContent)`));
   check('scoreboard flags the answer that came from a route without tools', await js(`/answered without tools/.test(document.getElementById('score').textContent)`));
   check('scoreboard lists per-agent confidence shifts, including a tool-less hold-up', await js(`(() => { const t = document.getElementById('score').textContent; return /research: 0\\.91 \\u2192 0\\.62/.test(t) && /held up \\(no tools\\)/.test(t) && /claimed a change/.test(t); })()`));
+
+  // Last on purpose: the sparse row REPLACES the scoreboard, so every other scoreboard assertion must run before it.
+  check('a sparse metrics row (older or partial data) renders without "undefined" or "NaN"', await js(`(() => { metrics({ type: 'metrics', kind: 'summit', outcome: 'verdict', id: 'sparse01', total_s: 5, specialists: [], mind_changes: {} }); return !/undefined|NaN/.test(document.getElementById('score').textContent) && /sparse01/.test(document.getElementById('score').textContent); })()`));
 
   await open('/warroom?demo=stall&speed=20&still=1', { fake: true });
   const seen = new Set();

@@ -1,5 +1,39 @@
 # Changelog
 
+## 2.14.2 - Fixes from the first real summit (run `9a7edfa0`; War Room client v28, server v13)
+
+The first paid run after 2.14 proved the live panel works against the real SDK ($1.93, 8m47s, no errors in any log) and
+exposed four bugs in 2.14, found by reading the screenshot against the ledger and the Claude transcripts.
+
+- **`turn N/M` was inflated 2-3x** (the page showed `Ops turn 18/12`). The SDK streams one `assistant` event per content
+  block (thinking, text, tool_use) sharing a message id; I counted events. New `TurnCounter` counts distinct message ids,
+  which is what the SDK's `maxTurns` counts. Regression test uses the real shape (18 events, 6 messages).
+- **Mind-change rule 2.** Rule 1 counted any rewritten recommendation as a changed mind, so two councillors who kept the
+  same design and refined a detail ("2 lines" to "4 lines"; Ops even answered `changed_mind: false`) scored `2 measured`.
+  Now a mind has changed when confidence moves >= 0.15, or the agent claimed a change AND the text really was rewritten.
+  A rewrite nobody claims is `reworded` (new `reworded_agents`, shown apart). Ledger rows carry `mind_rule: 2`; the Plan
+  Library no longer shows older rows as measurements, and the scoreboard labels them "old rule". The existing ledger is
+  untouched. Test uses the real Ops texts from that run.
+- **Stale "Build will execute plan cfac8fa0".** The line was rendered once at page load. The server now serves it at
+  `/warroom/planline` (one renderer) and the page re-fetches it when a summit locks a verdict. (Build itself always ran the
+  right plan; only the display was wrong.)
+- **Stale caption after DONE** ("Main: Still working. 1 actions so far."). A clean finish drops a caption older than 15 s; a
+  failure keeps its caption (it is the reason). Plurals fixed ("1 file read", "1 action"); an existing test had asserted
+  the wrong grammar.
+- **Scoreboard** now labels every tool-less debate answer ("answered without tools"), not only capped ones, since Research's
+  debate answer in that run came from ChatGPT without tools.
+- **Found by screenshotting the fixes** (each would have been invisible to the assertions): clearing the caption left an
+  empty gold bar (the box keeps its height to avoid layout jumps; its styling now hides while empty); a sparse metrics row
+  printed `undefined (self-reported)`; a finished agent whose route streamed no events read `DONE ... Starting` (now
+  "Answered" / "Gave no usable answer"). The demo summit now emits every stage, memory/hive fields and per-call `done`
+  events like the real server, so a DONE badge over dim chips can no longer pass.
+- Tests: `npm test` 82 (+9: turn counter, plan line, stale caption, history rule, demo stages, finished-agent text), python 64
+  (+6: mind rule incl. the real case, plurals, ledger rule tag, reworded-not-changed), ui-check 65 (+10: footer refresh,
+  reworded seat, tool-less label, every chip resolved, no `undefined`, rows kept, empty caption, no "Starting").
+- `scripts/demo-shots.mjs` gained a summit scoreboard shot and expands collapsed blocks before capturing.
+- Known, not fixed: `provider_diversity` in the ledger counts a tool-less debate answer's provider as a second family.
+  Still unproven on a real run: turn-cap salvage and the failed-route handoff.
+
 ## 2.14.1 - Polish and loose ends for 2.14.0 (War Room client v24, server v13, protocol council-v4)
 
 - **Build panel resolves every phase.** The server now sends `build_progress` for preflight done and execute done/failed;

@@ -9,7 +9,7 @@ import { PROJECT_ROOT, WARROOM_PORT } from './config.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 
-export const WARROOM_CLIENT_VERSION = 24;
+export const WARROOM_CLIENT_VERSION = 28;
 export const WARROOM_PROTOCOL = 'council-v4'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
@@ -139,7 +139,7 @@ button.stop{background:transparent;border:1px solid #f85149;color:#f85149}
 .arow{display:grid;grid-template-columns:90px 112px 1fr auto 56px;gap:8px;align-items:baseline;padding:3px 0;border-top:1px solid #1e1e2a;font-size:12px}
 .arow b{color:#f0d88e}.arow .st{font-weight:700}.arow .txt{color:#cbbd96;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.arow .cnt,.arow .ago{color:#8b949e;font-variant-numeric:tabular-nums}
 .arow.quiet .st{color:#e3b341}.arow.stalled .st{color:#f85149}.arow.failed .st{color:#f85149}.arow.complete .st{color:#3fb950}
-.caption{margin-top:8px;padding:6px 10px;border-left:3px solid var(--gold);background:#d4a01710;font:italic 13px Georgia;color:#eadfbe;min-height:20px}
+.caption{margin-top:8px;padding:6px 10px;border-left:3px solid var(--gold);background:#d4a01710;font:italic 13px Georgia;color:#eadfbe;min-height:20px}.caption:empty{border-left-color:transparent;background:none}/* keep the space (no layout jump), drop the gold bar when there is nothing to say */
 .feed{list-style:none;margin:6px 0 0;padding:0;font-size:11px;line-height:15px;color:#8b949e}.feed li{padding:1px 0}/* no max-height: the list is bounded by FEED_MAX, and a clipped warning is worse than a taller panel */.feed li.edit:before{content:'\u270e ';color:#d4a017}.feed li.warn{color:#e3b341}.feed li.warn:before{content:'\u26a0 '}.feed li.bad{color:#f85149}.feed li.bad:before{content:'\u2716 '}.feed li.ok:before{content:'\u2714 ';color:#3fb950}.feed li.narr:before{content:'\u266a '}
 .badge{position:absolute;z-index:5;top:4px;left:4px;font:700 10px system-ui;padding:2px 6px;border-radius:5px;background:#05070bdd;border:1px solid #6e7681;color:#c9d1d9}.badge:empty{display:none}
 .badge.working{border-color:#d4a017;color:#f4d77c}.badge.quiet{border-style:dashed;border-color:#e3b341;color:#e3b341}.badge.stalled{border-color:#f85149;color:#fff;background:#f85149aa}.badge.complete{border-color:#3fb950;color:#3fb950}.badge.failed{border-color:#f85149;color:#f85149}
@@ -189,6 +189,11 @@ function planLine(plan: PlanSummary | null): string {
     `<a href="/history#run=${esc(plan.run)}">review it</a> &middot; <a href="/history">Plan Library</a></div>`;
 }
 
+/** Just the plan line, for the page to re-fetch after a summit (it is rendered once at load and goes stale otherwise). */
+export function renderPlanLine(plan: PlanSummary | null = activePlan()): string {
+  return planLine(plan);
+}
+
 /** Full-page War Room: council seats, stage tracker, log, voice + scoreboard panels. */
 export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
   const council = loadCouncil();
@@ -234,7 +239,7 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
 <div class="composer"><input id="msg" placeholder="Speak to one agent (Enter), or convene the council (Ctrl+Enter)..." autocomplete="off">
 <button class="go" id="send">Send</button><button class="go alt" id="summitbtn">Convene council</button></div>
 <div class="composer"><button class="go alt" id="buildbtn">Build the verdict</button><button class="go stop" id="cancelbtn">Cancel / hush</button></div>
-${planLine(plan)}
+<div id="planbox">${planLine(plan)}</div>
 <div class="hint">Voice tips: say "council, ..." for a full deliberation, "hey Ops, ..." for one agent, "build it" to execute the plan.</div>
 </section>
 <aside>

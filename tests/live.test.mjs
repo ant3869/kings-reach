@@ -82,6 +82,37 @@ test('narration is kept as the caption and in the feed (visible even when speech
   assert.equal(live.s.feed.at(-1).kind, 'narr');
 });
 
+test('a finished agent never reads "Starting", but keeps the real last action when it has one', () => {
+  const { live } = clocked();
+  for (const [id, ok] of [['main', true], ['ops', false]]) {   // streamed nothing at all (e.g. a plain HTTP provider)
+    live.thinking(id, true);
+    live.handle({ type: 'activity', kind: 'result', agent_id: id, ok });
+  }
+  assert.equal(live.s.agents.main.text, 'Answered');
+  assert.equal(live.s.agents.ops.text, 'Gave no usable answer');
+  live.thinking('research', true);
+  live.handle(tool('research', 'Reading src/agent.ts'));
+  live.handle({ type: 'activity', kind: 'result', agent_id: 'research', ok: true });
+  assert.equal(live.s.agents.research.text, 'Reading src/agent.ts');
+});
+
+test('a stale caption is dropped when a run finishes cleanly, but a failure keeps its reason', () => {
+  const done = (state) => ({ type: 'meter', pct: state === 'complete' ? 100 : 55, phase: 'record', label: '', final: true, state, failed: state === 'failed' });
+  for (const [state, kept] of [['complete', false], ['failed', true], ['cancelled', true]]) {
+    const { live, advance } = clocked();
+    live.handle({ type: 'activity', kind: 'narration', agent_id: 'main', text: 'Still working. 1 action so far.' });
+    advance(WarLive.CAPTION_STALE_MS / 1000 + 5);
+    live.handle(done(state));
+    assert.equal(Boolean(live.s.caption), kept, state);
+  }
+  // ...and a caption spoken just before the end ("Build complete and approved") survives.
+  const { live, advance } = clocked();
+  live.handle({ type: 'activity', kind: 'narration', agent_id: 'main', text: 'Build complete and approved.' });
+  advance(2);
+  live.handle(done('complete'));
+  assert.equal(live.s.caption.text, 'Build complete and approved.');
+});
+
 test('warnings and failures survive a flood of routine lines', () => {
   const { live } = clocked();
   live.thinking('ops', true);
@@ -134,6 +165,12 @@ test('the demo meter moves on turns and never runs backwards before the final st
     // The stall demo is one turn then silence: a frozen bar there is the truth, not a defect.
     if (name === 'build') assert.ok(new Set(pcts).size > 6, `build bar should visibly move, got ${[...new Set(pcts)]}`);
   }
+});
+
+test('the demo summit resolves every council stage (a DONE badge over dim chips looks broken)', () => {
+  const last = {};
+  for (const [, m] of script('summit')) if (m.type === 'stage') last[m.stage] = m.state;
+  for (const stage of ['recall', 'plan', 'investigate', 'debate', 'verdict', 'record']) assert.equal(last[stage], 'done', stage);
 });
 
 test('demo builds resolve every phase of the build panel (no cell left waiting or active)', () => {

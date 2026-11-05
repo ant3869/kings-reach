@@ -138,8 +138,10 @@ export function summarize(r: RunRecord, runs: RunRecord[], objectives: Map<strin
     costUsd: num(r.total_cost_usd),
     confidence: typeof r.verdict_confidence === 'number' ? r.verdict_confidence : null,
     planSteps: num(r.plan_steps),
-    // Measured since v2.14: null for older runs, whose changed_minds was only the agent's own claim.
-    mindsChanged: typeof r.changed_minds_claimed === 'number' && typeof r.changed_minds === 'number' ? r.changed_minds : null,
+    // Measured only under rule 2 (v2.14.2). Older rows are either a self-report (pre-2.14) or rule 1, which counted
+    // any rewording as a changed mind; showing either as a measurement would be wrong, so they show nothing.
+    mindsChanged: r.mind_rule === 2 && typeof r.changed_minds_claimed === 'number' && typeof r.changed_minds === 'number'
+      ? r.changed_minds : null,
     mindsClaimed: typeof r.changed_minds_claimed === 'number' ? r.changed_minds_claimed : null,
     changedFiles: Array.isArray(r.changed_files) ? r.changed_files.length : 0,
     criteriaMet: typeof r.criteria_met === 'string' ? r.criteria_met : null,
