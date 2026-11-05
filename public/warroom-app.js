@@ -328,6 +328,7 @@ function onBinary(buf) {
 function onMessage(m) {
   if (m.pong) {
     lastPong = Date.now();
+    retryMs = 2000;
     $('sver').textContent = 'server v' + m.server + ' \u00b7 ' + m.pong;
     if (m.pong !== WR.protocol) bubble('war room', 'protocol mismatch: page ' + WR.protocol + ', server ' + m.pong + '. Hard-refresh.', 'err');
     markPin(m.pinned);
@@ -359,8 +360,10 @@ function connect() {
   setConn(false, 'connecting...');
   ws = new WebSocket('ws://' + location.hostname + ':' + WR.port);
   ws.binaryType = 'arraybuffer';
+  lastPong = Date.now(); // a socket that never answers its first ping must still hit the 45 s self-close below
   ws.onopen = () => {
-    retryMs = 2000;
+    // Backoff is NOT reset here: a TCP/WebSocket handshake can succeed against a server that then drops us at once,
+    // which made a flaky link retry every 2 s forever. It resets on the first pong (onMessage), proof of a live round trip.
     setConn(true, 'connected');
     send({ type: 'ping' });
     send({ type: 'voice', on: $('speak').checked });

@@ -150,7 +150,7 @@ async function main() {
   let health = {};
   try { health = JSON.parse(h.body); } catch { /* reported below */ }
   if (check('GET /api/health', h.status === 200 && health.ok === true, `HTTP ${h.status}`)) {
-    console.log(`      core v${health.version} pid ${health.pid} up ${health.uptimeSec}s | clients ${JSON.stringify(health.clients)} | agents ${health.agents}`);
+    console.log(`      core v${health.version} pid ${health.pid} up ${health.uptimeSec}s | client versions ${JSON.stringify(health.clientVersions)} | agents ${health.agents}`);
     console.log(`      war room ${JSON.stringify(health.warroom)} | db ${JSON.stringify(health.db?.counts)}`);
     check('core pid file == serving core pid', readPidFile('claudeclaw.pid') === health.pid, `file ${readPidFile('claudeclaw.pid')}`);
     check('war room running + pid known', health.warroom?.running === true && Boolean(health.warroom?.pid));

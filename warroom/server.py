@@ -18,6 +18,7 @@ import os
 import re
 import socket
 import sys
+import time
 
 import websockets
 
@@ -37,7 +38,7 @@ except ImportError:  # run as a script: python warroom/server.py
     from voice import Voice
 
 PROTOCOL = "council-v4"  # bump only when the wire protocol changes (v4: activity + meter messages)
-SERVER_VERSION = 13  # bump on every server.py deploy; shown in the client via pong
+SERVER_VERSION = 14  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
@@ -47,7 +48,8 @@ SESSIONS = set()
 
 
 def log(*parts):
-    print("[warroom]", *parts, flush=True)
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S")  # without it, thousands of connect lines cannot be told apart by day
+    print(f"[warroom] {stamp}", *parts, flush=True)
 
 
 class Session:
@@ -209,7 +211,7 @@ class Session:
 async def handle_client(websocket):
     session = Session(websocket)
     SESSIONS.add(session)
-    log("client connected")
+    log(f"client connected (open tabs now: {len(SESSIONS)})")
     try:
         await session.status(f"Welcome to the War Room (server v{SERVER_VERSION}, {PROTOCOL}).")
         await session.send(VOICE.info())
@@ -228,7 +230,7 @@ async def handle_client(websocket):
     finally:
         SESSIONS.discard(session)
         session.close()
-    log("client disconnected")
+    log(f"client disconnected (open tabs now: {len(SESSIONS)})")
 
 
 async def warm_voice():

@@ -61,7 +61,8 @@ export async function collectHealth(): Promise<Record<string, unknown>> {
     pid: process.pid,
     startedAt: new Date(STARTED_AT).toISOString(),
     uptimeSec: Math.round((Date.now() - STARTED_AT) / 1000),
-    clients: { dashboard: DASHBOARD_CLIENT_VERSION, warroom: WARROOM_CLIENT_VERSION },
+    // Page VERSIONS, not connection counts. It was called `clients`, and "warroom: 28" was misread as 28 open tabs.
+    clientVersions: { dashboard: DASHBOARD_CLIENT_VERSION, warroom: WARROOM_CLIENT_VERSION },
     dashboard: { host: DASHBOARD_HOST, port: DASHBOARD_PORT },
     warroom: await warroomStatus(),
     agents: getAgentRegistry().size,

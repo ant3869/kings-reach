@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.14.3 - Fixes from the second real summit (run `241424d9`; client v29, server v14)
+
+The council (asked about "28 connected War Room clients") found that the number was a mistake of mine: `/api/health`'s
+`clients.warroom` was `WARROOM_CLIENT_VERSION`, a page version, not a connection count. No leak exists. It also found two
+real client flaws. $2.73, 12m44s, all logs clean; turn counts stayed under cap (3/12, 8/12).
+
+- `/api/health` field renamed `clients` to `clientVersions` (`verify.mjs` updated).
+- Reconnect backoff reset on a bare WebSocket handshake, so a link that connects then drops retried every 2 s forever. It now
+  resets on the first pong.
+- `lastPong` starts at connect, so a socket that never answers still hits the 45 s self-close.
+- `warroom.log` lines now carry an ISO timestamp and `open tabs now: N`.
+- Not done (the verdict's step 5): a 24 h observation of the connect rate; read the new timestamps when convenient.
+- Still open: `provider_diversity` counts a tool-less debate answer as a second family; salvage and failed-route handoff
+  still unproven on a real run.
+
 ## 2.14.2 - Fixes from the first real summit (run `9a7edfa0`; War Room client v28, server v13)
 
 The first paid run after 2.14 proved the live panel works against the real SDK ($1.93, 8m47s, no errors in any log) and
