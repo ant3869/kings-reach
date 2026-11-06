@@ -9,7 +9,7 @@ import { PROJECT_ROOT, WARROOM_PORT } from './config.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 
-export const WARROOM_CLIENT_VERSION = 33;
+export const WARROOM_CLIENT_VERSION = 34;
 export const WARROOM_PROTOCOL = 'council-v4'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
@@ -98,13 +98,13 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 .seat .rule{position:absolute;z-index:3;left:24%;right:24%;top:calc(var(--ch)*.795);height:1px;background:linear-gradient(90deg,transparent,#c9a24a,transparent);opacity:.75;pointer-events:none}
 .seat .route{position:absolute;z-index:3;top:calc(var(--ch)*.815);left:12px;right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbbd96;font:10px system-ui;text-shadow:0 1px 2px #000;pointer-events:none}
 .seat .voice{position:absolute;z-index:4;top:calc(var(--ch)*.87);left:12px;right:12px;display:flex;align-items:center;justify-content:center;gap:4px;color:#8f856c;font:10px system-ui;text-shadow:0 1px 2px #000}
-.seat .voice select{appearance:none;-webkit-appearance:none;max-width:118px;padding:1px 15px 1px 5px;color:#d9c995;font:10px system-ui;background:transparent;border:1px solid transparent;border-radius:6px;text-overflow:ellipsis;cursor:pointer;color-scheme:dark}
-.seat .voice:after{content:'\\25BE';position:absolute;right:calc(50% - 63px);color:#b78a33;opacity:0;pointer-events:none}
-.seat .voice:hover select,.seat .voice select:focus{border-color:#b78a33;background:#0b0905e6;color:#f4e3a8}.seat .voice:hover:after,.seat .voice:focus-within:after{opacity:1}
+.seat .voice select{appearance:none;-webkit-appearance:none;max-width:118px;padding:1px 15px;color:#d9c995;font:10px system-ui;background:transparent no-repeat right 5px center/8px 5px;border:1px solid transparent;border-radius:6px;text-overflow:ellipsis;cursor:pointer;color-scheme:dark}
+/* the caret appears only on hover/focus, so at rest the voice reads as plain text */
+.seat .voice:hover select,.seat .voice select:focus{border-color:#b78a33;background-color:#0b0905e6;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0h8L4 5z' fill='%23b78a33'/%3E%3C/svg%3E");color:#f4e3a8}
 .seat .voice select:disabled{cursor:default;opacity:.8}
 .seat .pin{position:absolute;z-index:3;top:calc(var(--ch) + 6px);left:50%;transform:translateX(-50%);width:62px;height:25px;font:11px Georgia;background:#090806bb;border:1px solid #b78a33;color:#f0d88e;border-radius:9px;cursor:pointer;box-shadow:inset 0 0 7px #d4a01722}
 .seat.pinned .pin{background:#7b5819;color:#fff2bc;box-shadow:0 0 13px var(--ac)}
-@media(max-width:1050px){.seat{--ch:241px;width:164px;height:284px}.strip-a,.strip-b{width:164px;height:241px}.seat .plate{left:9px;right:9px}.seat .voice select{max-width:104px}.seat .voice:after{right:calc(50% - 56px)}}
+@media(max-width:1050px){.seat{--ch:241px;width:164px;height:284px}.strip-a,.strip-b{width:164px;height:241px}.seat .plate{left:9px;right:9px}.seat .voice select{max-width:104px}}
 #stages{display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin:8px 0}
 .stage{font:12px Georgia;padding:5px 14px;border-radius:9px;border:1px solid #735628;color:#9d8b65;background:linear-gradient(#16140f,#090a0e);box-shadow:inset 0 0 9px #d4a01712}
 .stage.active{color:#1a1103;background:linear-gradient(#f4d77c,#a26b16);border-color:#ffe29a;animation:pulse 1.4s ease-in-out infinite}
@@ -226,9 +226,9 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
         // Title big, role name small beneath: both live text on the blank plate. The font shrinks for long titles.
         `<div class="plate"><b class="ptitle" style="--tfs:${titleSize(c.title)}px">${esc(c.title || c.name)}</b><span class="pname">${esc(c.name)}</span></div>` +
         `<div class="rule"></div>` +
-        `<small class="route" id="model-${esc(c.id)}">route: waiting</small>` +
+        `<small class="route" id="model-${esc(c.id)}">waiting</small>` +
         // Shows the saved voice until the server's list arrives (warroom-casting.js then fills in every choice).
-        `<label class="voice">voice <select data-voice-for="${esc(c.id)}" aria-label="Voice for ${esc(c.name)}"><option value="${esc(c.voice)}" selected>${esc(voiceName(c.voice))}</option></select></label>` +
+        `<label class="voice"><select data-voice-for="${esc(c.id)}" aria-label="Voice for ${esc(c.name)}"><option value="${esc(c.voice)}" selected>${esc(voiceName(c.voice))}</option></select></label>` +
         `<button class="pin" data-pin="${esc(c.id)}">Pin</button></div>`,
     )
     .join('');

@@ -14,6 +14,7 @@ let retryMs = 2000;
 let retryTimer = null;
 let lastPong = 0;
 let busySince = 0;
+let welcomed = false;
 const thinkingSince = {};
 const pendingSalvaged = {};
 
@@ -350,7 +351,7 @@ function onMessage(m) {
   if (m.type === 'stage') return setStage(m.stage, m.state, m.detail);
   if (m.type === 'provider') {
     const el = $('model-' + m.agent_id);
-    if (el) el.textContent = 'route: ' + m.provider + ' / ' + m.model;
+    if (el) el.textContent = m.provider + ' / ' + m.model;
     if ((m.attempts || []).some((a) => a.salvaged)) pendingSalvaged[m.agent_id] = true;
     return;
   }
@@ -364,6 +365,10 @@ function onMessage(m) {
     return;
   }
   if (m.error) return bubble('war room', esc(m.error), 'err');
+  if (m.agent_id === 'war-room' && /^Welcome to the War Room/.test(m.text)) { // greeted once per page; a reconnect is not news
+    if (welcomed) return;
+    welcomed = true;
+  }
   if (m.agent_id === 'war-room') return bubble('war room', md(m.text), 'sys');
   if (m.agent_id) agentLine(m.agent_id, m.text, m.kind);
 }

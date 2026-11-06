@@ -129,6 +129,10 @@ try {
 
   let cards = await seats('speaking');
   check('all five cards have loaded art', cards.length === 5 && cards.every((c) => c.loaded), cards.map((c) => c.loaded).join());
+  const greet = JSON.stringify(JSON.stringify({ agent_id: 'war-room', text: 'Welcome to the War Room (server v0, test).' }));
+  const greetings = () => js(`[...document.querySelectorAll('#log > *')].filter((b) => b.textContent.includes('server v0, test')).length`);
+  await js(`window.__ws.onmessage({ data: ${greet} }); window.__ws.onmessage({ data: ${greet} }); window.__ws.onmessage({ data: ${greet} })`);
+  check('reconnects do not stack Welcome bubbles: three greetings show once', (await greetings()) === 1, String(await greetings()));
   await js(`send(new Int16Array(16000).buffer)`);
   check('microphone audio goes out as one binary frame, not JSON', (await sent()).filter((m) => typeof m === 'string' && m.startsWith('BINARY:')).join() === 'BINARY:32000' && !(await sent()).some((m) => m && m.type === undefined && typeof m === 'object'), JSON.stringify(await sent()));
   check('card art URLs carry the client version so a stale cached copy can never show', await js(`[...document.querySelectorAll('.strip-a,.strip-b')].filter((i) => i.getAttribute('src')).every((i) => i.getAttribute('src').endsWith('?v=' + WR.version))`), '');

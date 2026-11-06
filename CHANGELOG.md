@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.15.3 - Cleaner card plate; one Welcome per page
+
+- The "route:" and "voice:" prefixes are gone from the card plate: it shows just `provider / model` and the voice name (the dropdown caret now lives inside the select and appears on hover/focus). Client v34.
+- The Welcome message shows once per page load; a reconnect no longer stacks another one in the log.
+
 ## 2.15.2 - Speech-to-text works: microphone audio was being sent as JSON
 
 - `send()` JSON-encoded the mic's ArrayBuffer (`{}`), so the server answered "unknown message type: None" and Whisper never got the audio; the Voice panel sat on "transcribing...". Binary audio now goes out as a binary frame. Client v33.
