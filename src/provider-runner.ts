@@ -211,7 +211,8 @@ export async function runExternalProvider(target: RouteTarget, opts: AgentOption
 }
 
 export interface RouterModel { id: string; capabilities?: { tools?: boolean; reasoning?: boolean; contextWindow?: number }; }
-export interface ProviderHealth { id: ProviderId; available: boolean; detail: string; models?: string[]; }
+/** `available` includes the last real call's outcome; `configured` is only "credentials/service present" (a bad model once must not lock a provider out of the picker). */
+export interface ProviderHealth { id: ProviderId; available: boolean; detail: string; models?: string[]; configured?: boolean; }
 export async function get9RouterCatalog(): Promise<RouterModel[]> {
   try {
     const data = await post(`${NINE_ROUTER_BASE_URL.replace(/\/$/, '')}/models`, { method: 'GET' }, 5_000);
@@ -245,7 +246,8 @@ export async function getProviderHealth(catalog?: RouterModel[]): Promise<Provid
     ollama,
   ];
   const observed = loadProviderState();
-  return base.map((item) => {
+  return base.map((raw) => {
+    const item: ProviderHealth = { ...raw, configured: raw.available };
     const last = observed[item.id];
     if (!last) return item;
     const ageMs = Date.now() - Date.parse(last.at);

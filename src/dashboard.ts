@@ -16,6 +16,7 @@ import { renderProviderSettings } from './provider-html.js';
 import { mountHistory } from './history-routes.js';
 import { defaultProviderRouting, loadProviderRouting, PROVIDERS, ROLE_GUIDANCE, saveProviderRouting } from './provider-config.js';
 import { get9RouterCatalog, getProviderHealth } from './provider-runner.js';
+import { buildModelChoices, invalidRoutes, readiness } from './provider-models.js';
 import { apiGuard } from './http-guard.js';
 import { collectHealth } from './health.js';
 import { logger } from './logger.js';
@@ -62,13 +63,21 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
     const models = await get9RouterCatalog();
     const catalog = { '9router': models, chatgpt: models.filter((m) => /^cx\//.test(m.id)),
       meta: models.filter((m) => /^(meta\/|cf\/@cf\/meta\/)/.test(m.id)) };
+    const health = await getProviderHealth(models);
     return c.json({ config: loadProviderRouting(), providers: PROVIDERS, guidance: ROLE_GUIDANCE,
-      health: await getProviderHealth(models), catalog });
+      health, catalog, choices: buildModelChoices(models, health) });
   });
   app.get('/api/providers/defaults', (c) => c.json({ config: defaultProviderRouting() }));
   app.put('/api/providers/config', async (c) => {
-    try { return c.json(saveProviderRouting(await c.req.json())); }
-    catch (err) { return c.json({ error: String(err) }, 400); }
+    try {
+      const body = await c.req.json();
+      // Only real, available (provider, model) pairs may be saved: the page offers dropdowns, this is the backstop.
+      const models = await get9RouterCatalog();
+      const health = await getProviderHealth(models);
+      const problems = invalidRoutes(body, buildModelChoices(models, health), readiness(health));
+      if (problems.length) return c.json({ error: `Not saved. ${problems.join('; ')}` }, 400);
+      return c.json(saveProviderRouting(body));
+    } catch (err) { return c.json({ error: String(err) }, 400); }
   });
 
   app.get('/api/memories', (c) => {

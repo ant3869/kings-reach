@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.14.7 - Provider settings: dropdowns of valid choices, refused on save
+
+The Settings > Providers page used free-text model boxes, so a mismatched pair saved fine and then failed on every call (Main's
+Claude route held `cx/gpt-5.6-Sol`, its ChatGPT route held `claude-sonnet-5-5`, and Research's ChatGPT route held a Meta model),
+which sent Main to Codex on every run.
+
+- New `src/provider-models.ts`: builds the valid models per provider from what is actually verified (live 9Router catalog, provider
+  health, installed Ollama models, known-good built-ins; Claude also gets the 9Router `cc/` lane with the prefix stripped).
+- The page now shows a provider dropdown (not-set-up providers greyed out) and a model dropdown with capability notes. Changing
+  the provider resets the model to a valid one; a saved route that is not valid is flagged red with a warning.
+- `PUT /api/providers/config` now refuses any route whose provider is not available or whose model is not in that provider's list,
+  with a readable reason. `ProviderHealth.configured` (credentials/service present) is separate from `available` (last call worked),
+  so one bad model cannot lock a provider out of the picker.
+- The owner's saved routing was repaired through that endpoint (swap back, Research's Meta route moved to the `meta` provider,
+  identical trailing duplicate dropped). Backup: `store/provider-routing.backup-before-dropdowns.json`.
+- Tests: `tests/provider-models.test.mjs` (+6, npm 110) and three live provider-page checks in `ui-check` (68), which also
+  captures `store/logs/live-providers.png` before it mutates the page.
+
 ## 2.14.6 - Fix #1: memory keyword recall broke on punctuation (reported by @mattabate)
 
 - `buildMemoryContext` built its FTS5 MATCH string by stripping only `" * : ( )`, so ordinary questions (`what's the status?`,

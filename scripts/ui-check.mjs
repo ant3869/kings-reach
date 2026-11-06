@@ -4,7 +4,7 @@
 // The War Room's WebSocket is replaced by a recording fake before the page loads, so we can assert exactly what
 // a click WOULD have sent (e.g. a Build) without spending money or touching the real council.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -246,6 +246,27 @@ try {
   await sleep(1200);
   check('"Reconvene" opens the War Room with a prefilled, unsent prompt',
     (await js('location.pathname')) === '/warroom' && /reopen the saved plan from run 89ef3ae8/i.test(await js(`document.getElementById('msg').value`)));
+
+  // --- Provider settings: dropdowns of valid choices, never free text (nothing here is saved) ---------
+  await open('/providers');
+  for (let i = 0; i < 60 && !(await js(`document.querySelectorAll('.route').length`)); i++) await sleep(250); // the page's provider checks take a few seconds
+  const routeInfo = JSON.parse(await js(`JSON.stringify({
+    inputs: document.querySelectorAll('.route input').length,
+    rows: document.querySelectorAll('.route').length,
+    selects: [...document.querySelectorAll('.route')].every((r) => r.querySelector('select.prov') && r.querySelector('select.model')),
+    invalid: document.querySelectorAll('select.model.invalid').length })`));
+  check('provider page: routes are dropdowns (no free-text boxes)', routeInfo.rows > 0 && routeInfo.inputs === 0 && routeInfo.selects, JSON.stringify(routeInfo));
+  check('provider page: every saved route is a valid pair (nothing flagged red)', routeInfo.invalid === 0, `${routeInfo.invalid} flagged`);
+  // Screenshot BEFORE the switch test below mutates the page (an earlier shot showed the simulated switch, not the saved config).
+  const shot = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+  mkdirSync(join(dirname(PROFILES), 'logs'), { recursive: true });
+  writeFileSync(join(dirname(PROFILES), 'logs', 'live-providers.png'), Buffer.from(shot.result.data, 'base64'));
+  const afterSwitch = JSON.parse(await js(`(function () {
+    var row = document.querySelector('.route'); var sel = row.querySelector('select.prov');
+    sel.value = 'chatgpt'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+    var m = [...document.querySelector('.route').querySelectorAll('select.model option')].map((o) => o.value);
+    return JSON.stringify({ n: m.length, allCx: m.every((v) => v.startsWith('cx/')), flagged: document.querySelectorAll('select.model.invalid').length }); })()`));
+  check('provider page: switching a route to ChatGPT offers only ChatGPT models, none flagged', afterSwitch.n > 0 && afterSwitch.allCx && afterSwitch.flagged === 0, JSON.stringify(afterSwitch));
 } catch (err) {
   check('ui-check ran to completion', false, String(err));
 } finally {
