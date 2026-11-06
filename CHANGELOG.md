@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.15.0 - Live card nameplates and a voice dropdown under every card
+
+- The painted-in name/title on all 230 card images is gone (`scripts/card_plate.py`, also run by `build_card_art.py`).
+  The page draws the title large and the role small, live from `voices.json`; long titles shrink to fit.
+- Pin moved below the card; route and voice now sit on the card plate.
+- Voice label becomes a dropdown on hover/focus (always a real `<select>`: works by keyboard and touch). Choices come
+  only from the installed Kokoro voice file (28 English voices, grouped). Changing one is validated server-side, saved
+  atomically to `voices.json`, applied to the next sentence without a restart, and mirrored to all open tabs.
+- New: `warroom/casting.py`, `public/warroom-casting.js`, WebSocket `casting` / `set_voice` (server v15, client v31).
+- Tests: casting (Python), card plate + shipped-art scan (Python), dropdown UI (node), nameplate/pin/dropdown layout (UI check).
+- The old "state cards share the idle nameplate layout" test is retired: it measured text that no longer exists.
+
 ## 2.14.10 - Renamed ClaudeClaw to King's Reach everywhere; README banner
 
 - Display/brand text, agent prompts, scripts, the auth header (`x-kings-reach-token`), env vars (`KINGS_REACH_CONFIG`,

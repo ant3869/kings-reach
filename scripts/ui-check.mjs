@@ -22,7 +22,7 @@ let chromeErr = '';
 chrome.stderr.on('data', (d) => { chromeErr += d; });
 
 const FAKE_WS = `window.__sent = [];
-window.WebSocket = class { constructor(u) { this.url = u; this.readyState = 1; this.binaryType = '';
+window.WebSocket = class { constructor(u) { window.__ws = this; this.url = u; this.readyState = 1; this.binaryType = '';
   setTimeout(() => this.onopen && this.onopen({}), 40); }
   send(m) { window.__sent.push(String(m)); } close() {} };`;
 
@@ -246,6 +246,41 @@ try {
   await sleep(1200);
   check('"Reconvene" opens the War Room with a prefilled, unsent prompt',
     (await js('location.pathname')) === '/warroom' && /reopen the saved plan from run 89ef3ae8/i.test(await js(`document.getElementById('msg').value`)));
+
+  // --- Card nameplates: live text on the blank plate, pin below the card, voice dropdown under the route ---
+  await open('/warroom?previewCards=idle&still=1', { fake: true });
+  const plate = JSON.parse(await js(`JSON.stringify(WR.council.map((c) => {
+    const seat = document.getElementById('seat-' + c.id); const box = (el) => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right }; };
+    const t = seat.querySelector('.ptitle'); const n = seat.querySelector('.pname');
+    return { id: c.id, title: c.title, name: c.name, shownTitle: t.textContent, shownName: n.textContent,
+      titlePx: parseFloat(getComputedStyle(t).fontSize), namePx: parseFloat(getComputedStyle(n).fontSize),
+      fits: t.scrollWidth <= seat.querySelector('.plate').clientWidth + 1,
+      card: box(seat.querySelector('.strip-a')), pin: box(seat.querySelector('.pin')), route: box(seat.querySelector('.route')), voice: box(seat.querySelector('.voice')),
+      titleBox: box(t), nameBox: box(n), emblemLine: seat.querySelector('.rule').getBoundingClientRect().top }; }))`));
+  check('nameplate: title is the big live line and the role name the small one beneath it', plate.every((p) => p.shownTitle === (p.title || p.name) && p.shownName === p.name && p.titlePx > p.namePx && p.titleBox.bottom <= p.nameBox.top + 1), JSON.stringify(plate.map((p) => [p.shownTitle, p.titlePx])));
+  check('nameplate: every title fits the plate on one line', plate.every((p) => p.fits), plate.filter((p) => !p.fits).map((p) => p.title).join());
+  check('layout: Pin sits below the card, not on it', plate.every((p) => p.pin.top >= p.card.bottom - 1), JSON.stringify(plate.map((p) => [Math.round(p.pin.top), Math.round(p.card.bottom)])));
+  check('layout: route and voice are on the card plate, below the title and name', plate.every((p) => p.route.top >= p.nameBox.bottom - 1 && p.voice.top >= p.route.bottom - 1 && p.voice.bottom <= p.card.bottom), JSON.stringify(plate[0]));
+  const cast = { type: 'casting', current: { main: 'bm_george', research: 'bm_fable', comms: 'bf_isabella', content: 'af_heart', ops: 'am_onyx' },
+    voices: [['af_heart', 'Heart', 'American female'], ['am_onyx', 'Onyx', 'American male'], ['bf_isabella', 'Isabella', 'British female'], ['bm_fable', 'Fable', 'British male'], ['bm_george', 'George', 'British male']].map(([id, name, group]) => ({ id, name, group })) };
+  await js(`window.__ws.onmessage({ data: ${JSON.stringify(JSON.stringify(cast))} })`);
+  const picks = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('select[data-voice-for]')].map((s) => ({ id: s.dataset.voiceFor, value: s.value, options: s.options.length, groups: s.querySelectorAll('optgroup').length })))`));
+  check('voice dropdown: every seat lists the server voices with its own voice selected', picks.length === 5 && picks.every((p) => p.options === 5 && p.groups === 4 && p.value === cast.current[p.id]), JSON.stringify(picks[0]));
+  await js(`(function () { var s = document.querySelector('select[data-voice-for="ops"]'); s.value = 'bf_isabella'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  check('voice dropdown: choosing a voice sends set_voice for that seat only', JSON.stringify((await sent()).filter((m) => m.type === 'set_voice')) === JSON.stringify([{ type: 'set_voice', agent_id: 'ops', voice: 'bf_isabella' }]), JSON.stringify(await sent()));
+  await js(`window.__ws.onmessage({ data: ${JSON.stringify(JSON.stringify({ ...cast, current: { ...cast.current, ops: 'am_onyx' } }))} })`);
+  check('voice dropdown: the server answer puts the saved voice back', (await js(`document.querySelector('select[data-voice-for="ops"]').value`)) === 'am_onyx');
+  const here = JSON.parse(await js(`JSON.stringify((function () { var r = document.querySelector('select[data-voice-for="main"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })())`));
+  const border = () => js(`getComputedStyle(document.querySelector('select[data-voice-for="main"]')).borderTopColor`);
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 }); await sleep(250);
+  const resting = await border();
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: here.x, y: here.y }); await sleep(250);
+  const hovered = await border();
+  check('voice dropdown: looks like plain text until hovered, then shows it is a control', resting === 'rgba(0, 0, 0, 0)' && hovered !== resting, `${resting} -> ${hovered}`);
+  const council = JSON.parse(await js(`JSON.stringify((function () { var r = document.getElementById('council').getBoundingClientRect(); return { x: r.left - 6, y: r.top - 6, width: r.width + 12, height: r.height + 12, scale: 1 }; })())`));
+  const plateShot = await cdp('Page.captureScreenshot', { format: 'png', clip: council });
+  mkdirSync(join(dirname(PROFILES), 'logs'), { recursive: true });
+  writeFileSync(join(dirname(PROFILES), 'logs', 'live-nameplates.png'), Buffer.from(plateShot.result.data, 'base64'));
 
   // --- Provider settings: dropdowns of valid choices, never free text (nothing here is saved) ---------
   await open('/providers');

@@ -79,9 +79,12 @@ ALLOWED_ORIGINS = [
 ] + [None]
 
 
+VOICES_FILE = Path(__file__).parent / "voices.json"
+
+
 def load_voices():
     """Load persona + voice casting from voices.json (single source of truth)."""
-    voices_path = Path(__file__).parent / "voices.json"
+    voices_path = VOICES_FILE
     if not voices_path.exists():
         return {}
     with open(voices_path, encoding="utf-8") as fh:

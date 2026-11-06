@@ -1,6 +1,6 @@
 // public/warroom-app.js - council chamber UI. Needs (inline, before this file): WR config, md(), esc().
 // Wire protocol is documented at the top of warroom/server.py.
-/* global WR, md, esc, WarVoice, CardDirector */
+/* global WR, md, esc, WarVoice, CardDirector, WarCasting */
 'use strict';
 
 const $ = (id) => document.getElementById(id);
@@ -35,6 +35,9 @@ const desiredCardState = (id) => CardDirector.resolve(cardActivity[id], Date.now
 let liveClock = Date.now;
 const live = WarLive.mount(document, Object.fromEntries(WR.council.map((c) => [c.id, c.name])),
   { pose: (id, state) => setPose(id, state) }, () => liveClock());
+
+// Voice dropdown under each card (warroom-casting.js): the server lists real voices and validates every change.
+const casting = WarCasting.mount(document, (m) => send(m));
 
 function setPose(id, state, ms) {
   if (!cardActivity[id]) return;
@@ -339,6 +342,7 @@ function onMessage(m) {
   }
   if (m.pinned !== undefined) return markPin(m.pinned);
   if (m.type === 'voice') return voiceInfo(m);
+  if (m.type === 'casting') return casting.handle(m);
   if (m.type === 'stage') return setStage(m.stage, m.state, m.detail);
   if (m.type === 'provider') {
     const el = $('model-' + m.agent_id);

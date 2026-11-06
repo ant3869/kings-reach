@@ -108,8 +108,8 @@ class CardArtTests(unittest.TestCase):
                 self.assertEqual(img.getpixel((0, 0))[3], 0, f"{path.name}: corner should be transparent")
                 self.assertEqual(img.getpixel((img.width // 2, img.height // 2))[3], 255, path.name)
 
-    def test_state_cards_share_the_idle_nameplate_layout(self):
-        self.assertEqual(self.art.layout_report(self.art.OUT, 0.02), 0)
+    # The old "state cards share the idle nameplate layout" check measured the painted-in name/title. That text is
+    # gone (the War Room draws it live), so the invariant is now the opposite: see test_card_plate.py.
 
 
 class LedgerTests(unittest.TestCase):

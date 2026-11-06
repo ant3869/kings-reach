@@ -1,10 +1,11 @@
 """War Room server (ws://127.0.0.1:7860): the council chamber's transport. Logic lives in council.py.
 
 Browser -> server
-  JSON  {"type": "text"|"summit"|"build"|"pin"|"ping"|"voice"|"hush"|"cancel", ...}
+  JSON  {"type": "text"|"summit"|"build"|"pin"|"ping"|"voice"|"hush"|"cancel"|"casting"|"set_voice", ...}
+        (set_voice: {"agent_id", "voice"}; casting asks for the voice list and who has which)
   bytes one utterance, 16 kHz mono int16 PCM -> local Whisper -> handled exactly like typed text
 Server -> browser
-  JSON  {"agent_id", "text", "kind"} chat line | {"type": "stage"|"thinking"|"transcript"|"metrics"|"voice"
+  JSON  {"agent_id", "text", "kind"} chat line | {"type": "stage"|"thinking"|"transcript"|"metrics"|"voice"|"casting"
         |"activity" (what an agent is doing right now) |"meter" (overall progress estimate)}
         | {"ok": true, ...} | {"error": "..."}       (agent_id "war-room" = status line)
   bytes  <json header>\n<WAV>  one spoken clip: header {"agent_id", "seq"}
@@ -24,21 +25,23 @@ import websockets
 
 try:
     from . import agent_bridge as ab
+    from . import casting
     from .config import ALLOWED_ORIGINS, PID_FILE, WARROOM_PORT
     from .council import STAGES, Council
-    from .personas import persona_prompt
+    from .personas import get_persona, persona_prompt
     from .router import COUNCIL, read_pin, route, write_pin
     from .voice import Voice
 except ImportError:  # run as a script: python warroom/server.py
     import agent_bridge as ab
+    import casting
     from config import ALLOWED_ORIGINS, PID_FILE, WARROOM_PORT
     from council import STAGES, Council
-    from personas import persona_prompt
+    from personas import get_persona, persona_prompt
     from router import COUNCIL, read_pin, route, write_pin
     from voice import Voice
 
 PROTOCOL = "council-v4"  # bump only when the wire protocol changes (v4: activity + meter messages)
-SERVER_VERSION = 14  # bump on every server.py deploy; shown in the client via pong
+SERVER_VERSION = 15  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
@@ -189,6 +192,10 @@ class Session:
         elif kind == "voice":
             self.voice_on = bool(payload.get("on"))
             await self.send(VOICE.info())
+        elif kind == "casting":
+            await self.send(casting.casting_message())
+        elif kind == "set_voice":
+            await self.change_voice(payload.get("agent_id"), payload.get("voice"))
         elif kind == "hush":
             self.hush()
         elif kind == "cancel":
@@ -201,6 +208,21 @@ class Session:
             await self.handle_text("build it", "build")
         elif kind not in ("text", "summit"):
             await self.send({"error": f"unknown message type: {kind}"})
+
+    async def change_voice(self, agent_id, voice):
+        """Re-cast one seat, tell every open tab, and (if this tab has voice on) let the new voice introduce itself."""
+        try:
+            casting.set_voice(agent_id, voice)
+        except (ValueError, OSError) as exc:
+            await self.send({"error": f"voice not changed: {exc}"})
+            await self.send(casting.casting_message())  # puts the dropdown back to what is really saved
+            return
+        log("voice:", agent_id, "->", voice)
+        for session in list(SESSIONS):
+            await session.send(casting.casting_message())
+        if self.voice_on:
+            persona = get_persona(agent_id)
+            self.speech.put_nowait((agent_id, f"I am {persona['name']}, the {persona['title']}."))
 
     def close(self):
         self.speaker.cancel()
@@ -215,6 +237,7 @@ async def handle_client(websocket):
     try:
         await session.status(f"Welcome to the War Room (server v{SERVER_VERSION}, {PROTOCOL}).")
         await session.send(VOICE.info())
+        await session.send(casting.casting_message())
         async for raw in websocket:
             if isinstance(raw, bytes):
                 session.spawn(session.handle_audio(raw), "Listening")

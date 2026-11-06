@@ -17,6 +17,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from card_plate import blank_plate  # the War Room draws name/title live, so the art ships with an empty nameplate
+
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "assets-src" / "card-states"
 OUT = ROOT / "public" / "card-states" / "individual"
@@ -64,7 +66,7 @@ def cut_out(image: Image.Image) -> Image.Image:
         raise ValueError("image is entirely background")
     card = Image.fromarray(rgba, "RGBA").crop((xs.min(), ys.min(), xs.max() + 1, ys.max() + 1))
     # resize in premultiplied space so edge pixels don't pick up dark or light halos
-    return card.convert("RGBa").resize(SIZE, Image.LANCZOS).convert("RGBA")
+    return blank_plate(card.convert("RGBa").resize(SIZE, Image.LANCZOS).convert("RGBA"))
 
 
 def row_profile(path: Path) -> np.ndarray:

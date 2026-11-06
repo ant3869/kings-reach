@@ -9,7 +9,7 @@ import { PROJECT_ROOT, WARROOM_PORT } from './config.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 
-export const WARROOM_CLIENT_VERSION = 30;
+export const WARROOM_CLIENT_VERSION = 31;
 export const WARROOM_PROTOCOL = 'council-v4'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
@@ -30,7 +30,7 @@ function manifestAssets(): string[] {
   }
 }
 export const WARROOM_STATIC: readonly string[] = ['warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-demo.js',
-  'card-director.js', 'mic-worklet.js',
+  'warroom-casting.js', 'card-director.js', 'mic-worklet.js',
   'warroom-council-cards.png', 'warroom-chamber-bg.png', ...CARD_ASSETS, ...manifestAssets()];
 
 const COLORS: Record<string, string> = {
@@ -61,6 +61,15 @@ function loadCouncil(): Seat[] {
   }));
 }
 
+/** Largest font (px) at which the title still fits the plate: Georgia bold is ~0.53em per character, the plate ~150px. */
+export const titleSize = (title: string): number => Math.max(12, Math.min(18, Math.floor(150 / (Math.max(title.length, 1) * 0.53))));
+
+/** `bm_george` -> `George` (the saved voice id, shown until the server's list replaces it). */
+export const voiceName = (voice: string): string => {
+  const name = voice.split('_').slice(1).join(' ') || voice;
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+
 const CSS = `
 @property --lvl{syntax:'<number>';inherits:false;initial-value:0}
 :root{--gold:#d4a017;--bg:#07070d;--panel:#11111b;--line:#3a3020}
@@ -80,12 +89,22 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 .strip-a,.strip-b{position:absolute;left:0;top:0;width:184px;height:270px;border-radius:18px;object-fit:fill;transition:opacity 260ms ease,filter 320ms ease;will-change:opacity;z-index:1;pointer-events:none}
 .strip-a{opacity:1}.strip-b{opacity:0}
 .seat:after{content:'';position:absolute;inset:12px 8px 51px;border-radius:22px;background:var(--ac);filter:blur(16px);box-shadow:0 0 24px 7px var(--ac),0 0 52px 12px var(--ac);opacity:.10;transition:opacity 420ms ease;pointer-events:none;z-index:0}
-.seat .sigil,.seat>b,.seat>.title{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-.seat .route{position:absolute;z-index:3;top:272px;left:3px;right:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbbd96;font:10px system-ui;text-shadow:0 1px #000}
-.seat .voice{position:absolute;z-index:3;top:289px;left:3px;right:3px;color:#8f856c;font:10px system-ui}
-.seat button{position:absolute;z-index:3;top:236px;left:50%;transform:translateX(-50%);width:62px;height:25px;font:11px Georgia;background:#090806bb;border:1px solid #b78a33;color:#f0d88e;border-radius:9px;cursor:pointer;box-shadow:inset 0 0 7px #d4a01722}
-.seat button:before{content:' ';font-size:9px}.seat.pinned button{background:#7b5819;color:#fff2bc;box-shadow:0 0 13px var(--ac)}
-@media(max-width:1050px){.seat{width:164px;height:284px}.strip-a,.strip-b{width:164px;height:241px}.seat button{top:210px}.seat .route{top:243px}.seat .voice{top:260px}}
+/* The card art ships with an EMPTY nameplate (scripts/card_plate.py): name, title, route and voice are live text on it.
+   Positions are fractions of the card height (--ch) so the 164px layout below needs no second set of numbers. */
+.seat{--ch:270px}
+.seat .plate{position:absolute;z-index:3;left:12px;right:12px;top:calc(var(--ch)*.65);text-align:center;pointer-events:none}
+.seat .ptitle{display:block;font:700 var(--tfs,17px)/1.15 Georgia,serif;color:#f6e9c0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 9px #000c}
+.seat .pname{display:block;margin-top:2px;font:italic 11.5px Georgia,serif;color:#cdbf95;text-shadow:0 1px 2px #000}
+.seat .rule{position:absolute;z-index:3;left:24%;right:24%;top:calc(var(--ch)*.795);height:1px;background:linear-gradient(90deg,transparent,#c9a24a,transparent);opacity:.75;pointer-events:none}
+.seat .route{position:absolute;z-index:3;top:calc(var(--ch)*.815);left:12px;right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbbd96;font:10px system-ui;text-shadow:0 1px 2px #000;pointer-events:none}
+.seat .voice{position:absolute;z-index:4;top:calc(var(--ch)*.87);left:12px;right:12px;display:flex;align-items:center;justify-content:center;gap:4px;color:#8f856c;font:10px system-ui;text-shadow:0 1px 2px #000}
+.seat .voice select{appearance:none;-webkit-appearance:none;max-width:118px;padding:1px 15px 1px 5px;color:#d9c995;font:10px system-ui;background:transparent;border:1px solid transparent;border-radius:6px;text-overflow:ellipsis;cursor:pointer;color-scheme:dark}
+.seat .voice:after{content:'\\25BE';position:absolute;right:calc(50% - 63px);color:#b78a33;opacity:0;pointer-events:none}
+.seat .voice:hover select,.seat .voice select:focus{border-color:#b78a33;background:#0b0905e6;color:#f4e3a8}.seat .voice:hover:after,.seat .voice:focus-within:after{opacity:1}
+.seat .voice select:disabled{cursor:default;opacity:.8}
+.seat .pin{position:absolute;z-index:3;top:calc(var(--ch) + 6px);left:50%;transform:translateX(-50%);width:62px;height:25px;font:11px Georgia;background:#090806bb;border:1px solid #b78a33;color:#f0d88e;border-radius:9px;cursor:pointer;box-shadow:inset 0 0 7px #d4a01722}
+.seat.pinned .pin{background:#7b5819;color:#fff2bc;box-shadow:0 0 13px var(--ac)}
+@media(max-width:1050px){.seat{--ch:241px;width:164px;height:284px}.strip-a,.strip-b{width:164px;height:241px}.seat .plate{left:9px;right:9px}.seat .voice select{max-width:104px}.seat .voice:after{right:calc(50% - 56px)}}
 #stages{display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin:8px 0}
 .stage{font:12px Georgia;padding:5px 14px;border-radius:9px;border:1px solid #735628;color:#9d8b65;background:linear-gradient(#16140f,#090a0e);box-shadow:inset 0 0 9px #d4a01712}
 .stage.active{color:#1a1103;background:linear-gradient(#f4d77c,#a26b16);border-color:#ffe29a;animation:pulse 1.4s ease-in-out infinite}
@@ -204,9 +223,13 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
         `<img class="strip-a" src="/warroom/card-states/individual/idle-${esc(c.id)}.png" alt="">` +
         `<img class="strip-b" alt="">` +
         `<span class="badge" id="badge-${esc(c.id)}"></span>` +
-        `<div class="sigil">${esc(c.name.slice(0, 1))}</div>` +
-        `<b>${esc(c.name)}</b><small class="title">${esc(c.title)}</small><small class="route" id="model-${esc(c.id)}">route: waiting</small><small class="voice">voice: ${esc(c.voice)}</small>` +
-        `<button data-pin="${esc(c.id)}">Pin</button></div>`,
+        // Title big, role name small beneath: both live text on the blank plate. The font shrinks for long titles.
+        `<div class="plate"><b class="ptitle" style="--tfs:${titleSize(c.title)}px">${esc(c.title || c.name)}</b><span class="pname">${esc(c.name)}</span></div>` +
+        `<div class="rule"></div>` +
+        `<small class="route" id="model-${esc(c.id)}">route: waiting</small>` +
+        // Shows the saved voice until the server's list arrives (warroom-casting.js then fills in every choice).
+        `<label class="voice">voice <select data-voice-for="${esc(c.id)}" aria-label="Voice for ${esc(c.name)}"><option value="${esc(c.voice)}" selected>${esc(voiceName(c.voice))}</option></select></label>` +
+        `<button class="pin" data-pin="${esc(c.id)}">Pin</button></div>`,
     )
     .join('');
   const config = JSON.stringify({ port: WARROOM_PORT, protocol: WARROOM_PROTOCOL, version: WARROOM_CLIENT_VERSION, council });
@@ -260,6 +283,7 @@ ${CLIENT_MD_JS}
 <script src="/warroom/card-director.js${v}"></script>
 <script src="/warroom/warroom-voice.js${v}"></script>
 <script src="/warroom/warroom-live.js${v}"></script>
+<script src="/warroom/warroom-casting.js${v}"></script>
 <script src="/warroom/warroom-demo.js${v}"></script>
 <script src="/warroom/warroom-app.js${v}"></script>
 </body></html>`;
