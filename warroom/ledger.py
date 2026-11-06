@@ -26,8 +26,9 @@ def criteria_tally(criteria: list) -> str:
 
 
 def build_outcome(gate_ok: bool, approved: bool, changed: list) -> str:
-    """'built' needs green checks, an approving review AND at least one changed file; an approved build
-    that changed nothing built nothing and must not count as a success."""
-    if not (gate_ok and approved):
-        return "needs_work"
-    return "built" if changed else "no_changes"
+    """'built' needs green checks, an approving review AND at least one changed file. A build that changed
+    nothing built nothing: 'no_changes', whether or not anyone reviewed it (the review is skipped when there is
+    nothing to review; a real run once paid $0.67 for Research to "approve" an empty build)."""
+    if gate_ok and not changed:
+        return "no_changes"
+    return "built" if gate_ok and approved else "needs_work"

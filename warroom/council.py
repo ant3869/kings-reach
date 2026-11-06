@@ -484,10 +484,12 @@ class Council:
         if not gate["ok"]:  # _stage marks a stage done when its coroutine returns; a failed check is returned, not raised
             await self.room.stage("gate", "failed", "checks failed")
         await self.room.status(("checks passed: " if gate["ok"] else "checks FAILED: ") + gate["output"][:1500])
-        await self.live.announce("main", "Checks passed. Research is reviewing the changes." if gate["ok"] else
+        reviewable = gate["ok"] and bool(changed)  # an empty build has nothing to review (and Research would still "approve" it)
+        await self.live.announce("main", "Checks passed. Research is reviewing the changes." if reviewable else
+                                 "Nothing was changed, so there is nothing to review." if gate["ok"] else
                                  "Checks failed. The changes stay on disk but are not activated, and review is skipped.")
         review = None
-        if gate["ok"]:
+        if reviewable:
             review, _ = await self._stage(run, "review", self._progress("review",
                 "Research is checking changed files against the verdict", self._ask(run, "research", (
                     f"Review the council's build.\n[Verdict]\n{v['verdict']}\n\n[Success metrics]\n"
@@ -497,9 +499,11 @@ class Council:
                     f"Open the changed files and verify each success metric yourself. {READ_ONLY_NOTE}\n{TOOLS_NOTE}"),
                     REVIEW, read_only=True, tools="required", max_turns=TURNS["review"])))
         else:
-            await self.room.stage("review", "skipped", "gate failed")
-            await self.room.send({"type": "build_progress", "phase": "review", "state": "skipped",
-                                  "elapsed": 0, "message": "Review skipped because automated checks failed"})
+            why = "nothing changed" if gate["ok"] else "gate failed"
+            await self.room.stage("review", "skipped", why)
+            await self.room.send({"type": "build_progress", "phase": "review", "state": "skipped", "elapsed": 0,
+                                  "message": "Review skipped: no file changed" if gate["ok"]
+                                  else "Review skipped because automated checks failed"})
         if review:
             met = "\n".join(f"- {'PASS' if c['met'] else 'FAIL'} {c['criterion']}: {c['how']}" for c in review["criteria"])
             await self.room.send({"type": "build_progress", "phase": "review",
@@ -531,7 +535,8 @@ class Council:
         changed = list(dict.fromkeys(changed))
         outcome = build_outcome(gate["ok"], approved, changed)
         if outcome == "no_changes":
-            failure = "Research approved, but no file changed: nothing was built."
+            failure = ("No file changed, so nothing was built and no review was run. The owner could not edit: "
+                       "check that its first working route has tools (Claude or Codex) and that Codex's sandbox works.")
         data = run.finish(outcome=outcome, verdict_run=v.get("run"),
                           changed_files=changed, checks_ok=gate["ok"], approved=approved,
                           criteria_met=criteria_tally(criteria), metrics_total=len(success_metrics),

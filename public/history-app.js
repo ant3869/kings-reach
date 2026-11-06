@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 const ROLE_COLOR = { main: '#d4a017', research: '#79c0ff', comms: '#a371f7', content: '#3fb950', ops: '#f85149' };
 const OUTCOMES = {
   verdict: ['Verdict locked', 'good'], built: ['Built', 'good'], needs_work: ['Needs work', 'warn'],
-  no_changes: ['Approved, nothing changed', 'warn'], preflight_failed: ['Preflight failed', 'bad'],
+  no_changes: ['Nothing was built', 'warn'], preflight_failed: ['Preflight failed', 'bad'],
   no_verdict: ['No verdict', 'bad'], no_takes: ['No takes', 'bad'],
 };
 const STAGE_COLORS = ['#79c0ff', '#a371f7', '#3fb950', '#d4a017', '#f85149', '#8b949e'];
@@ -204,7 +204,7 @@ function buildDetail(d) {
   const r = d.run;
   const files = Array.isArray(r.changed_files) ? r.changed_files : [];
   const verdict = r.outcome === 'built' ? '' : r.outcome === 'no_changes'
-    ? '<div class="notice">Research approved this build, but no file changed, so nothing was actually built.</div>'
+    ? `<div class="notice">${r.approved ? 'Research approved this build, but no file changed, so nothing was actually built.' : esc(r.failure_summary || 'No file changed, so nothing was built and no review was run.')}</div>`
     : `<div class="notice bad">${esc(r.failure_summary || buildFailureReason(r))}</div>`;
   return `<h3>Build <span class="id">${esc(r.id)}</span> ${badge(r.outcome)}</h3>` +
     `<div class="meta">${esc(when(r.started))} &middot; ${duration(r.total_s)} &middot; ${money(r.total_cost_usd)} &middot; ` +

@@ -31,6 +31,7 @@ class ExecuteTests(unittest.IsolatedAsyncioTestCase):
         self.saved_build = (council.build.preflight, council.build.gate)
         self.asked = []
         self.preflight_ok, self.gate_ok, self.approve, self.explode = True, True, True, None
+        self.edits = ["docs/x.md"]  # what the executor reports it changed (empty = Codex with a broken sandbox)
 
         async def ask(agent, prompt, *, schema=None, on_event=None, **kw):
             self.asked.append(agent)
@@ -44,7 +45,7 @@ class ExecuteTests(unittest.IsolatedAsyncioTestCase):
                 await on_event({"kind": "turn", "turn": 1, "maxTurns": 40})
                 await on_event({"kind": "tool", "tool": "Edit", "text": "Editing docs/x.md", "target": "docs/x.md", "edit": True})
             return {"ok": True, "provider": "claude", "hasTools": True, "data": {
-                "changed_files": ["docs/x.md"], "blocked": [], "spoken": "done",
+                "changed_files": self.edits, "blocked": [], "spoken": "done",
                 "done": [{"step": "change docs", "result": "changed"}]}}
 
         async def record(**kw):
@@ -109,6 +110,18 @@ class ExecuteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((final[0]["state"], final[0]["failed"]), ("failed", True))
         self.assertLess(final[0]["pct"], 100)
 
+    async def test_a_build_that_changed_nothing_skips_the_review_and_is_no_changes(self):
+        self.edits = []
+        room, data = await self.run_build()
+        self.assertEqual(data["outcome"], "no_changes")
+        self.assertEqual(self.asked.count("research"), 0, "nobody is paid to approve an empty build")
+        self.assertEqual(room.progress("review"), ["skipped"])
+        self.assertFalse(data["approved"])
+        self.assertIn("no review was run", data["failure_summary"])
+        final = room.final()
+        self.assertEqual((final[0]["state"], final[0]["failed"]), ("failed", True), "an empty build is never a success")
+        self.assertLess(final[0]["pct"], 100)
+
     async def test_review_rejection_is_a_failed_run_not_a_success(self):
         self.approve = False
         room, data = await self.run_build()
@@ -135,6 +148,17 @@ class ExecuteTests(unittest.IsolatedAsyncioTestCase):
         await self.run_build()
         self.assertTrue(council.RUNS_FILE.exists())
         self.assertNotEqual(council.RUNS_FILE.parent.name, "store")
+
+
+class BuildOutcomeTests(unittest.TestCase):
+    def test_outcome_table(self):
+        from ledger import build_outcome
+        self.assertEqual(build_outcome(True, True, ["a.py"]), "built")
+        self.assertEqual(build_outcome(True, False, ["a.py"]), "needs_work")
+        self.assertEqual(build_outcome(False, True, ["a.py"]), "needs_work")
+        self.assertEqual(build_outcome(True, True, []), "no_changes")
+        self.assertEqual(build_outcome(True, False, []), "no_changes", "no review happens when nothing changed")
+        self.assertEqual(build_outcome(False, False, []), "needs_work", "a failed gate is still a failure")
 
 
 if __name__ == "__main__":

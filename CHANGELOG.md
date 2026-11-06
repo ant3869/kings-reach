@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.14.8 - A build that changed nothing is no longer "reviewed and approved" (build `e80fb359`)
+
+Build `e80fb359` (plan a6bba3c9, all five steps owned by Main) changed no file, and Research still spent 4m29s and $0.67
+reviewing it and "approved" with 10/10 criteria. Cause chain, verified by a live probe:
+
+- Main's routes (edited in Settings) had no Claude route, so the Build skipped the tool-less ChatGPT route and ran on **Codex**.
+- **Codex's Windows sandbox is broken on this machine** (`helper_unknown_error: setup refresh had errors`, `[windows] sandbox =
+  "elevated"` in the owner's `~/.codex/config.toml`): it cannot start a process or write a file, yet replies "done". Probe:
+  `codex exec --sandbox workspace-write` asked to create one file; no file, exit 0. That is why Main "could not provide reliable
+  current source" and edited nothing.
+- Our bug: with zero changed files the gate trivially passed (nothing to compile) and the review ran anyway.
+
+Fixed here:
+- Review is skipped when no file changed (`review skipped: no file changed`), saving the cost and the false approval.
+- `build_outcome`: green checks + no changed files is `no_changes` regardless of review; the failure text now says the owner could
+  not edit and to check its route (Claude, or a working Codex sandbox).
+- History: label "Nothing was built" (was "Approved, nothing changed"); the notice shows the recorded reason. History client v4.
+- Tests: +2 python (67): an empty build skips the reviewer and is `no_changes`; outcome table.
+- NOT changed (owner's machine/data): Codex's sandbox setup and the Main route list. Builds assigned to Main need a Claude route.
+
 ## 2.14.7 - Provider settings: dropdowns of valid choices, refused on save
 
 The Settings > Providers page used free-text model boxes, so a mismatched pair saved fine and then failed on every call (Main's
