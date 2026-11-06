@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.15.4 - A single agent that is working no longer looks stalled (server v16)
+
+- Asking one agent (typed or by voice) never streamed its activity, unlike council runs, so a healthy tool run showed QUIET then STALLED after ~100 s while the agent was actually working (its tool processes were running). `Session.answer` now follows the agent through `Live`: the status panel shows its turns and tools, the card route line fills in `provider / model`, and the meter closes complete/failed.
+- New `tests/test_answer.py` (stubbed agents, no spend).
+- Observed, not changed: the first action of a direct voice question can take ~2 minutes because the agent starts your global Claude MCP servers and runs with full tool access (`bypassPermissions`, 12 turns).
+
 ## 2.15.3 - Cleaner card plate; one Welcome per page
 
 - The "route:" and "voice:" prefixes are gone from the card plate: it shows just `provider / model` and the voice name (the dropdown caret now lives inside the select and appears on hover/focus). Client v34.

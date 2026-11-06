@@ -28,6 +28,7 @@ try:
     from . import casting
     from .config import ALLOWED_ORIGINS, PID_FILE, WARROOM_PORT
     from .council import STAGES, Council
+    from .live import Live
     from .personas import get_persona, persona_prompt
     from .router import COUNCIL, read_pin, route, write_pin
     from .voice import Voice
@@ -36,12 +37,13 @@ except ImportError:  # run as a script: python warroom/server.py
     import casting
     from config import ALLOWED_ORIGINS, PID_FILE, WARROOM_PORT
     from council import STAGES, Council
+    from live import Live
     from personas import get_persona, persona_prompt
     from router import COUNCIL, read_pin, route, write_pin
     from voice import Voice
 
 PROTOCOL = "council-v4"  # bump only when the wire protocol changes (v4: activity + meter messages)
-SERVER_VERSION = 15  # bump on every server.py deploy; shown in the client via pong
+SERVER_VERSION = 16  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
@@ -137,14 +139,22 @@ class Session:
         return "\n".join(f"{who}: {what[:400]}" for who, what in self.history[-HISTORY_TURNS:])
 
     async def answer(self, agent_id, text):
+        live = Live(self)  # without the activity stream a working agent looks stalled: the page hears nothing from it
         await self.thinking(agent_id, True)
         try:
-            reply = await ab.ask(agent_id, (
-                f"[War Room conversation so far]\n{self.convo()}\n\nUser said: {text}\n\n"
-                "Answer in under 80 words of plain speech (it is read aloud). Use your tools if the answer "
-                "needs facts you can check."), system=persona_prompt(agent_id), memory_query=text, max_turns=12)
+            async with live.following(agent_id) as on_event:
+                reply = await ab.ask(agent_id, (
+                    f"[War Room conversation so far]\n{self.convo()}\n\nUser said: {text}\n\n"
+                    "Answer in under 80 words of plain speech (it is read aloud). Use your tools if the answer "
+                    "needs facts you can check."), system=persona_prompt(agent_id), memory_query=text, max_turns=12,
+                    on_event=on_event)
         finally:
             await self.thinking(agent_id, False)
+        if reply.get("provider"):
+            await self.send({"type": "provider", "agent_id": agent_id, "provider": reply["provider"],
+                             "model": reply.get("model", ""), "attempts": reply.get("attempts", [])})
+        await self.send({"type": "activity", "kind": "result", "agent_id": agent_id, "ok": bool(reply.get("ok"))})
+        await live.finish("complete" if reply.get("ok") else "failed")
         self.history.append(("you", text))
         await self.say(agent_id, reply.get("text") or "(no reply)", kind="reply" if reply.get("ok") else "error")
         if reply.get("ok"):
