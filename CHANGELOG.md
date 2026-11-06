@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.15.1 - Stale card art no longer shows under the live nameplate
+
+- Card images are cached for 24 h under fixed names, so browsers kept showing the old art (painted text under the new live text) after 2.15.0. Image URLs now carry the client version (`?v=32`), so every client bump fetches fresh art. Client v32.
+
 ## 2.15.0 - Live card nameplates and a voice dropdown under every card
 
 - The painted-in name/title on all 230 card images is gone (`scripts/card_plate.py`, also run by `build_card_art.py`).

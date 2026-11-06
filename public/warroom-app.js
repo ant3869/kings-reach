@@ -68,7 +68,8 @@ function setCardState(id, next, force) {
   if (!el || (el.dataset.state === next && !force)) return;
   const request = (stateRequest[id] || 0) + 1;
   stateRequest[id] = request;
-  const url = director.pick(next, id);
+  // Art is cached for a day under a fixed name; the client version in the URL makes every new build fetch fresh art.
+  const url = director.pick(next, id) + '?v=' + WR.version;
   const preload = new Image();
   preload.onerror = () => { if (stateRequest[id] === request) nextRotate[id] = Date.now() + 5000; };
   preload.onload = () => {

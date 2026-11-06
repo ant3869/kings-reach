@@ -116,7 +116,7 @@ try {
   // The art a seat may show is whatever the manifest pools say for its state; assert membership, not one filename.
   const manifest = await (await fetch(`${BASE}/warroom/card-states/manifest.json`)).json();
   const allowed = (state, id) => manifest.pools[state].map(([tpl]) => `/warroom/card-states/${tpl.replace('{role}', id)}`);
-  const showsPool = (c, state) => allowed(state, c.id).includes(c.src);
+  const showsPool = (c, state) => allowed(state, c.id).includes(c.src.split('?')[0]);
   const urls = [...new Set(Object.keys(manifest.pools).flatMap((s) => manifest.roles.flatMap((r) => allowed(s, r))))];
   const bad = [];
   for (let i = 0; i < urls.length; i += 40) {
@@ -129,6 +129,7 @@ try {
 
   let cards = await seats('speaking');
   check('all five cards have loaded art', cards.length === 5 && cards.every((c) => c.loaded), cards.map((c) => c.loaded).join());
+  check('card art URLs carry the client version so a stale cached copy can never show', await js(`[...document.querySelectorAll('.strip-a,.strip-b')].filter((i) => i.getAttribute('src')).every((i) => i.getAttribute('src').endsWith('?v=' + WR.version))`), '');
   check('speaker shows speaking art from its pool, the others stay idle', cards.every((c) => showsPool(c, c.id === 'main' ? 'speaking' : 'idle')), cards.map((c) => c.src.split('/').slice(-2).join('/')).join(' '));
   const rest = cards.filter((c) => c.id !== 'main');
   check('non-speaking cards share one top edge and size', rest.every((c) => c.top === rest[0].top && c.w === rest[0].w && c.h === rest[0].h), JSON.stringify(rest.map((c) => [c.top, c.w, c.h])));

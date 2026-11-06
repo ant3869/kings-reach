@@ -9,7 +9,7 @@ import { PROJECT_ROOT, WARROOM_PORT } from './config.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 
-export const WARROOM_CLIENT_VERSION = 31;
+export const WARROOM_CLIENT_VERSION = 32;
 export const WARROOM_PROTOCOL = 'council-v4'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
@@ -220,7 +220,7 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
     .map(
       (c) =>
         `<div class="seat" id="seat-${esc(c.id)}" style="--ac:${c.color}" data-state="idle">` +
-        `<img class="strip-a" src="/warroom/card-states/individual/idle-${esc(c.id)}.png" alt="">` +
+        `<img class="strip-a" src="/warroom/card-states/individual/idle-${esc(c.id)}.png?v=${WARROOM_CLIENT_VERSION}" alt="">` +
         `<img class="strip-b" alt="">` +
         `<span class="badge" id="badge-${esc(c.id)}"></span>` +
         // Title big, role name small beneath: both live text on the blank plate. The font shrinks for long titles.
