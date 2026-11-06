@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.14.6 - Fix #1: memory keyword recall broke on punctuation (reported by @mattabate)
+
+- `buildMemoryContext` built its FTS5 MATCH string by stripping only `" * : ( )`, so ordinary questions (`what's the status?`,
+  `check my e-mail`) were syntax errors and the words NOT / AND / NEAR were read as operators. The catch block only logged,
+  so keyword recall silently returned nothing for most questions. New `ftsMatchQuery()` keeps only letter/digit/underscore runs
+  (unicode aware) and double-quotes each word, which FTS5 always treats as a literal. Same limits as before (words over 2
+  characters, at most 8, OR-ed).
+- `tests/fts-query.test.mjs` runs real in-memory FTS5: it first proves the old query shape throws on those inputs, then that the
+  new one finds the right memory, never parses operator words, cannot be escaped with a quote, and keeps unicode.
+- Not changed: `searchMemoriesFts()` in `db.ts` still takes a raw query, but nothing calls it.
+- Known, not fixed: OR-ing every word means common words ("the") match many rows; ranking would help.
+
 ## 2.14.5 - Second successful Build: salvage hardening and provenance (summit `0bb2cb86`, build `d1fc1b47`; client v30)
 
 The summit ran while Claude's usage quota was exhausted, so every seat fell back to Codex (a clean fallback demo; salvage itself was

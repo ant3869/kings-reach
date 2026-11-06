@@ -20,6 +20,17 @@ export const NUDGE_HOURS = MEMORY_NUDGE_INTERVAL_HOURS;
 const lastNudge = new Map<string, { turns: number; at: number }>();
 
 /**
+ * Turn free text into a safe FTS5 MATCH expression (issue #1). FTS5 barewords allow only letters, digits and underscore,
+ * so "what's the status?" or "check my e-mail" was a syntax error, and the words NOT / AND / OR / NEAR were parsed as
+ * operators. We keep only letter/digit/underscore runs and double-quote each one, which FTS5 always reads as a literal.
+ * Returns '' when nothing searchable is left.
+ */
+export function ftsMatchQuery(text: string): string {
+  const words = text.match(/[\p{L}\p{N}_]+/gu) ?? [];
+  return words.filter((w) => w.length > 2).slice(0, 8).map((w) => `"${w}"`).join(' OR ');
+}
+
+/**
  * 5-layer retrieval:
  *  1. embedding similarity (0.3 min)  2. FTS5 keyword
  *  3. recent high-importance          4. hive mind (cross-agent)
@@ -54,7 +65,7 @@ export async function buildMemoryContext(chatId: string, userMessage: string): P
   const handle = getDb();
   // Layer 2 — FTS5 keyword search.
   try {
-    const keywords = userMessage.replace(/["*:()]/g, ' ').split(/\s+/).filter((w) => w.length > 2).slice(0, 8).join(' OR ');
+    const keywords = ftsMatchQuery(userMessage);
     if (keywords) {
       const fts = handle
         .prepare(
