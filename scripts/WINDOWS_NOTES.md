@@ -8,18 +8,18 @@ The spec's `install-launchd.sh` flow is macOS-only. On Windows 11:
 powershell -File scripts\agent-service.ps1 -Install
 ```
 
-This creates a Task Scheduler task named `Claudeclaw`:
+This creates a Task Scheduler task named `KingsReach`:
 
 - Trigger: ONLOGON for the current user
 - Action: `node.exe "<root>\dist\index.js"`, Start in `<root>`
-- Shows up under Task Scheduler Library as `Claudeclaw`
+- Shows up under Task Scheduler Library as `KingsReach`
 
 ## Useful schtasks commands (cmd-compatible)
 
 ```cmd
-schtasks /query /tn Claudeclaw /fo LIST
-schtasks /run /tn Claudeclaw
-schtasks /delete /tn Claudeclaw /f
+schtasks /query /tn KingsReach /fo LIST
+schtasks /run /tn KingsReach
+schtasks /delete /tn KingsReach /f
 ```
 
 ## Headless / boot without login

@@ -33,7 +33,7 @@ test('openReadOnly: recall can read a database it cannot write, and writes are r
   `;
   try {
     const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-      encoding: 'utf8', env: { ...process.env, CLAUDECLAW_DB: join(dir, 'test.db') },
+      encoding: 'utf8', env: { ...process.env, KINGS_REACH_DB: join(dir, 'test.db') },
     });
     assert.equal(r.status, 0, r.stderr);
     const out = JSON.parse(r.stdout.trim().split('\n').pop());

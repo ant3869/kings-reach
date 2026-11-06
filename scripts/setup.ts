@@ -35,7 +35,7 @@ function checkBin(bin: string, args: string[] = ['--version']): boolean {
 }
 
 async function main(): Promise<void> {
-  console.log(green('=== ClaudeClaw setup (Windows) ==='));
+  console.log(green('=== Kings Reach setup (Windows) ==='));
 
   const nodeMajor = Number(process.versions.node.split('.')[0]);
   if (nodeMajor < 20) {

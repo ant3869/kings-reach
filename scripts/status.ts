@@ -20,7 +20,7 @@ function readEnv(): Record<string, string> {
 }
 
 function pidAlive(): string {
-  const pidFile = path.join(PROJECT_ROOT, 'store', 'claudeclaw.pid');
+  const pidFile = path.join(PROJECT_ROOT, 'store', 'kings-reach.pid');
   if (!fs.existsSync(pidFile)) return 'not running (no pid file)';
   const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
   try {
@@ -34,7 +34,7 @@ function pidAlive(): string {
 function serviceStatus(): string {
   try {
     if (process.platform === 'win32') {
-      const out = execFileSync('schtasks', ['/query', '/tn', 'Claudeclaw', '/fo', 'LIST'], {
+      const out = execFileSync('schtasks', ['/query', '/tn', 'KingsReach', '/fo', 'LIST'], {
         encoding: 'utf8',
         timeout: 10_000,
       });
@@ -42,7 +42,7 @@ function serviceStatus(): string {
       return `Task Scheduler: ${state}`;
     }
     const out = execFileSync('launchctl', ['list'], { encoding: 'utf8', timeout: 10_000 });
-    return out.includes('com.claudeclaw') ? 'launchd: loaded' : 'launchd: not loaded';
+    return out.includes('com.kings-reach') ? 'launchd: loaded' : 'launchd: not loaded';
   } catch {
     return 'service: not registered';
   }
@@ -59,7 +59,7 @@ async function portOpen(port: number): Promise<boolean> {
 
 async function main(): Promise<void> {
   const env = readEnv();
-  console.log('=== ClaudeClaw status ===');
+  console.log('=== Kings Reach status ===');
   console.log(`platform: ${os.platform()} ${os.release()} | node ${process.version}`);
   console.log(`service: ${pidAlive()} | ${serviceStatus()}`);
   console.log(`telegram: ${env.TELEGRAM_BOT_TOKEN ? 'token set' : 'MISSING TELEGRAM_BOT_TOKEN'}`);

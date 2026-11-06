@@ -133,7 +133,7 @@ export function psLiteral(value: string): string {
 
 /** Last-resort TTS: OS speech (PowerShell SAPI on Windows, say on macOS). */
 export async function synthesizeOs(text: string): Promise<Buffer | null> {
-  const wav = path.join(os.tmpdir(), `claudeclaw-say-${Date.now()}.wav`);
+  const wav = path.join(os.tmpdir(), `kings-reach-say-${Date.now()}.wav`);
   try {
     if (process.platform === 'win32') {
       const script =

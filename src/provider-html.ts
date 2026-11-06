@@ -17,7 +17,7 @@ a{color:var(--blue)}header{display:flex;justify-content:space-between;align-item
 <script>
 var TOKEN=${safeToken};var state=null;var defs=[];var guide={};var choices={};var ready={};
 function h(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-function headers(write){var x={};if(TOKEN)x['x-claudeclaw-token']=TOKEN;if(write)x['Content-Type']='application/json';return x}
+function headers(write){var x={};if(TOKEN)x['x-kings-reach-token']=TOKEN;if(write)x['Content-Type']='application/json';return x}
 async function api(path,opt){var r=await fetch(path,Object.assign({headers:headers(Boolean(opt))},opt||{}));var b=await r.json();if(!r.ok)throw Error(b.error||('HTTP '+r.status));return b}
 function isReady(p){return ready[p]===true}
 function modelsOf(p){return choices[p]||[]}

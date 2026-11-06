@@ -17,7 +17,7 @@ export interface DashboardData {
 const SCRIPT = `
 var selAgent='main', selName='Main', lastOk=0, failures=[], everOk=false;
 var snapshot={agents:0,missions:0,memory:0,hive:0,war:false,tokens:0};
-function hdrs(extra){var h=extra||{};if(TOKEN)h['x-claudeclaw-token']=TOKEN;return h;}
+function hdrs(extra){var h=extra||{};if(TOKEN)h['x-kings-reach-token']=TOKEN;return h;}
 async function j(p){var r=await fetch(p,{headers:hdrs()});if(!r.ok)throw new Error(p+' (HTTP '+r.status+')');return r.json();}
 async function send(method,p,b){var r=await fetch(p,{method:method,headers:hdrs({'Content-Type':'application/json'}),body:b?JSON.stringify(b):undefined});return r.json();}
 function byId(id){return document.getElementById(id);}

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROJECT_ROOT, CLAUDECLAW_CONFIG } from './config.js';
+import { PROJECT_ROOT, KINGS_REACH_CONFIG } from './config.js';
 
 export interface AgentConfig {
   id: string;
@@ -24,7 +24,7 @@ const MAX_AGENTS = 20;
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
 function externalRoot(): string | null {
-  const raw = (CLAUDECLAW_CONFIG || '').trim();
+  const raw = (KINGS_REACH_CONFIG || '').trim();
   if (!raw) return null;
   if (raw.startsWith('~')) {
     const home = process.env.HOME ?? process.env.USERPROFILE ?? '';

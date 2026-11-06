@@ -8,7 +8,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = path.resolve(here, '..');
 export const STORE_DIR = path.join(PROJECT_ROOT, 'store');
 export const DB_PATH =
-  process.env.CLAUDECLAW_DB ?? path.join(STORE_DIR, 'claudeclaw.db');
+  process.env.KINGS_REACH_DB ?? path.join(STORE_DIR, 'claudeclaw.db');
 
 let db: Database.Database | null = null;
 

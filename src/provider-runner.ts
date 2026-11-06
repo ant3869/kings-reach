@@ -148,10 +148,10 @@ async function runOpenAICompatible(target: RouteTarget, opts: AgentOptions, open
   const body: Record<string, unknown> = { model: target.model, messages: [
     ...(opts.systemPrompt ? [{ role: 'system', content: opts.systemPrompt }] : []), { role: 'user', content: opts.message },
   ] };
-  if (opts.schema) body.response_format = { type: 'json_schema', json_schema: { name: 'claudeclaw_result', strict: true, schema: normalizeSchema(opts.schema, 'openai') } };
+  if (opts.schema) body.response_format = { type: 'json_schema', json_schema: { name: 'kings_reach_result', strict: true, schema: normalizeSchema(opts.schema, 'openai') } };
   const data = await post(`${base.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: {
     'Content-Type': 'application/json', Authorization: `Bearer ${key}`,
-    ...(openrouter ? { 'HTTP-Referer': 'http://localhost/claudeclaw', 'X-Title': 'ClaudeClaw' } : {}),
+    ...(openrouter ? { 'HTTP-Referer': 'http://localhost/kings-reach', 'X-Title': 'Kings Reach' } : {}),
   }, body: JSON.stringify(body) });
   const text = data.choices?.[0]?.message?.content ?? '';
   return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: target.provider,
@@ -177,7 +177,7 @@ async function run9Router(target: RouteTarget, opts: AgentOptions): Promise<Agen
     ...(opts.systemPrompt ? [{ role: 'system', content: opts.systemPrompt }] : []),
     { role: 'user', content: opts.schema ? `${opts.message}\n\nReturn only JSON matching this schema:\n${JSON.stringify(opts.schema)}` : opts.message },
   ] };
-  if (opts.schema) body.response_format = { type: 'json_schema', json_schema: { name: 'claudeclaw_result', strict: true,
+  if (opts.schema) body.response_format = { type: 'json_schema', json_schema: { name: 'kings_reach_result', strict: true,
     schema: normalizeSchema(opts.schema, 'openai') } };
   const data = await post(`${NINE_ROUTER_BASE_URL.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: {
     'Content-Type': 'application/json', Authorization: `Bearer ${key}`,

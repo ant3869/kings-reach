@@ -25,7 +25,7 @@ import { createBot, isAllowed, type BotHandle } from './bot.js';
 import { startWarroom } from './warroom-supervisor.js';
 import { readPid, removePidIfOurs, writePid } from './process-util.js';
 
-const CORE_PID_FILE = join(STORE_DIR, 'claudeclaw.pid');
+const CORE_PID_FILE = join(STORE_DIR, 'kings-reach.pid');
 
 function showBanner(): void {
   const bannerPath = join(PROJECT_ROOT, 'banner.txt');

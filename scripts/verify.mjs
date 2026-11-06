@@ -59,7 +59,7 @@ function request({ port, method = 'GET', urlPath = '/', headers = {}, body }) {
     req.end();
   });
 }
-const authed = (extra = {}) => ({ ...extra, ...(TOKEN ? { 'x-claudeclaw-token': TOKEN } : {}) });
+const authed = (extra = {}) => ({ ...extra, ...(TOKEN ? { 'x-kings-reach-token': TOKEN } : {}) });
 
 const readPidFile = (name) => {
   try {
@@ -144,7 +144,7 @@ function wsSession(timeoutMs) {
 }
 
 async function main() {
-  console.log(`ClaudeClaw verify  (dashboard :${DASH}, war room :${WAR}, token ${TOKEN ? 'set' : 'not set'})\n`);
+  console.log(`Kings Reach verify  (dashboard :${DASH}, war room :${WAR}, token ${TOKEN ? 'set' : 'not set'})\n`);
 
   const h = await request({ port: DASH, urlPath: '/api/health', headers: authed() });
   let health = {};
@@ -152,7 +152,7 @@ async function main() {
   if (check('GET /api/health', h.status === 200 && health.ok === true, `HTTP ${h.status}`)) {
     console.log(`      core v${health.version} pid ${health.pid} up ${health.uptimeSec}s | client versions ${JSON.stringify(health.clientVersions)} | agents ${health.agents}`);
     console.log(`      war room ${JSON.stringify(health.warroom)} | db ${JSON.stringify(health.db?.counts)}`);
-    check('core pid file == serving core pid', readPidFile('claudeclaw.pid') === health.pid, `file ${readPidFile('claudeclaw.pid')}`);
+    check('core pid file == serving core pid', readPidFile('kings-reach.pid') === health.pid, `file ${readPidFile('kings-reach.pid')}`);
     check('war room running + pid known', health.warroom?.running === true && Boolean(health.warroom?.pid));
     check('skills: library loaded, none rejected', (health.skills?.active ?? 0) >= 8 && health.skills?.rejected === 0, `${health.skills?.active} active, ${health.skills?.rejected} rejected`);
     check('skills: research agent holds deep-research + browser + agent-reach', ['deep-research', 'playwright-cli', 'agent-reach'].every((n) => [...(health.skills?.perAgent?.research?.required ?? []), ...(health.skills?.perAgent?.research?.available ?? [])].includes(n)));

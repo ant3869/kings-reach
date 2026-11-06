@@ -1,12 +1,12 @@
 # scripts/agent-service.ps1 - Windows equivalent of scripts/agent-service.sh + install-launchd.sh.
-# Registers ClaudeClaw as a Task Scheduler job (logon trigger) instead of a launchd plist.
+# Registers King's Reach as a Task Scheduler job (logon trigger) instead of a launchd plist.
 #
 #   Install:   powershell -File scripts\agent-service.ps1 -Install
 #   Uninstall: powershell -File scripts\agent-service.ps1 -Uninstall
 #   Status:    powershell -File scripts\agent-service.ps1 -Status
 #
 # Task Scheduler notes:
-#   - Task name: Claudeclaw, trigger: ONLOGON for the current user.
+#   - Task name: KingsReach, trigger: ONLOGON for the current user.
 #   - Action: node.exe "<root>\dist\index.js" with Start in <root> so store/ paths resolve.
 #   - schtasks has no "run on boot without login" for user tasks; for a headless box,
 #     use -User SYSTEM via an elevated shell or switch the task to "At startup" manually.
@@ -17,7 +17,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$TaskName = "Claudeclaw"
+$TaskName = "KingsReach"
 $Root = Split-Path -Parent $PSScriptRoot
 $Node = (Get-Command node -ErrorAction Stop).Source
 $Action = "`"$Node`" `"$Root\dist\index.js`""

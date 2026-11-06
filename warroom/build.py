@@ -18,7 +18,7 @@ try:
 except ImportError:  # run as a script
     from config import DASHBOARD_PORT, DASHBOARD_TOKEN, PROJECT_ROOT, STORE_DIR
 
-CORE_PID_FILE = STORE_DIR / "claudeclaw.pid"
+CORE_PID_FILE = STORE_DIR / "kings-reach.pid"
 CORE_LOG_FILE = STORE_DIR / "logs" / "core.log"
 TSC_JS = PROJECT_ROOT / "node_modules" / "typescript" / "bin" / "tsc"
 
@@ -112,7 +112,7 @@ def _request_core_shutdown():
     """POST /api/admin/shutdown (no Origin header -> passes the CSRF guard). True if accepted."""
     req = urllib.request.Request(
         f"http://127.0.0.1:{DASHBOARD_PORT}/api/admin/shutdown", data=b"{}", method="POST",
-        headers={"Content-Type": "application/json", "x-claudeclaw-token": DASHBOARD_TOKEN},
+        headers={"Content-Type": "application/json", "x-kings-reach-token": DASHBOARD_TOKEN},
     )
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:

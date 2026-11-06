@@ -1,9 +1,13 @@
+<p align="center">
+  <img src="docs/banner.png" alt="King's Reach: the AI council for command, build, and execution" width="100%">
+</p>
+
 # King's Reach
 
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.14.9. Working title — formerly claudeclaw.
+and a dashboard. Version 2.14.10.
 
 ## The five roles
 

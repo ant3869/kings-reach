@@ -35,7 +35,7 @@ export const UPLOADS_DIR = join(PROJECT_ROOT, 'workspace', 'uploads');
 // --- core ---
 export const TELEGRAM_BOT_TOKEN = str('TELEGRAM_BOT_TOKEN', '');
 export const ALLOWED_CHAT_ID = str('ALLOWED_CHAT_ID', '');
-export const CLAUDECLAW_CONFIG = str('CLAUDECLAW_CONFIG', '');
+export const KINGS_REACH_CONFIG = str('KINGS_REACH_CONFIG', '');
 export const DEFAULT_AGENT_ID = str('DEFAULT_AGENT_ID', 'main');
 
 // --- voice: stt_groq + tts_kokoro_local (selected) ---

@@ -33,7 +33,7 @@ const badge = (outcome) => { const [label, tone] = outcomeOf(outcome); return `<
 
 // --- api -------------------------------------------------------------------------------
 async function api(path, options) {
-  const headers = HIST.token ? { 'x-claudeclaw-token': HIST.token } : {};
+  const headers = HIST.token ? { 'x-kings-reach-token': HIST.token } : {};
   const res = await fetch(path, Object.assign({ headers }, options || {}));
   const body = await res.json();
   if (!res.ok) throw new Error(body.error || 'HTTP ' + res.status);

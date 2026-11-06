@@ -4,7 +4,7 @@
 
 import path from 'node:path';
 import { runAgent } from './agent.js';
-import { effectiveMaxTurns, PROJECT_ROOT, CLAUDECLAW_CONFIG } from './config.js';
+import { effectiveMaxTurns, PROJECT_ROOT, KINGS_REACH_CONFIG } from './config.js';
 import { loadAgentConfigs, type AgentConfig } from './agent-config.js';
 import { getSession, setSession, logToHiveMind } from './db.js';
 
@@ -13,8 +13,8 @@ export type { AgentConfig };
 export const AGENT_ID_RE = /^[a-z][a-z0-9_-]{0,29}$/;
 export const MAX_AGENTS = 20;
 export { PROJECT_ROOT };
-export const AGENT_YAML = CLAUDECLAW_CONFIG
-  ? path.join(CLAUDECLAW_CONFIG, 'agent.yaml')
+export const AGENT_YAML = KINGS_REACH_CONFIG
+  ? path.join(KINGS_REACH_CONFIG, 'agent.yaml')
   : path.join(PROJECT_ROOT, 'agent.yaml');
 
 export interface AgentResult {

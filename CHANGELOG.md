@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.14.10 - Renamed ClaudeClaw to King's Reach everywhere; README banner
+
+- Display/brand text, agent prompts, scripts, the auth header (`x-kings-reach-token`), env vars (`KINGS_REACH_CONFIG`,
+  `KINGS_REACH_DB`), the pid file (`store/kings-reach.pid`), the Task Scheduler task name (`KingsReach`), temp file and
+  OpenRouter labels. `docs/banner.png` now tops the README.
+- Deliberately NOT renamed (would orphan real data or paths): the database file `store/claudeclaw.db`, the voice-model
+  folder `D:\models\claudeclaw`, and the `H:\projects\claudeclaw` folder paths. Rename those by hand when convenient.
+- Owner note: if your own `.env` still has `CLAUDECLAW_CONFIG`/`CLAUDECLAW_DB`, rename the key.
+
 ## 2.14.9 - A route that crashes after spending money still has that money counted
 
 Council verdict a6bba3c9. The route loop in `runAgent` only counted the cost of a failed route when the route RETURNED a

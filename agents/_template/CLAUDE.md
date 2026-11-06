@@ -1,6 +1,6 @@
 # [AGENT_NAME]
 
-You are [AGENT_NAME], a specialist agent in this ClaudeClaw system.
+You are [AGENT_NAME], a specialist agent in this King's Reach system.
 Your focus area: [AGENT_DESCRIPTION]
 
 ## Your Role

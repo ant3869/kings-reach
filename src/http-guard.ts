@@ -1,7 +1,7 @@
 // src/http-guard.ts - one middleware for every /api route. Three locks:
 //  1. Host allowlist  -> blocks DNS-rebinding (evil.com resolving to 127.0.0.1).
 //  2. Same-origin writes -> blocks drive-by CSRF (any tab POSTing /api/chat = agent with tools).
-//  3. Optional token  -> DASHBOARD_TOKEN via `x-claudeclaw-token` header or `?token=`.
+//  3. Optional token  -> DASHBOARD_TOKEN via `x-kings-reach-token` header or `?token=`.
 
 import { timingSafeEqual } from 'node:crypto';
 import type { MiddlewareHandler } from 'hono';
@@ -58,7 +58,7 @@ export function apiGuard(opts: GuardOptions): MiddlewareHandler {
         host: c.req.header('host') ?? '',
         origin: c.req.header('origin'),
         fetchSite: c.req.header('sec-fetch-site'),
-        token: c.req.header('x-claudeclaw-token') ?? c.req.query('token'),
+        token: c.req.header('x-kings-reach-token') ?? c.req.query('token'),
       },
       opts,
     );
