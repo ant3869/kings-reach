@@ -24,7 +24,7 @@ chrome.stderr.on('data', (d) => { chromeErr += d; });
 const FAKE_WS = `window.__sent = [];
 window.WebSocket = class { constructor(u) { window.__ws = this; this.url = u; this.readyState = 1; this.binaryType = '';
   setTimeout(() => this.onopen && this.onopen({}), 40); }
-  send(m) { window.__sent.push(String(m)); } close() {} };`;
+  send(m) { window.__sent.push(typeof m === 'string' ? m : 'BINARY:' + m.byteLength); } close() {} };`;
 
 let results = [];
 function check(name, ok, detail = '') {
@@ -129,6 +129,8 @@ try {
 
   let cards = await seats('speaking');
   check('all five cards have loaded art', cards.length === 5 && cards.every((c) => c.loaded), cards.map((c) => c.loaded).join());
+  await js(`send(new Int16Array(16000).buffer)`);
+  check('microphone audio goes out as one binary frame, not JSON', (await sent()).filter((m) => typeof m === 'string' && m.startsWith('BINARY:')).join() === 'BINARY:32000' && !(await sent()).some((m) => m && m.type === undefined && typeof m === 'object'), JSON.stringify(await sent()));
   check('card art URLs carry the client version so a stale cached copy can never show', await js(`[...document.querySelectorAll('.strip-a,.strip-b')].filter((i) => i.getAttribute('src')).every((i) => i.getAttribute('src').endsWith('?v=' + WR.version))`), '');
   check('speaker shows speaking art from its pool, the others stay idle', cards.every((c) => showsPool(c, c.id === 'main' ? 'speaking' : 'idle')), cards.map((c) => c.src.split('/').slice(-2).join('/')).join(' '));
   const rest = cards.filter((c) => c.id !== 'main');

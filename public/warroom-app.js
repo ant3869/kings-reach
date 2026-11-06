@@ -315,7 +315,10 @@ function send(obj) {
     bubble('war room', 'not connected yet; reconnecting...', 'err');
     return false;
   }
-  ws.send(typeof obj === 'string' ? obj : JSON.stringify(obj));
+  // Microphone audio is a raw ArrayBuffer: the server treats a binary frame as one utterance for Whisper. JSON.stringify of
+  // an ArrayBuffer is "{}", which arrives as "unknown message type: None" and the speech is never transcribed.
+  const raw = typeof obj === 'string' || obj instanceof ArrayBuffer || ArrayBuffer.isView(obj);
+  ws.send(raw ? obj : JSON.stringify(obj));
   return true;
 }
 

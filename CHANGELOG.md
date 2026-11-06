@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.15.2 - Speech-to-text works: microphone audio was being sent as JSON
+
+- `send()` JSON-encoded the mic's ArrayBuffer (`{}`), so the server answered "unknown message type: None" and Whisper never got the audio; the Voice panel sat on "transcribing...". Binary audio now goes out as a binary frame. Client v33.
+- New UI check: a mic utterance leaves the page as one binary frame.
+
 ## 2.15.1 - Stale card art no longer shows under the live nameplate
 
 - Card images are cached for 24 h under fixed names, so browsers kept showing the old art (painted text under the new live text) after 2.15.0. Image URLs now carry the client version (`?v=32`), so every client bump fetches fresh art. Client v32.

@@ -9,7 +9,7 @@ import { PROJECT_ROOT, WARROOM_PORT } from './config.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 
-export const WARROOM_CLIENT_VERSION = 32;
+export const WARROOM_CLIENT_VERSION = 33;
 export const WARROOM_PROTOCOL = 'council-v4'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
