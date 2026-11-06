@@ -80,6 +80,21 @@ export interface Attempt { provider: ProviderId; model: string; error?: string; 
 /** Total spend across attempts that produced no answer. */
 export const wastedCost = (attempts: Attempt[]): number => attempts.reduce((sum, a) => sum + (a.costUsd ?? 0), 0);
 
+const REPORTED_COST = Symbol('reportedCostUsd');
+
+/** Tags a thrown error with money its route already reported, so the route loop can still count it. Only a finite, non-negative cost is kept. */
+export function attachReportedCost(err: unknown, costUsd: number | undefined): Error {
+  const error = err instanceof Error ? err : new Error(String(err));
+  if (typeof costUsd === 'number' && Number.isFinite(costUsd) && costUsd >= 0) {
+    (error as unknown as Record<symbol, number>)[REPORTED_COST] = costUsd;
+  }
+  return error;
+}
+
+export function reportedCost(err: unknown): number | undefined {
+  return err instanceof Error ? (err as unknown as Record<symbol, number | undefined>)[REPORTED_COST] : undefined;
+}
+
 export class ProviderRoutesError extends Error {
   constructor(public readonly agentId: string, public readonly attempts: Attempt[], public readonly handoff?: string) {
     super(`all provider routes failed for ${agentId}`);
@@ -220,7 +235,7 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
     }
     } catch (err) {
       const cap = turnCapMessage(err);
-      if (!cap) throw err;
+      if (!cap) throw attachReportedCost(err, costUsd);
       error = error ?? cap; // keep the session id and cost gathered so far: runAgent() can now resume and salvage
     }
 
@@ -252,7 +267,9 @@ async function salvage(opts: AgentOptions, model: string, failed: AgentResult): 
   let wrap: AgentResult;
   try {
     wrap = await runClaudeAgent({ ...opts, model, sessionId: failed.newSessionId, message: WRAP_UP, maxTurns: 4 });
-  } catch {
+  } catch (err) {
+    const thrown = reportedCost(err);
+    if (thrown !== undefined) failed.costUsd = (failed.costUsd ?? 0) + thrown;
     return null;
   }
   failed.costUsd = (failed.costUsd ?? 0) + (wrap.costUsd ?? 0);
@@ -304,6 +321,7 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
         throw new Error(result.error ?? 'empty result');
       }
       attempts.push({ ...target, ...(salvaged ? { salvaged: true } : {}) });
+      const ownCost = result.costUsd;
       const wasted = wastedCost(attempts);
       if (wasted) result.costUsd = (result.costUsd ?? 0) + wasted; // earlier failed routes were paid for too
       recordProviderOutcome(target.provider, target.model, true);
@@ -313,7 +331,7 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
       if (target.provider !== 'claude' && opts.chatId && (result.inputTokens || result.outputTokens)) {
         try {
           logTokenUsage(opts.chatId, agentId, result.model ?? target.model,
-            result.inputTokens ?? 0, result.outputTokens ?? 0, result.costUsd);
+            result.inputTokens ?? 0, result.outputTokens ?? 0, ownCost); // failed Claude routes log their own cost already
         } catch (err) {
           logger.warn({ err }, 'external provider token usage logging failed (non-fatal)');
         }
@@ -326,7 +344,8 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
     } catch (err) {
       // Provider CLIs often prepend hook/MCP noise; the actionable API/schema error is at the end.
       const reason = String(err).slice(-1500);
-      attempts.push({ ...target, error: reason, ...(spent ? { costUsd: spent } : {}) });
+      const burned = spent ?? reportedCost(err);
+      attempts.push({ ...target, error: reason, ...(burned ? { costUsd: burned } : {}) });
       recordProviderOutcome(target.provider, target.model, false, reason);
       opts.onActivity?.({ kind: 'route', state: 'failed', provider: target.provider, model: target.model,
         text: `${target.provider} could not finish: ${redact(reason).replace(/\s+/g, ' ').slice(-110)}` });

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.14.9 - A route that crashes after spending money still has that money counted
+
+Council verdict a6bba3c9. The route loop in `runAgent` only counted the cost of a failed route when the route RETURNED a
+failure. Two throw paths dropped cost the provider had already reported (new tests execute the real loop with a faked SDK):
+
+- `runClaudeAgent` rethrew a non-turn-cap SDK error without its local `costUsd`. It now tags the error
+  (`attachReportedCost`, finite non-negative costs only) and `runAgent` records it in `attempts` once.
+- `salvage` swallowed a throwing wrap-up call and lost that call's cost. It now adds it to the capped attempt before returning null.
+- Token ledger: an external fallback logged `result.costUsd`, which already includes the failed routes' cost, while the failed
+  Claude route had logged its own row, so summing `token_usage` double-counted. The fallback now logs its own route cost only.
+- `runAgentWithRetry` is unchanged and has no callers. Contract (pinned by a test): each `runAgent` call owns its ledger.
+- Known gap, not fixed: a route that throws mid-stream (not at the turn cap) still loses its handoff notes.
+- `npm test` now passes `--experimental-test-module-mocks` (needed by `tests/agent-cost-routes.test.mjs`).
+
 ## 2.14.8 - A build that changed nothing is no longer "reviewed and approved" (build `e80fb359`)
 
 Build `e80fb359` (plan a6bba3c9, all five steps owned by Main) changed no file, and Research still spent 4m29s and $0.67
