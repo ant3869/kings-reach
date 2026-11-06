@@ -2,7 +2,7 @@
   "main": {
     "name": "Main",
     "title": "Hand of the King",
-    "kokoro_voice": "bm_george",
+    "kokoro_voice": "bm_lewis",
     "speed": 1.0,
     "personality": "Hand of the King. Coordinates the realm, decomposes problems, assigns the right specialist, and owns the final call. Direct, authoritative, no-nonsense."
   },

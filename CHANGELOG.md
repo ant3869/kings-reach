@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.15.5 - Card text centred; audit fixes (client v35, server v17)
+
+- Card plate: title, role, route and voice are centred on the card and the role/route/voice lines sit at the same height on every card (the voice `<select>` left-aligned its text inside a box sized to the widest voice name; the title line height varied with its shrunk font). Two new UI checks measure both.
+- Fixed: a tab that had just closed made the voice-change broadcast raise, which aborted the handler and was then misread as the *current* tab disconnecting. One shared `broadcast()` now skips dead tabs (also used by the voice warm-up). Regression test added, proven red on the old code.
+- Removed an unused variable (`src/memory.ts`); `tsc --noUnusedLocals --noUnusedParameters` is clean.
+- `warroom/voices.json` now carries the voices you picked in the dropdown.
+
 ## 2.15.4 - A single agent that is working no longer looks stalled (server v16)
 
 - Asking one agent (typed or by voice) never streamed its activity, unlike council runs, so a healthy tool run showed QUIET then STALLED after ~100 s while the agent was actually working (its tool processes were running). `Session.answer` now follows the agent through `Live`: the status panel shows its turns and tools, the card route line fills in `provider / model`, and the meter closes complete/failed.

@@ -43,7 +43,7 @@ except ImportError:  # run as a script: python warroom/server.py
     from voice import Voice
 
 PROTOCOL = "council-v4"  # bump only when the wire protocol changes (v4: activity + meter messages)
-SERVER_VERSION = 16  # bump on every server.py deploy; shown in the client via pong
+SERVER_VERSION = 17  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
@@ -55,6 +55,15 @@ SESSIONS = set()
 def log(*parts):
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S")  # without it, thousands of connect lines cannot be told apart by day
     print(f"[warroom] {stamp}", *parts, flush=True)
+
+
+async def broadcast(obj):
+    """Send to every open tab. A tab that has just gone away must never break the send to the others."""
+    for session in list(SESSIONS):
+        try:
+            await session.send(obj)
+        except websockets.ConnectionClosed:
+            pass
 
 
 class Session:
@@ -228,8 +237,7 @@ class Session:
             await self.send(casting.casting_message())  # puts the dropdown back to what is really saved
             return
         log("voice:", agent_id, "->", voice)
-        for session in list(SESSIONS):
-            await session.send(casting.casting_message())
+        await broadcast(casting.casting_message())
         if self.voice_on:
             persona = get_persona(agent_id)
             self.speech.put_nowait((agent_id, f"I am {persona['name']}, the {persona['title']}."))
@@ -269,11 +277,7 @@ async def handle_client(websocket):
 async def warm_voice():
     info = await VOICE.warm()
     log("voice:", info["state"], "-", info["detail"])
-    for s in list(SESSIONS):
-        try:
-            await s.send(info)
-        except websockets.ConnectionClosed:
-            pass
+    await broadcast(info)
 
 
 def claim_port():

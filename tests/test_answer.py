@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "warroom"))
 
 import server  # noqa: E402
+from websockets.exceptions import ConnectionClosedOK  # noqa: E402
 
 
 class FakeSocket:
@@ -73,6 +74,32 @@ class AnswerTests(unittest.IsolatedAsyncioTestCase):
         final = [m for m in self.sent() if m.get("type") == "meter" and m.get("final")]
         self.assertEqual([m["state"] for m in final], ["failed"])
         self.assertTrue(any(m.get("kind") == "error" for m in self.sent()))
+
+
+class DeadSocket:
+    async def send(self, data):
+        raise ConnectionClosedOK(None, None)
+
+
+class BroadcastTests(unittest.IsolatedAsyncioTestCase):
+    async def test_a_dead_tab_cannot_break_a_voice_change_for_the_live_one(self):
+        live_ws = FakeSocket()
+        live, dead = server.Session(live_ws), server.Session(DeadSocket())
+        saved = (server.casting.set_voice, server.casting.casting_message, set(server.SESSIONS))
+        server.casting.set_voice = lambda agent, voice: {}
+        server.casting.casting_message = lambda: {"type": "casting", "voices": [], "current": {}}
+        server.SESSIONS.clear()
+        server.SESSIONS.update({dead, live})  # the dead tab may come first in any order
+        try:
+            await live.change_voice("main", "bm_george")  # must not raise, must still reach the live tab
+        finally:
+            server.casting.set_voice, server.casting.casting_message = saved[0], saved[1]
+            server.SESSIONS.clear()
+            server.SESSIONS.update(saved[2])
+            live.close()
+            dead.close()
+        import json
+        self.assertTrue(any(json.loads(x).get("type") == "casting" for x in live_ws.out if isinstance(x, str)))
 
 
 if __name__ == "__main__":

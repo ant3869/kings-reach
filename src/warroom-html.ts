@@ -9,7 +9,7 @@ import { PROJECT_ROOT, WARROOM_PORT } from './config.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 
-export const WARROOM_CLIENT_VERSION = 34;
+export const WARROOM_CLIENT_VERSION = 35;
 export const WARROOM_PROTOCOL = 'council-v4'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
@@ -93,12 +93,12 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
    Positions are fractions of the card height (--ch) so the 164px layout below needs no second set of numbers. */
 .seat{--ch:270px}
 .seat .plate{position:absolute;z-index:3;left:12px;right:12px;top:calc(var(--ch)*.65);text-align:center;pointer-events:none}
-.seat .ptitle{display:block;font:700 var(--tfs,17px)/1.15 Georgia,serif;color:#f6e9c0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 9px #000c}
-.seat .pname{display:block;margin-top:2px;font:italic 11.5px Georgia,serif;color:#cdbf95;text-shadow:0 1px 2px #000}
+.seat .ptitle{display:flex;align-items:center;justify-content:center;height:21px;font:700 var(--tfs,17px)/1 Georgia,serif;color:#f6e9c0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 9px #000c}
+.seat .pname{display:block;margin-top:1px;font:italic 11.5px Georgia,serif;color:#cdbf95;text-shadow:0 1px 2px #000}
 .seat .rule{position:absolute;z-index:3;left:24%;right:24%;top:calc(var(--ch)*.795);height:1px;background:linear-gradient(90deg,transparent,#c9a24a,transparent);opacity:.75;pointer-events:none}
-.seat .route{position:absolute;z-index:3;top:calc(var(--ch)*.815);left:12px;right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbbd96;font:10px system-ui;text-shadow:0 1px 2px #000;pointer-events:none}
+.seat .route{position:absolute;z-index:3;top:calc(var(--ch)*.815);left:12px;right:12px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cbbd96;font:10px system-ui;text-shadow:0 1px 2px #000;pointer-events:none}
 .seat .voice{position:absolute;z-index:4;top:calc(var(--ch)*.87);left:12px;right:12px;display:flex;align-items:center;justify-content:center;gap:4px;color:#8f856c;font:10px system-ui;text-shadow:0 1px 2px #000}
-.seat .voice select{appearance:none;-webkit-appearance:none;max-width:118px;padding:1px 15px;color:#d9c995;font:10px system-ui;background:transparent no-repeat right 5px center/8px 5px;border:1px solid transparent;border-radius:6px;text-overflow:ellipsis;cursor:pointer;color-scheme:dark}
+.seat .voice select{appearance:none;-webkit-appearance:none;max-width:118px;padding:1px 15px;text-align:center;text-align-last:center;color:#d9c995;font:10px system-ui;background:transparent no-repeat right 5px center/8px 5px;border:1px solid transparent;border-radius:6px;text-overflow:ellipsis;cursor:pointer;color-scheme:dark}
 /* the caret appears only on hover/focus, so at rest the voice reads as plain text */
 .seat .voice:hover select,.seat .voice select:focus{border-color:#b78a33;background-color:#0b0905e6;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0h8L4 5z' fill='%23b78a33'/%3E%3C/svg%3E");color:#f4e3a8}
 .seat .voice select:disabled{cursor:default;opacity:.8}

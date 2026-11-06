@@ -262,12 +262,17 @@ try {
     return { id: c.id, title: c.title, name: c.name, shownTitle: t.textContent, shownName: n.textContent,
       titlePx: parseFloat(getComputedStyle(t).fontSize), namePx: parseFloat(getComputedStyle(n).fontSize),
       fits: t.scrollWidth <= seat.querySelector('.plate').clientWidth + 1,
-      card: box(seat.querySelector('.strip-a')), pin: box(seat.querySelector('.pin')), route: box(seat.querySelector('.route')), voice: box(seat.querySelector('.voice')),
+      card: box(seat.querySelector('.strip-a')), pin: box(seat.querySelector('.pin')), route: box(seat.querySelector('.route')), voice: box(seat.querySelector('.voice')), sel: box(seat.querySelector('.voice select')),
+      selAlign: getComputedStyle(seat.querySelector('.voice select')).textAlignLast, routeAlign: getComputedStyle(seat.querySelector('.route')).textAlign,
       titleBox: box(t), nameBox: box(n), emblemLine: seat.querySelector('.rule').getBoundingClientRect().top }; }))`));
   check('nameplate: title is the big live line and the role name the small one beneath it', plate.every((p) => p.shownTitle === (p.title || p.name) && p.shownName === p.name && p.titlePx > p.namePx && p.titleBox.bottom <= p.nameBox.top + 1), JSON.stringify(plate.map((p) => [p.shownTitle, p.titlePx])));
   check('nameplate: every title fits the plate on one line', plate.every((p) => p.fits), plate.filter((p) => !p.fits).map((p) => p.title).join());
   check('layout: Pin sits below the card, not on it', plate.every((p) => p.pin.top >= p.card.bottom - 1), JSON.stringify(plate.map((p) => [Math.round(p.pin.top), Math.round(p.card.bottom)])));
   check('layout: route and voice are on the card plate, below the title and name', plate.every((p) => p.route.top >= p.nameBox.bottom - 1 && p.voice.top >= p.route.bottom - 1 && p.voice.bottom <= p.card.bottom), JSON.stringify(plate[0]));
+  const mid = (b) => (b.left + b.right) / 2;
+  check('alignment: title, role, route and voice are all centred on the card', plate.every((p) => [p.titleBox, p.nameBox, p.sel].every((b) => Math.abs(mid(b) - mid(p.card)) <= 1.5) && p.selAlign === 'center' && p.routeAlign === 'center'), JSON.stringify(plate.map((p) => [Math.round(mid(p.card)), Math.round(mid(p.titleBox)), Math.round(mid(p.nameBox)), Math.round(mid(p.sel))])));
+  const rise = (key) => plate.map((p) => Math.round(p[key].top - p.card.top));
+  check('alignment: the role, route and voice lines sit at the same height on every card', ['nameBox', 'route', 'sel'].every((k) => Math.max(...rise(k)) - Math.min(...rise(k)) <= 1), JSON.stringify({ role: rise('nameBox'), route: rise('route'), voice: rise('sel') }));
   const cast = { type: 'casting', current: { main: 'bm_george', research: 'bm_fable', comms: 'bf_isabella', content: 'af_heart', ops: 'am_onyx' },
     voices: [['af_heart', 'Heart', 'American female'], ['am_onyx', 'Onyx', 'American male'], ['bf_isabella', 'Isabella', 'British female'], ['bm_fable', 'Fable', 'British male'], ['bm_george', 'George', 'British male']].map(([id, name, group]) => ({ id, name, group })) };
   await js(`window.__ws.onmessage({ data: ${JSON.stringify(JSON.stringify(cast))} })`);

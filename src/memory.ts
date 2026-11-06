@@ -44,7 +44,6 @@ export async function buildMemoryContext(chatId: string, userMessage: string): P
   const push = (id: number | null, text: string, importance?: number) => {
     if (!text) return;
     const suffix = importance !== undefined ? ` (importance: ${importance})` : '';
-    const key = id ?? -lines.length - 1;
     if (id !== null) {
       if (seen.has(id)) return;
       seen.add(id);
