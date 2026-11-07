@@ -38,6 +38,9 @@ export function buildModelChoices(models: RouterModel[], health: ProviderHealth[
     openai: examples('openai'),
     openrouter: examples('openrouter'),
     ollama: ollamaInstalled.map((id) => ({ id })),
+    openclaw: examples('openclaw'),
+    hermes: examples('hermes'),
+    codepuppy: examples('codepuppy'),
   };
 }
 

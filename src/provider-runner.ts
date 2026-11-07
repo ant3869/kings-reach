@@ -12,6 +12,7 @@ import {
 import type { AgentOptions, AgentResult } from './agent.js';
 import { codexActivity } from './activity.js';
 import { claudeAuth } from './claude-auth.js';
+import { harnessHealth, isHarness, runHarness } from './harness-runner.js';
 import { loadProviderState, type ProviderId, type RouteTarget } from './provider-config.js';
 
 interface CommandResult { code: number | null; stdout: string; stderr: string; }
@@ -201,7 +202,18 @@ async function runOllama(target: RouteTarget, opts: AgentOptions): Promise<Agent
     outputTokens: Number(data.eval_count ?? 0) || undefined };
 }
 
+async function runHarnessRoute(target: RouteTarget, opts: AgentOptions): Promise<AgentResult> {
+  if (!isHarness(target.provider)) throw new Error(`not a harness: ${target.provider}`);
+  const started = Date.now();
+  const reply = await runHarness(target.provider, { prompt: fullPrompt(opts), model: target.model, readOnly: opts.readOnly },
+    (exe, args, input, timeoutMs) => command(exe, args, input, timeoutMs), join(STORE_DIR, 'provider-tmp'));
+  return { text: reply.text, model: reply.model ?? target.model, provider: target.provider, newSessionId: reply.sessionId,
+    inputTokens: reply.inputTokens, outputTokens: reply.outputTokens, durationMs: Date.now() - started,
+    structured: parseStructured(reply.text, opts.schema) };
+}
+
 export async function runExternalProvider(target: RouteTarget, opts: AgentOptions): Promise<AgentResult> {
+  if (isHarness(target.provider)) return runHarnessRoute(target, opts);
   if (target.provider === 'codex') return runCodex(target, opts);
   if (target.provider === 'meta' || target.provider === '9router' || target.provider === 'chatgpt') return run9Router(target, opts);
   if (target.provider === 'gemini') return runGemini(target, opts);
@@ -232,6 +244,7 @@ export async function getProviderHealth(catalog?: RouterModel[]): Promise<Provid
     ollama = { id: 'ollama', available: models.length > 0, detail: models.length ? `${models.length} local model(s)` : 'running, no models installed', models };
   } catch { /* expected when Ollama is off */ }
   const claude = await claudeAuth();
+  const harnesses = await harnessHealth((exe, args, input, timeoutMs) => command(exe, args, input, timeoutMs));
   const routerModels = catalog ?? await get9RouterCatalog();
   const routerReady = Boolean(nineRouterKey()) && routerModels.length > 0;
   const metaCount = routerModels.filter((m) => /^(meta\/|cf\/@cf\/meta\/)/.test(m.id)).length;
@@ -248,6 +261,7 @@ export async function getProviderHealth(catalog?: RouterModel[]): Promise<Provid
     { id: 'openai', available: Boolean(OPENAI_API_KEY), detail: OPENAI_API_KEY ? 'OPENAI_API_KEY configured' : 'OPENAI_API_KEY missing' },
     { id: 'openrouter', available: Boolean(OPENROUTER_API_KEY), detail: OPENROUTER_API_KEY ? 'OPENROUTER_API_KEY configured' : 'OPENROUTER_API_KEY missing' },
     ollama,
+    ...harnesses,
   ];
   const observed = loadProviderState();
   return base.map((raw) => {

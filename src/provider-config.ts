@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { GEMINI_TEXT_MODEL, STORE_DIR } from './config.js';
 import type { TierConfig } from './difficulty.js';
 
-export const PROVIDER_IDS = ['claude', 'codex', 'chatgpt', 'meta', '9router', 'gemini', 'openai', 'openrouter', 'ollama'] as const;
+export const PROVIDER_IDS = ['claude', 'codex', 'chatgpt', 'meta', '9router', 'gemini', 'openai', 'openrouter', 'ollama', 'openclaw', 'hermes', 'codepuppy'] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type ToolNeed = 'required' | 'preferred' | 'none';
 
@@ -50,6 +50,13 @@ export const PROVIDERS: ProviderDefinition[] = [
     local: false, note: 'Cross-lab diversity: Meta, Mistral, Qwen and more. Best for advisory debate unless the chosen endpoint guarantees tools.', examples: ['meta-llama/llama-4-maverick', 'qwen/qwen3-235b-a22b', 'mistralai/mistral-large'] },
   { id: 'ollama', name: 'Ollama local', auth: 'local service', tools: false, structured: true,
     local: true, note: 'Free and private. Small local models suit summaries, critique and drafting—not final high-risk execution.', examples: ['qwen3:8b', 'llama3.3:70b', 'mistral-small3.1'] },
+  // Whole agent harnesses: they bring their own tools, memory and model logins, so they can take real work.
+  { id: 'openclaw', name: 'OpenClaw agent', auth: 'OpenClaw gateway + its own provider logins', tools: true, structured: true,
+    local: true, note: 'Full agent with its own tools. Slow to start (tens of seconds), so place it behind faster routes. "default" uses its configured model.', examples: ['default'] },
+  { id: 'hermes', name: 'Hermes Agent', auth: 'Hermes profile keys (OpenRouter etc.)', tools: true, structured: true,
+    local: true, note: 'Full agent with its own tools. Model form is provider:model; "default" uses the profile default, which must have credentials.', examples: ['default', 'openrouter:meta-llama/llama-4-maverick', 'openrouter:qwen/qwen3-235b-a22b'] },
+  { id: 'codepuppy', name: 'Code Puppy', auth: 'Code Puppy model config', tools: true, structured: true,
+    local: true, note: 'Full coding agent with its own tools. "default" uses its configured model.', examples: ['default', 'gpt-5'] },
 ];
 
 export const ROLE_GUIDANCE: Record<string, { tier: string; strengths: string; tolerate: string }> = {
