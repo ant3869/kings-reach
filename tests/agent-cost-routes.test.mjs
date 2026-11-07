@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const dist = (f) => pathToFileURL(resolve('dist', f)).href;
-const state = { routes: [], claudeRuns: [], external: [], externalCalls: [], queryCalls: [], tokenRows: [], loggedIn: true };
+const state = { routes: [], claudeRuns: [], external: [], externalCalls: [], queryCalls: [], tokenRows: [], loggedIn: true, tiers: null };
 
 mock.module('@anthropic-ai/claude-agent-sdk', {
   namedExports: {
@@ -24,7 +24,7 @@ mock.module(dist('claude-auth.js'), {
   namedExports: { claudeAuth: async () => ({ loggedIn: state.loggedIn, detail: '' }), CLAUDE_LOGGED_OUT: 'Claude Code is logged out (test)' },
 });
 mock.module(dist('provider-config.js'), {
-  namedExports: { routesFor: () => state.routes, providerHasTools: (id) => id !== 'chatgpt', recordProviderOutcome: () => {} },
+  namedExports: { routesFor: () => state.routes, loadTierConfig: () => state.tiers, providerHasTools: (id) => id !== 'chatgpt', recordProviderOutcome: () => {} },
 });
 mock.module(dist('provider-runner.js'), {
   namedExports: {
@@ -50,7 +50,7 @@ const NOTE = 'found: users table has no index on user_id';
 const CAP = 'Reached maximum number of turns (6)';
 
 function reset(routes = [CLAUDE, CODEX]) {
-  Object.assign(state, { routes, claudeRuns: [], external: [], externalCalls: [], queryCalls: [], tokenRows: [], loggedIn: true });
+  Object.assign(state, { routes, claudeRuns: [], external: [], externalCalls: [], queryCalls: [], tokenRows: [], loggedIn: true, tiers: null });
 }
 const init = { type: 'system', subtype: 'init', session_id: 'sess-1' };
 const said = { type: 'assistant', message: { id: 'm1', content: [{ type: 'text', text: NOTE }] } };
@@ -209,6 +209,43 @@ test('runAgentWithRetry contract: each runAgent call owns its ledger, so a faile
   assert.equal(r.provider, 'claude');
   assert.equal(r.attempts.length, 1);
   close(r.costUsd, 0.3);
+});
+
+const TIERS = { enabled: true, high: { provider: 'claude', model: 'opus-x' }, mid: { provider: 'claude', model: 'sonnet-x' }, low: { provider: 'claude', model: 'haiku-x' } };
+
+test('tiers: a trivial message runs on the low model, a planning stage on the high one, and the role routes stay as fallbacks', async () => {
+  reset();
+  state.tiers = TIERS;
+  state.claudeRuns.push([init, done(0.01)]);
+  const low = await run({ message: 'hi' });
+  assert.equal(state.queryCalls[0].options.model, 'haiku-x');
+  assert.equal(low.tier.tier, 'low');
+  state.claudeRuns.push([init, done(0.01)]);
+  const high = await run({ message: 'hi', stage: 'plan' });
+  assert.equal(state.queryCalls[1].options.model, 'opus-x');
+  assert.deepEqual(high.tier.reasons, ['stage: plan']);
+  // The tier's model fails -> the role's own route is still tried next.
+  state.claudeRuns.push([init, failed('error_during_execution', 0)]);
+  state.claudeRuns.push([init, done(0.01)]);
+  const fell = await run({ message: 'hi' });
+  assert.equal(state.queryCalls[3].options.model, 'c1');
+  assert.equal(fell.provider, 'claude');
+});
+
+test('tiers: off by default, and roles outside the tier list keep their fixed model', async () => {
+  reset();
+  state.claudeRuns.push([init, done(0.01)]);
+  const plain = await run({ message: 'hi' });
+  assert.equal(state.queryCalls[0].options.model, 'c1');
+  assert.equal(plain.tier, undefined);
+  state.tiers = { ...TIERS, roles: ['ops'] };
+  state.claudeRuns.push([init, done(0.01)]);
+  await run({ message: 'hi', agentId: 'main' });
+  assert.equal(state.queryCalls[1].options.model, 'c1');
+  state.tiers = { ...TIERS, enabled: false };
+  state.claudeRuns.push([init, done(0.01)]);
+  await run({ message: 'hi' });
+  assert.equal(state.queryCalls[2].options.model, 'c1');
 });
 
 test('logged-out Claude is skipped without a call, salvage or spend, and the fallback answers', async () => {

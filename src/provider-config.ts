@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { GEMINI_TEXT_MODEL, STORE_DIR } from './config.js';
+import type { TierConfig } from './difficulty.js';
 
 export const PROVIDER_IDS = ['claude', 'codex', 'chatgpt', 'meta', '9router', 'gemini', 'openai', 'openrouter', 'ollama'] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
@@ -16,6 +17,8 @@ export interface RouteTarget {
 export interface ProviderRouting {
   version: 1;
   agents: Record<string, RouteTarget[]>;
+  /** Difficulty tiers (high/mid/low models). Absent = off: every role keeps its fixed routes. */
+  tiers?: TierConfig;
 }
 export interface ProviderDefinition {
   id: ProviderId;
@@ -95,8 +98,20 @@ const DEFAULTS: ProviderRouting = {
 };
 
 function validTarget(v: unknown): v is RouteTarget {
-  const x = v as Partial<RouteTarget>;
+  const x = v as Partial<RouteTarget> | null | undefined;
+  if (!x || typeof x !== 'object') return false; // a null/missing entry is invalid, not a crash
   return PROVIDER_IDS.includes(x.provider as ProviderId) && typeof x.model === 'string' && x.model.length > 0 && x.model.length <= 120;
+}
+/** Strict: a half-filled tier setup must never silently route work to a missing model, so anything invalid is dropped. */
+export function cleanTierConfig(value: unknown): TierConfig | undefined {
+  const v = value as Partial<TierConfig> | null | undefined;
+  if (!v || typeof v !== 'object' || !validTarget(v.high) || !validTarget(v.mid) || !validTarget(v.low)) return undefined;
+  const roles = Array.isArray(v.roles) ? v.roles.filter((r) => typeof r === 'string' && /^[a-z][a-z0-9_-]{0,29}$/.test(r)) : undefined;
+  const pick = (t: RouteTarget): RouteTarget => ({ provider: t.provider, model: t.model });
+  return { enabled: v.enabled === true, ...(roles ? { roles } : {}), high: pick(v.high), mid: pick(v.mid), low: pick(v.low) };
+}
+export function loadTierConfig(): TierConfig | null {
+  return loadProviderRouting().tiers ?? null;
 }
 export function defaultProviderRouting(): ProviderRouting {
   return JSON.parse(JSON.stringify(DEFAULTS)) as ProviderRouting;
@@ -109,7 +124,8 @@ export function loadProviderRouting(): ProviderRouting {
     for (const [id, routes] of Object.entries(raw.agents ?? {})) {
       if (/^[a-z][a-z0-9_-]{0,29}$/.test(id) && Array.isArray(routes)) agents[id] = routes.filter(validTarget).slice(0, 6);
     }
-    return { version: 1, agents: { ...DEFAULTS.agents, ...agents } };
+    const tiers = cleanTierConfig(raw.tiers);
+    return { version: 1, agents: { ...DEFAULTS.agents, ...agents }, ...(tiers ? { tiers } : {}) };
   } catch {
     return defaultProviderRouting();
   }
@@ -124,7 +140,9 @@ export function saveProviderRouting(value: unknown): ProviderRouting {
     if (!clean.length) throw new Error(`${id} needs at least one valid provider/model`);
     agents[id] = clean;
   }
-  const out = { version: 1 as const, agents };
+  // The routing editor only sends `agents`; saving it must not wipe the tier setup (a present `tiers` key replaces it).
+  const tiers = 'tiers' in incoming ? cleanTierConfig(incoming.tiers) : loadProviderRouting().tiers;
+  const out: ProviderRouting = { version: 1, agents, ...(tiers ? { tiers } : {}) };
   writeFileSync(FILE, `${JSON.stringify(out, null, 2)}\n`, 'utf8');
   return out;
 }

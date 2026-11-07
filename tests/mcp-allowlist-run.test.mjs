@@ -33,7 +33,7 @@ mock.module('@anthropic-ai/claude-agent-sdk', {
 });
 mock.module(dist('claude-auth.js'), { namedExports: { claudeAuth: async () => ({ loggedIn: true, detail: '' }), CLAUDE_LOGGED_OUT: 'out' } });
 mock.module(dist('provider-config.js'), {
-  namedExports: { routesFor: () => [{ provider: 'claude', model: 'c1' }], providerHasTools: () => true, recordProviderOutcome: () => {} },
+  namedExports: { routesFor: () => [{ provider: 'claude', model: 'c1' }], loadTierConfig: () => null, providerHasTools: () => true, recordProviderOutcome: () => {} },
 });
 mock.module(dist('provider-runner.js'), { namedExports: { runExternalProvider: async () => { throw new Error('unexpected external run'); } } });
 mock.module(dist('skills.js'), { namedExports: { skillContext: async () => '', agentEnv: () => ({}), claudeSkillOptions: () => ({}) } });

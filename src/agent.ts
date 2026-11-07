@@ -11,7 +11,8 @@ import { logTokenUsage } from './db.js';
 import { claudeAuth, CLAUDE_LOGGED_OUT } from './claude-auth.js';
 import { classifyError } from './errors.js';
 import { logger } from './logger.js';
-import { providerHasTools, recordProviderOutcome, routesFor, type ProviderId, type ToolNeed } from './provider-config.js';
+import { loadTierConfig, providerHasTools, recordProviderOutcome, routesFor, type ProviderId, type ToolNeed } from './provider-config.js';
+import { applyTier, assessDifficulty, tierApplies, type Tier } from './difficulty.js';
 import { runExternalProvider } from './provider-runner.js';
 import { agentEnv, claudeSkillOptions, skillContext } from './skills.js';
 import { describeTool, redact, TurnCounter, WorkLog, type ActivitySink } from './activity.js';
@@ -34,6 +35,10 @@ export interface AgentOptions {
   light?: boolean;
   /** Capability gate for fallback routing. Tool-less APIs are skipped when required. */
   toolNeed?: ToolNeed;
+  /** Pipeline stage this call belongs to (plan, debate, execute...); lets the difficulty tiers know the step's job. */
+  stage?: string;
+  /** Force a difficulty tier instead of assessing the message. Only matters when tiers are enabled in Settings. */
+  difficulty?: Tier;
   /** Internal route override; public callers normally use provider-routing.json. */
   model?: string;
   /** JSON schema: the SDK validates and returns `structured`. */
@@ -56,6 +61,8 @@ export interface AgentResult {
   durationMs?: number;
   provider?: ProviderId;
   attempts?: Attempt[];
+  /** Set when difficulty tiers chose this run's model: which tier, and why. */
+  tier?: { tier: Tier; score: number; reasons: string[] };
   /** Set when the SDK reported a failed result (max turns, execution error, ...). */
   error?: string;
   /** On failure: what the attempt had already gathered, formatted for the next route's prompt. */
@@ -327,7 +334,14 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
   };
   const attempts: Attempt[] = [];
   let handoff = '';
-  const routes = routesFor(agentId);
+  let routes = routesFor(agentId);
+  // Difficulty tiers (opt-in in Settings): the tier's model goes first, the role's own routes stay behind it as fallbacks.
+  const tiers = loadTierConfig();
+  const tier = tierApplies(tiers, agentId) ? assessDifficulty(opts.message, { stage: opts.stage, difficulty: opts.difficulty }) : undefined;
+  if (tier && tiers) {
+    routes = applyTier(routes, tier.tier, tiers);
+    logger.info({ agentId, stage: opts.stage, tier: tier.tier, score: tier.score, reasons: tier.reasons, first: routes[0] }, 'difficulty tier chosen');
+  }
   for (const target of routes) {
     if (opts.toolNeed === 'required' && !providerHasTools(target.provider)) {
       attempts.push({ ...target, error: 'skipped: tools required' });
@@ -363,6 +377,7 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
       if (result.durationMs === undefined) result.durationMs = Date.now() - started;
       result.attempts = attempts;
       result.provider = target.provider;
+      if (tier) result.tier = tier;
       if (target.provider !== 'claude' && opts.chatId && (result.inputTokens || result.outputTokens)) {
         try {
           logTokenUsage(opts.chatId, agentId, result.model ?? target.model,
