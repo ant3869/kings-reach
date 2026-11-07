@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.15.6 - Per-agent MCP allowlists (agent.yaml `mcp_allowlist`) and a quick-answer `light` run
+
+- `agent.yaml` now accepts `mcp_allowlist` per agent (inline `[a, b]` or block list). Omitted keeps the old behaviour (every server from Claude settings), `[]` means no MCP servers, a list means exactly those names. An unreadable value fails closed (no servers) and is logged. Server definitions and credentials stay in Claude settings; project still wins over user.
+- `loadMcpServers`: an empty allowlist used to mean "all servers"; it now means none. Names with no configured server are dropped and logged.
+- Shipped `agent.yaml`: `main`, `ops`, `research` get `[github]` (the only verified server), `comms` and `content` get `[]`.
+- New `light` run option: a quick-answer run gets no MCP servers whatever the role allowlist says. Every Claude run logs `mcp servers for run` with the agent, the light flag and the server names. Nothing sets `light` yet; callers opt in.
+- A restricted run now also passes `strictMcpConfig`, otherwise the CLI keeps loading servers from the settings sources and the allowlist is cosmetic. Agents without an allowlist are unchanged.
+- Tests: `tests/mcp-allowlist-parse.test.mjs`, `tests/mcp-allowlist-run.test.mjs`.
+
 ## 2.15.5 - Card text centred; audit fixes (client v35, server v17)
 
 - Card plate: title, role, route and voice are centred on the card and the role/route/voice lines sit at the same height on every card (the voice `<select>` left-aligned its text inside a box sized to the widest voice name; the title line height varied with its shrunk font). Two new UI checks measure both.

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROJECT_ROOT, KINGS_REACH_CONFIG } from './config.js';
+import { logger } from './logger.js';
 
 export interface AgentConfig {
   id: string;
@@ -11,6 +12,7 @@ export interface AgentConfig {
   telegramToken?: string;
   cwd: string;
   claudeMdPath: string;
+  /** undefined = legacy (every configured MCP server); [] = none; otherwise exactly these server names. */
   mcpAllowlist?: string[];
   active?: boolean;
 }
@@ -45,8 +47,47 @@ function mainConfig(): AgentConfig {
   };
 }
 
+const ALLOWLIST_ITEM = /^[^\s\[\]{}:,#'"][^\[\]{}:,#'"]*$/;
+
+function allowlistItem(raw: string): string | null {
+  const t = raw.replace(/\s+#.*$/, '').trim().replace(/^(["'])(.*)\1$/, '$2').trim();
+  return ALLOWLIST_ITEM.test(t) ? t : null;
+}
+
+/**
+ * Reads `mcp_allowlist` (inline `[a, b]` or a block list) from one agent block.
+ * Absent -> undefined (legacy all servers). Present but not a list of plain names -> throws, so the caller can fail closed.
+ */
+export function parseMcpAllowlist(block: string): string[] | undefined {
+  const lines = block.split(/\r\n|\r|\n/); // the agent split can leave a lone \r at a block end
+  const at = lines.findIndex((l) => /^\s*mcp_allowlist\s*:/.test(l));
+  if (at < 0) return undefined;
+  const rest = (lines[at] ?? '').replace(/^\s*mcp_allowlist\s*:/, '').replace(/\s+#.*$/, '').trim();
+  const names: string[] = [];
+  const take = (raw: string): void => {
+    const name = allowlistItem(raw);
+    if (name === null) throw new Error(`invalid mcp_allowlist entry "${raw.trim()}"`);
+    names.push(name);
+  };
+  if (rest) {
+    if (!rest.startsWith('[') || !rest.endsWith(']')) throw new Error('mcp_allowlist must be a list of strings');
+    const inner = rest.slice(1, -1).trim();
+    if (inner) inner.split(',').forEach(take);
+    return names;
+  }
+  const indent = (lines[at] ?? '').match(/^\s*/)?.[0].length ?? 0;
+  for (const line of lines.slice(at + 1)) {
+    if (!line.trim() || /^\s*#/.test(line)) continue;
+    const m = line.match(/^(\s*)-\s+(.*)$/);
+    if (!m || (m[1] ?? '').length <= indent) break;
+    take(m[2] ?? '');
+  }
+  if (names.length === 0) throw new Error('mcp_allowlist must be a list of strings (use [] for none)');
+  return names;
+}
+
 /** Minimal YAML subset parser for agent.yaml (avoids hard dep at import time). */
-function parseAgentYaml(text: string): AgentConfig[] {
+export function parseAgentYaml(text: string): AgentConfig[] {
   const out: AgentConfig[] = [];
   const blocks = text.split(/^\s*-\s+id\s*:/m);
   for (let i = 1; i < blocks.length; i++) {
@@ -57,6 +98,13 @@ function parseAgentYaml(text: string): AgentConfig[] {
       const m = block.match(new RegExp(`^\\s*${key}\\s*:\\s*["']?([^"'\\n#]+)["']?`, 'm'));
       return (m?.[1] ?? '').trim();
     };
+    let mcpAllowlist: string[] | undefined;
+    try {
+      mcpAllowlist = parseMcpAllowlist(block);
+    } catch (err) {
+      mcpAllowlist = []; // an unreadable allowlist must not widen access
+      logger.warn({ agentId: id, err: String(err) }, 'bad mcp_allowlist in agent.yaml; agent gets no MCP servers');
+    }
     out.push({
       id,
       name: get('name') || id,
@@ -64,6 +112,7 @@ function parseAgentYaml(text: string): AgentConfig[] {
       model: get('model') || DEFAULT_MODEL,
       cwd: resolveAgentDir(id),
       claudeMdPath: resolveAgentClaudeMd(id),
+      ...(mcpAllowlist !== undefined ? { mcpAllowlist } : {}),
       active: true,
     });
   }

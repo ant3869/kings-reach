@@ -30,6 +30,8 @@ export interface AgentOptions {
   onTyping?: () => void;
   maxTurns?: number;
   readOnly?: boolean;
+  /** Quick-answer run: no MCP servers at all, whatever the agent's allowlist says. */
+  light?: boolean;
   /** Capability gate for fallback routing. Tool-less APIs are skipped when required. */
   toolNeed?: ToolNeed;
   /** Internal route override; public callers normally use provider-routing.json. */
@@ -138,7 +140,11 @@ function readJsonIfExists(path: string): Record<string, unknown> {
   }
 }
 
-/** Merge project + user settings.json, filtered by the agent allowlist. */
+/**
+ * Merge project + user settings.json, filtered by the agent allowlist.
+ * undefined = legacy, every configured server; [] = none; otherwise exactly the named servers.
+ * A name with no configured server is dropped (and logged) rather than failing the run.
+ */
 export function loadMcpServers(agentAllowlist?: string[]): McpServers {
   const project = readJsonIfExists(join(PROJECT_ROOT, '.claude', 'settings.json'));
   const home = process.env.HOME ?? process.env.USERPROFILE ?? '';
@@ -147,16 +153,16 @@ export function loadMcpServers(agentAllowlist?: string[]): McpServers {
     ...((user['mcpServers'] as McpServers) ?? {}),
     ...((project['mcpServers'] as McpServers) ?? {}),
   };
-  if (!agentAllowlist || agentAllowlist.length === 0) {
+  if (agentAllowlist === undefined) {
     return merged;
   }
-  const allowed = new Set(agentAllowlist);
   const out: McpServers = {};
-  for (const [name, cfg] of Object.entries(merged)) {
-    if (allowed.has(name)) {
-      out[name] = cfg;
-    }
+  const unknown: string[] = [];
+  for (const name of agentAllowlist) {
+    if (Object.hasOwn(merged, name)) out[name] = merged[name];
+    else unknown.push(name);
   }
+  if (unknown.length) logger.warn({ unknown }, 'mcp allowlist names no configured server; ignored');
   return out;
 }
 
@@ -177,7 +183,9 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
   }
 
   try {
-    const mcpServers = loadMcpServers(agent?.mcpAllowlist);
+    const allowlist = opts.light ? [] : agent?.mcpAllowlist;
+    const mcpServers = loadMcpServers(allowlist);
+    logger.info({ agentId: opts.agentId ?? 'main', light: opts.light === true, mcp: Object.keys(mcpServers) }, 'mcp servers for run');
     const skillText = await skillContext(opts.agentId ?? 'main');
     const appended = [opts.systemPrompt, skillText].filter(Boolean).join('\n\n');
     let text: string | null = null;
@@ -202,6 +210,8 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
         permissionMode: 'bypassPermissions',
         maxTurns,
         mcpServers: mcpServers as never,
+        // Without this the CLI still loads every server from the settings sources, so an allowlist would be cosmetic.
+        ...(allowlist !== undefined ? { strictMcpConfig: true } : {}),
         env: agentEnv(),
         ...claudeSkillOptions(opts.agentId ?? 'main'),
         systemPrompt: { type: 'preset', preset: 'claude_code', ...(appended ? { append: appended } : {}) },

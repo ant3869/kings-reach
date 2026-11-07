@@ -1,19 +1,29 @@
 # King's Reach agent registry. Runtime reads this (not per-agent files).
 # Managed by `node dist/agent-create-cli.js` and `npm run setup`.
+# mcp_allowlist: omitted = every MCP server from .claude/settings.json (legacy), [] = none, else exactly those names.
 agents:
+  - id: main
+    name: Main
+    description: "Primary assistant"
+    model: "claude-sonnet-4-6"
+    mcp_allowlist: [github]
   - id: comms
     name: Comms
     description: "email, Slack, LinkedIn, all communications"
     model: "claude-sonnet-4-6"
+    mcp_allowlist: []
   - id: content
     name: Content
     description: "writing, editing, publishing, brand voice"
     model: "claude-sonnet-4-6"
+    mcp_allowlist: []
   - id: ops
     name: Ops
     description: "system admin, deployments, infrastructure, backups"
     model: "claude-sonnet-4-6"
+    mcp_allowlist: [github]
   - id: research
     name: Research
     description: "deep dives, competitive analysis, market research"
     model: "claude-sonnet-4-6"
+    mcp_allowlist: [github]
