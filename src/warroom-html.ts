@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { PROJECT_ROOT, WARROOM_PORT } from './config.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
+import { SHELL_CSS, wrapInShell } from './shell.js';
 
 export const WARROOM_CLIENT_VERSION = 35;
 export const WARROOM_PROTOCOL = 'council-v4'; // must match PROTOCOL in warroom/server.py
@@ -74,12 +75,12 @@ const CSS = `
 @property --lvl{syntax:'<number>';inherits:false;initial-value:0}
 :root{--gold:#d4a017;--bg:#07070d;--panel:#11111b;--line:#3a3020}
 *{box-sizing:border-box}
-body{background:#05070b;color:#eadfbe;font-family:Georgia,'Times New Roman',serif;margin:0;padding:14px;min-height:100vh;position:relative}
+body{background:#05070b;color:#eadfbe;font-family:Georgia,'Times New Roman',serif;margin:0;padding:0;min-height:100vh;position:relative}
 body:before{content:'';position:fixed;inset:0;background:linear-gradient(#02050aaa,#03050bdd),url('/warroom/warroom-chamber-bg.png?v=1') center top/cover no-repeat;z-index:-2}
 body:after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at center top,transparent 15%,#02040a88 72%);z-index:-1;pointer-events:none}
-.wrap{max-width:1400px;margin:0 auto}
+.kr-main{padding:14px}.kr-main>.kr-auth{margin:-14px -14px 12px}.wrap{max-width:1400px;margin:0 auto}
 h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;text-shadow:0 1px #000,0 0 18px #d4a01766}
-.sub{text-align:center;font:italic 12px Georgia;color:#b2a47d;margin:0 0 5px}.sub a{color:#e2bf62}.topnav{position:absolute;right:18px;top:16px;display:flex;gap:7px}.navbtn{color:#e8cf86;text-decoration:none;font:12px system-ui;border:1px solid #8b692d;background:#0b0d13dd;border-radius:7px;padding:7px 10px;box-shadow:inset 0 0 10px #d4a01718}.navbtn:hover{background:#33250e}
+.sub{text-align:center;font:italic 12px Georgia;color:#b2a47d;margin:0 0 5px}.sub a{color:#e2bf62}
 #status{text-align:center;font:13px system-ui;margin:6px}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#f85149;margin-right:6px}
 .dot.on{background:#3fb950;box-shadow:0 0 8px #3fb950}
@@ -114,7 +115,7 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 #prog{text-align:center;font:12px system-ui;color:var(--gold);min-height:18px}
 .main{display:grid;grid-template-columns:1fr 300px;gap:14px;margin-top:8px}
 @media(max-width:900px){.main{grid-template-columns:1fr}}
-@media(max-width:700px){.topnav{position:static;justify-content:center;margin:0 0 8px}}
+
 #log{height:45vh;min-height:310px;overflow-y:auto;border:2px solid #8e6a2c;border-radius:4px;padding:18px;background:linear-gradient(#060a11ed,#080b12f5);font:14px/1.55 system-ui;display:flex;flex-direction:column;gap:12px;box-shadow:inset 0 0 0 3px #05060a,inset 0 0 30px #000,0 8px 24px #000}
 .bubble{--ac:var(--gold);border-left:3px solid var(--ac);padding:2px 0 2px 12px;max-width:96%}
 .bubble .who{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--ac)}
@@ -127,7 +128,7 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 .bubble.err{--ac:#f85149;color:#f85149}.bubble.verdict{background:#d4a01712;border-radius:0 10px 10px 0;padding:8px 12px}
 .bubble .brief{font:600 14px/1.5 system-ui;color:#eadfbe;margin:5px 0}.bubble details{margin-top:7px;border-top:1px solid #8e6a2c55;padding-top:6px}.bubble summary{cursor:pointer;color:#d9b85d;font:11px system-ui;text-transform:uppercase;letter-spacing:.5px}.bubble .full{margin-top:8px;color:#bdb6a5}.bubble.you .full{text-align:left}
 .buildlive{border:1px solid #8e6a2c;border-radius:8px;background:#080b12e8;margin:8px auto;padding:10px 12px;max-width:980px;font:12px system-ui;box-shadow:inset 0 0 18px #000}.buildlive h3{margin:0 0 8px;color:#e4c468;font:600 13px Georgia}.buildphases{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.buildphase{border:1px solid #302b22;border-radius:6px;padding:7px;color:#7f786a}.buildphase.active{border-color:#c28b31;color:#f0d78f;box-shadow:inset 0 0 10px #d4a01718}.buildphase.done{border-color:#3fb95088;color:#72d487}.buildphase.failed{border-color:#f85149;color:#ff7b72}.buildphase.skipped{text-decoration:line-through}.buildphase b,.buildphase span{display:block}.buildphase span{margin-top:3px;color:inherit}.builddetail{margin-top:7px;color:#9d9481}.metricfail{margin-top:9px;border-left:3px solid #f85149;padding:6px 9px;color:#ff9b94;background:#f8514910}@media(max-width:700px){.buildphases{grid-template-columns:1fr 1fr}}
-aside{display:flex;flex-direction:column;gap:12px}
+.main aside{display:flex;flex-direction:column;gap:12px}
 .panel{border:2px solid #8e6a2c;border-radius:4px;background:linear-gradient(#090d15ee,#0c0e14f5);padding:14px;font:13px system-ui;box-shadow:inset 0 0 0 3px #05060a,inset 0 0 22px #000}
 .panel h3{margin:0 0 8px;font:600 13px system-ui;color:var(--gold);letter-spacing:.5px}.panel h3 small{color:#6e7681;font-weight:400}
 .panel table{width:100%;border-collapse:collapse}.panel td{padding:3px 0;border-bottom:1px solid #1e1e2a}.panel td+td{text-align:right;color:#e8dcc0}
@@ -238,11 +239,10 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>War Room v${WARROOM_CLIENT_VERSION} - King's Reach Council</title>
-<style>${CSS}</style></head><body>
-<div class="wrap">
-<nav class="topnav"><a class="navbtn" href="/history">Plan Library</a><a class="navbtn" href="/providers">Settings / Models</a><a class="navbtn" href="/">Mission Control</a></nav>
+<style>${SHELL_CSS}${CSS}</style></head><body>
+${wrapInShell('warroom', '', `<div class="wrap">
 <h1>THE WAR ROOM</h1>
-<p class="sub">Plan. Investigate. Cross-examine. Decide. Build. <a href="/">dashboard</a> &middot; client v${WARROOM_CLIENT_VERSION} &middot; <span id="sver">server ?</span></p>
+<p class="sub">Plan. Investigate. Cross-examine. Decide. Build. client v${WARROOM_CLIENT_VERSION} &middot; <span id="sver">server ?</span></p>
 <div id="status"><span class="dot" id="dot"></span><span id="stext">connecting...</span><span class="vstat" id="vstat">voice: ?</span></div>
 <div id="council">${seats}</div>
 <div id="stages"></div>
@@ -275,7 +275,7 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
 <div class="panel" id="score" hidden></div>
 </aside>
 </div>
-</div>
+</div>`, { version: `Client v${WARROOM_CLIENT_VERSION}` })}
 <script>
 var WR = ${config.replace(/</g, '\\u003c')};
 ${CLIENT_MD_JS}

@@ -5,7 +5,7 @@ import { EMBEDDING_DIMS } from './gemini.js';
 export const DUPLICATE_THRESHOLD = 0.85;
 export const SIMILARITY_THRESHOLD = 0.3;
 
-export function cosineSimilarity(a: number[], b: number[]): number {
+export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): number {
   if (a.length !== b.length || a.length === 0) return 0;
   let dot = 0;
   let magA = 0;
@@ -26,10 +26,11 @@ export function embeddingToBuffer(embedding: number[]): Buffer {
   return Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
 }
 
-export function bufferToEmbedding(buffer: Buffer): number[] {
-  const copy = Buffer.from(buffer);
-  const arr = new Float32Array(copy.buffer, copy.byteOffset, copy.byteLength / 4);
-  return Array.from(arr);
+/** Decode into a Float32Array: no boxed number[] per row, and the copy is always 4-byte aligned. */
+export function bufferToEmbedding(buffer: Uint8Array): Float32Array {
+  const out = new Float32Array(Math.floor(buffer.byteLength / 4));
+  new Uint8Array(out.buffer).set(buffer.subarray(0, out.byteLength));
+  return out;
 }
 
 /** Hex encoding satisfies the "embedding hex" requirement without JSON bloat. */
@@ -37,12 +38,12 @@ export function embeddingToHex(embedding: number[]): string {
   return embeddingToBuffer(embedding).toString('hex');
 }
 
-export function hexToEmbedding(hex: string): number[] {
+export function hexToEmbedding(hex: string): Float32Array {
   return bufferToEmbedding(Buffer.from(hex, 'hex'));
 }
 
 /** Accept whatever the DB hands back: Buffer, Uint8Array, or hex string. */
-export function storedToEmbedding(value: Buffer | Uint8Array | string | null): number[] | null {
+export function storedToEmbedding(value: Buffer | Uint8Array | string | null): Float32Array | null {
   if (!value) return null;
   if (typeof value === 'string') {
     if (value.length === 0) return null;
@@ -52,7 +53,7 @@ export function storedToEmbedding(value: Buffer | Uint8Array | string | null): n
       return null;
     }
   }
-  return bufferToEmbedding(Buffer.from(value.buffer as ArrayBuffer, value.byteOffset, value.byteLength));
+  return bufferToEmbedding(value);
 }
 
 export interface SimilarMemory {
@@ -67,7 +68,7 @@ export async function findSimilarMemories(
   limit = 5,
   threshold: number = SIMILARITY_THRESHOLD,
 ): Promise<SimilarMemory[]> {
-  if (queryEmbedding.length !== EMBEDDING_DIMS && queryEmbedding.length === 0) return [];
+  if (queryEmbedding.length !== EMBEDDING_DIMS) return [];
   const rows = getDb()
     .prepare(
       `SELECT id, summary, raw_text, embedding FROM memories

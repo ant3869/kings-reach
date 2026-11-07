@@ -18,6 +18,8 @@ import { defaultProviderRouting, loadProviderRouting, PROVIDERS, ROLE_GUIDANCE, 
 import { get9RouterCatalog, getProviderHealth } from './provider-runner.js';
 import { buildModelChoices, invalidRoutes, readiness } from './provider-models.js';
 import { apiGuard } from './http-guard.js';
+import { claudeAuth } from './claude-auth.js';
+import { claudeLogin } from './claude-login.js';
 import { collectHealth } from './health.js';
 import { logger } from './logger.js';
 import { startWarroom, stopWarroom, warroomStatus } from './warroom-supervisor.js';
@@ -59,6 +61,12 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
   mountHistory(app);
 
   app.get('/api/health', async (c) => c.json(await collectHealth()));
+  // Drives the "Sign in to Claude" banner on every page. POST opens the browser sign-in; the apiGuard above makes it same-origin only.
+  app.get('/api/claude/auth', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    return c.json({ ...(await claudeAuth()), login: claudeLogin.state() });
+  });
+  app.post('/api/claude/login', (c) => c.json(claudeLogin.start()));
   app.get('/api/providers', async (c) => {
     const models = await get9RouterCatalog();
     const catalog = { '9router': models, chatgpt: models.filter((m) => /^cx\//.test(m.id)),
@@ -111,7 +119,7 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
     if (!body.message?.trim()) return c.json({ error: 'message required' }, 400);
     const chatId = body.chatId?.trim() || 'dashboard';
     const { parseDelegation, delegateToAgent } = await import('./orchestrator.js');
-    const { runAgent } = await import('./agent.js');
+    const { runAgent, signInPrompt } = await import('./agent.js');
     const { getSession, setSession } = await import('./db.js');
     const { buildMemoryContext, saveConversationTurn } = await import('./memory.js');
     // buildMemoryContext already emits its own [Memory context] header.
@@ -137,7 +145,7 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
       if (r.text) remember(r.text, nextSession, agentId);
       return c.json({ text: r.text ?? r.error ?? '(no reply)', agentId });
     } catch (err) {
-      return c.json({ error: String(err).slice(0, 500) }, 500);
+      return c.json({ error: signInPrompt(err) ?? String(err).slice(0, 500) }, 500);
     }
   });
 

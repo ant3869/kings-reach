@@ -23,7 +23,7 @@ export interface ErrorRecovery {
 }
 
 const PATTERNS: Array<{ category: ErrorCategory; needles: string[] }> = [
-  { category: 'auth', needles: ['unauthorized', '401', 'invalid api key', 'forbidden', '403'] },
+  { category: 'auth', needles: ['unauthorized', '401', 'invalid api key', 'forbidden', '403', 'not logged in', 'logged out', 'auth login', '/login'] },
   { category: 'rate_limit', needles: ['rate limit', '429', 'too many requests'] },
   { category: 'context_exhausted', needles: ['context window', 'max tokens', 'context length', 'too long'] },
   { category: 'timeout', needles: ['timeout', 'timed out', 'etimedout', 'deadline exceeded'] },
@@ -39,7 +39,7 @@ const RECOVERY: Record<ErrorCategory, ErrorRecovery> = {
     shouldNewChat: false,
     shouldSwitchModel: false,
     retryAfterMs: 0,
-    userMessage: 'Auth failed. Check your API key in .env.',
+    userMessage: 'Auth failed. Claude: run "claude auth login". API providers: check the key in .env.',
   },
   rate_limit: {
     shouldRetry: true,

@@ -242,6 +242,7 @@ export function initDatabase(): Database.Database {
   ensureColumn(handle, 'memories', 'salience', 'REAL NOT NULL DEFAULT 1.0');
   ensureColumn(handle, 'memories', 'last_accessed', 'INTEGER');
   ensureColumn(handle, 'memories', 'accessed_at', 'INTEGER');
+  ensureColumn(handle, 'memories', 'decayed_at', 'INTEGER'); // last decay step; NULL = never decayed
   // Backfill timestamps where migration added NULLs.
   handle
     .prepare(

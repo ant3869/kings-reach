@@ -2,12 +2,13 @@
 // Resolves the agent's config (cwd -> its CLAUDE.md via settingSources, model), keeps Claude
 // Code's own system prompt (tool skills!) and only APPENDS runtime context.
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { PROJECT_ROOT, effectiveMaxTurns } from './config.js';
+import { DASHBOARD_PORT, PROJECT_ROOT, effectiveMaxTurns } from './config.js';
 import { getAgentConfig } from './agent-config.js';
 import { logTokenUsage } from './db.js';
+import { claudeAuth, CLAUDE_LOGGED_OUT } from './claude-auth.js';
 import { classifyError } from './errors.js';
 import { logger } from './logger.js';
 import { providerHasTools, recordProviderOutcome, routesFor, type ProviderId, type ToolNeed } from './provider-config.js';
@@ -77,6 +78,18 @@ const WRAP_UP = 'You have run out of tool budget. Do NOT call any more tools. Us
 /** One route tried. `costUsd` is money a FAILED attempt still burned (e.g. a Claude run that hit its turn cap). */
 export interface Attempt { provider: ProviderId; model: string; error?: string; costUsd?: number; salvaged?: boolean }
 
+/** True when every route that actually ran failed on credentials: retrying cannot help, only a re-login can. */
+export function onlyAuthFailures(attempts: Attempt[]): boolean {
+  const ran = attempts.filter((a) => a.error && !a.error.startsWith('skipped'));
+  return ran.length > 0 && ran.every((a) => classifyError(a.error as string).category === 'auth');
+}
+
+/** A friendly "sign in" message for chat surfaces when the only thing wrong is the login; null for every other failure. */
+export function signInPrompt(err: unknown): string | null {
+  if (!(err instanceof ProviderRoutesError) || !onlyAuthFailures(err.attempts)) return null;
+  return `Claude is signed out, so nothing could answer. Open http://localhost:${DASHBOARD_PORT} and press "Sign in to Claude" (or run "claude auth login"), then ask again.`;
+}
+
 /** Total spend across attempts that produced no answer. */
 export const wastedCost = (attempts: Attempt[]): number => attempts.reduce((sum, a) => sum + (a.costUsd ?? 0), 0);
 
@@ -106,11 +119,21 @@ interface McpServers {
   [name: string]: unknown;
 }
 
+const jsonCache = new Map<string, { mtimeMs: number; value: Record<string, unknown> }>();
+
+/** Parse a JSON file once per modification: a stat is far cheaper than read + parse on every agent run. */
 function readJsonIfExists(path: string): Record<string, unknown> {
   try {
-    if (!existsSync(path)) return {};
-    return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-  } catch {
+    const { mtimeMs } = statSync(path);
+    const hit = jsonCache.get(path);
+    if (hit && hit.mtimeMs === mtimeMs) return hit.value;
+    const value = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    jsonCache.set(path, { mtimeMs, value });
+    return value;
+  } catch (err) {
+    // A missing file is normal; a corrupt one used to silently drop every MCP server.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') logger.warn({ path, err: String(err) }, 'unreadable settings file, ignoring');
+    jsonCache.delete(path);
     return {};
   }
 }
@@ -307,6 +330,8 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
     opts.onActivity?.({ kind: 'route', state: 'try', provider: target.provider, model: target.model,
       text: `Asking ${target.provider} (${target.model})${handoff ? ' with the earlier attempt\'s notes' : ''}` });
     try {
+      // A logged-out Claude fails every call anyway (and salvage would call it again): skip straight to the fallback.
+      if (target.provider === 'claude' && !(await claudeAuth()).loggedIn) throw new Error(CLAUDE_LOGGED_OUT);
       let result = target.provider === 'claude'
         ? await runClaudeAgent({ ...opts, message, model: target.model })
         : await runExternalProvider(target, { ...externalOpts, message });
@@ -366,7 +391,8 @@ export async function runAgentWithRetry(opts: AgentOptions, maxRetries = 2): Pro
       lastError = err;
       const { category, recovery } = classifyError(err as Error);
       logger.warn({ category, attempt, err: String(err) }, 'agent call failed');
-      if (!recovery.shouldRetry || attempt >= maxRetries) {
+      const authDead = err instanceof ProviderRoutesError && onlyAuthFailures(err.attempts);
+      if (authDead || !recovery.shouldRetry || attempt >= maxRetries) {
         throw err;
       }
       const backoff = recovery.retryAfterMs || 2000 * 2 ** attempt;

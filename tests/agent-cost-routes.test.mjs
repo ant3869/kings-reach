@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const dist = (f) => pathToFileURL(resolve('dist', f)).href;
-const state = { routes: [], claudeRuns: [], external: [], externalCalls: [], queryCalls: [], tokenRows: [] };
+const state = { routes: [], claudeRuns: [], external: [], externalCalls: [], queryCalls: [], tokenRows: [], loggedIn: true };
 
 mock.module('@anthropic-ai/claude-agent-sdk', {
   namedExports: {
@@ -18,6 +18,10 @@ mock.module('@anthropic-ai/claude-agent-sdk', {
       return (async function* () { for (const e of script) { if (e instanceof Error) throw e; yield e; } })();
     },
   },
+});
+// The route loop asks "is Claude signed in?" before each Claude attempt; fake it so these tests never depend on the host's login.
+mock.module(dist('claude-auth.js'), {
+  namedExports: { claudeAuth: async () => ({ loggedIn: state.loggedIn, detail: '' }), CLAUDE_LOGGED_OUT: 'Claude Code is logged out (test)' },
 });
 mock.module(dist('provider-config.js'), {
   namedExports: { routesFor: () => state.routes, providerHasTools: (id) => id !== 'chatgpt', recordProviderOutcome: () => {} },
@@ -46,7 +50,7 @@ const NOTE = 'found: users table has no index on user_id';
 const CAP = 'Reached maximum number of turns (6)';
 
 function reset(routes = [CLAUDE, CODEX]) {
-  Object.assign(state, { routes, claudeRuns: [], external: [], externalCalls: [], queryCalls: [], tokenRows: [] });
+  Object.assign(state, { routes, claudeRuns: [], external: [], externalCalls: [], queryCalls: [], tokenRows: [], loggedIn: true });
 }
 const init = { type: 'system', subtype: 'init', session_id: 'sess-1' };
 const said = { type: 'assistant', message: { id: 'm1', content: [{ type: 'text', text: NOTE }] } };
@@ -205,4 +209,22 @@ test('runAgentWithRetry contract: each runAgent call owns its ledger, so a faile
   assert.equal(r.provider, 'claude');
   assert.equal(r.attempts.length, 1);
   close(r.costUsd, 0.3);
+});
+
+test('logged-out Claude is skipped without a call, salvage or spend, and the fallback answers', async () => {
+  reset();
+  state.loggedIn = false;
+  state.external.push({ text: 'ok', costUsd: 0.01 });
+  const r = await run();
+  assert.equal(r.provider, 'codex');
+  assert.equal(state.queryCalls.length, 0); // the failing SDK call (and its salvage re-run) never happens
+  assert.match(r.attempts[0].error, /logged out/);
+  assert.equal('costUsd' in r.attempts[0], false);
+});
+
+test('logged-out Claude with no fallback throws ProviderRoutesError and is not retried', async () => {
+  reset([CLAUDE]);
+  state.loggedIn = false;
+  await assert.rejects(agent.runAgentWithRetry({ message: 'do the thing' }, 2), (err) => err.name === 'ProviderRoutesError' && /logged out/.test(err.attempts[0].error));
+  assert.equal(state.queryCalls.length, 0);
 });

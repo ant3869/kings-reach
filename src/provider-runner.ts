@@ -11,6 +11,7 @@ import {
 } from './config.js';
 import type { AgentOptions, AgentResult } from './agent.js';
 import { codexActivity } from './activity.js';
+import { claudeAuth } from './claude-auth.js';
 import { loadProviderState, type ProviderId, type RouteTarget } from './provider-config.js';
 
 interface CommandResult { code: number | null; stdout: string; stderr: string; }
@@ -230,12 +231,15 @@ export async function getProviderHealth(catalog?: RouterModel[]): Promise<Provid
     const models = (data.models ?? []).map((m: { name: string }) => m.name);
     ollama = { id: 'ollama', available: models.length > 0, detail: models.length ? `${models.length} local model(s)` : 'running, no models installed', models };
   } catch { /* expected when Ollama is off */ }
+  const claude = await claudeAuth();
   const routerModels = catalog ?? await get9RouterCatalog();
   const routerReady = Boolean(nineRouterKey()) && routerModels.length > 0;
   const metaCount = routerModels.filter((m) => /^(meta\/|cf\/@cf\/meta\/)/.test(m.id)).length;
   const chatgptCount = routerModels.filter((m) => /^cx\//.test(m.id)).length;
   const base: ProviderHealth[] = [
-    { id: 'claude', available: true, detail: 'SDK/CLI installed; quota is checked per call' }, codex,
+    // Installed counts as configured (routes stay saveable while logged out); only `available` tracks the login.
+    { id: 'claude', available: claude.loggedIn, configured: true,
+      detail: claude.loggedIn ? 'SDK/CLI installed; quota is checked per call' : claude.detail }, codex,
     { id: 'chatgpt', available: routerReady && chatgptCount > 0,
       detail: routerReady ? `${chatgptCount} ChatGPT/Codex models through 9Router` : '9Router/credential unavailable' },
     { id: 'meta', available: routerReady && metaCount > 0, detail: routerReady ? `${metaCount} Meta models through 9Router` : '9Router/credential unavailable' },
@@ -247,9 +251,11 @@ export async function getProviderHealth(catalog?: RouterModel[]): Promise<Provid
   ];
   const observed = loadProviderState();
   return base.map((raw) => {
-    const item: ProviderHealth = { ...raw, configured: raw.available };
+    const item: ProviderHealth = { ...raw, configured: raw.configured ?? raw.available };
     const last = observed[item.id];
     if (!last) return item;
+    // A verified login outranks an old "authentication failed" note: do not keep showing it after re-login.
+    if (item.id === 'claude' && claude.loggedIn && /auth/i.test(last.detail)) return item;
     const ageMs = Date.now() - Date.parse(last.at);
     const stickyFailure = /quota|credit|auth|api[_ ]?key/i.test(last.detail);
     if (!last.ok && !stickyFailure && ageMs > 30 * 60_000) {

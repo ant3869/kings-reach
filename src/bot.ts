@@ -20,7 +20,7 @@ import {
   initOrchestrator,
   parseDelegation,
 } from './orchestrator.js';
-import { runAgent } from './agent.js';
+import { runAgent, signInPrompt } from './agent.js';
 import { buildMemoryContext, saveConversationTurn } from './memory.js';
 import { formatCostFooter, parseCostFooterMode } from './cost-footer.js';
 import { transcribeAudio, synthesizeSpeech } from './voice.js';
@@ -165,7 +165,7 @@ async function answerAndReply(ctx: Context, chatId: string, input: string, voice
     res = await agentTurn(chatId, input, tick);
   } catch (err) {
     logger.error({ err, chatId }, 'agent turn failed');
-    await ctx.reply(`Agent error: ${String(err).slice(0, 500)}`);
+    await ctx.reply(signInPrompt(err) ?? `Agent error: ${String(err).slice(0, 500)}`);
     return;
   }
   await replyLong(ctx, withFooter(res.text, res.footer));

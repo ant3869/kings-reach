@@ -192,30 +192,46 @@ export function shouldNudgeMemory(chatId: string): boolean {
 }
 
 /** Importance-weighted, multi-tier decay. Pinned memories are exempt. */
-export async function runDecaySweep(): Promise<void> {
+const DAY_MS = 86_400_000;
+
+export interface DecayRow {
+  importance: number;
+  last_accessed: number;
+  decayed_at: number | null;
+}
+
+export type DecayStep = { action: 'keep' } | { action: 'delete' } | { action: 'decay'; importance: number };
+
+/**
+ * One decay decision. A step fires at most once per tier: the clock restarts from the later of
+ * last access and last decay, so restarts and repeat sweeps cannot compound. Deletion still
+ * needs total staleness (since last access) beyond two tiers.
+ */
+export function decayStep(row: DecayRow, now: number): DecayStep {
+  // High-importance decays slower: flat tiers beat clever curves.
+  const tier = row.importance >= 0.8 ? 60 : row.importance >= 0.6 ? 30 : 14;
+  const sinceStep = (now - Math.max(row.last_accessed, row.decayed_at ?? 0)) / DAY_MS;
+  if (sinceStep < tier) return { action: 'keep' };
+  const next = row.importance - 0.1;
+  if (next <= 0.15 && (now - row.last_accessed) / DAY_MS > tier * 2) return { action: 'delete' };
+  return { action: 'decay', importance: Math.max(0.05, next) };
+}
+
+export async function runDecaySweep(now: number = Date.now()): Promise<void> {
   const handle = getDb();
-  const now = Date.now();
-  const day = 86_400_000;
   const rows = handle
     .prepare(
-      `SELECT id, importance, last_accessed FROM memories
+      `SELECT id, importance, last_accessed, decayed_at FROM memories
        WHERE pinned = 0 AND superseded_by IS NULL`,
     )
-    .all() as Array<{ id: number; importance: number; last_accessed: number }>;
-  const stmt = handle.prepare(
-    'UPDATE memories SET importance = ?, last_accessed = ?, accessed_at = ? WHERE id = ?',
-  );
+    .all() as Array<DecayRow & { id: number }>;
+  const update = handle.prepare('UPDATE memories SET importance = ?, decayed_at = ? WHERE id = ?');
   const del = handle.prepare('DELETE FROM memories WHERE id = ?');
-  const tx = handle.transaction(() => {
+  handle.transaction(() => {
     for (const r of rows) {
-      const ageDays = (now - r.last_accessed) / day;
-      // High-importance decays slower: flat tiers beat clever curves.
-      const tier = r.importance >= 0.8 ? 60 : r.importance >= 0.6 ? 30 : 14;
-      if (ageDays < tier) continue;
-      const next = r.importance - 0.1;
-      if (next <= 0.15 && ageDays > tier * 2) del.run(r.id);
-      else stmt.run(Math.max(0.05, next), r.last_accessed, r.last_accessed, r.id);
+      const step = decayStep(r, now);
+      if (step.action === 'delete') del.run(r.id);
+      else if (step.action === 'decay') update.run(step.importance, now, r.id);
     }
-  });
-  tx();
+  })();
 }
