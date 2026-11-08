@@ -237,7 +237,7 @@ class Council:
             "explicitly says a named role must inspect or verify, you MUST assign that role with tools_required=true. "
             "Assign every specialist explicitly requested by the user. Comms/content perspective work should normally "
             f"be false. Skim at most a file or two; specialists do the digging.\n{TOOLS_NOTE}"),
-            PLAN, read_only=True, tools="preferred", max_turns=TURNS["plan"]))
+            PLAN, read_only=True, tools="preferred", max_turns=TURNS["plan"], stage="plan"))
         if not plan or not plan.get("assignments"):
             plan = {"objective": question, "success_criteria": [], "spoken": "Everyone, your view.",
                     "assignments": [{"agent": a, "task": f"Give your {a} perspective.",
@@ -255,7 +255,7 @@ class Council:
             take, reply = await self._ask(run, agent, (
                 f"{frame}\n\n[Your assignment]\n{assigned[agent]['task']}\n\n{READ_ONLY_NOTE}\n{TOOLS_NOTE}"),
                 TAKE, read_only=True, tools="required" if assigned[agent].get("tools_required") else "preferred",
-                max_turns=INVESTIGATE_TURNS)
+                max_turns=INVESTIGATE_TURNS, stage="investigate")
             if take:
                 takes[agent] = take
                 tooled[agent] = bool(reply.get("hasTools", True))
@@ -291,7 +291,7 @@ class Council:
                     "\n\nCross-examine. Challenge the weakest claim another councillor made, with a reason. Concede "
                     "where someone has better evidence. Then give your revised recommendation. You may verify a "
                     f"claim with a quick read. {READ_ONLY_NOTE}"), debate_schema([o for o in takes if o != agent]),
-                    read_only=True, tools="preferred", max_turns=TURNS["debate"]) 
+                    read_only=True, tools="preferred", max_turns=TURNS["debate"], stage="debate") 
                 if d:
                     debates[agent] = d
                     t = takes[agent]
@@ -334,7 +334,7 @@ class Council:
             "plan: ordered steps, each with an owner and a "
             "done_when check someone can verify. Success metrics must be measurable. Decide from the positions "
             "above; open a file only if two councillors contradict each other on a fact."), VERDICT, read_only=True,
-            tools="preferred", max_turns=TURNS["verdict"]))
+            tools="preferred", max_turns=TURNS["verdict"], stage="verdict"))
         if not verdict:
             return await self._adjourn(run, "no_verdict", "Main could not reach a verdict (see the error above). "
                                        "The takes stand in the log; convene again or ask Main directly.")
@@ -444,7 +444,7 @@ class Council:
                 + f"\n\nDo your steps now with minimal, surgical changes. Code changes go in the repo, any other "
                 f"deliverable goes in {out_dir}. Keep files under 600 lines. Never restart servers, kill processes "
                 f"or touch store/. Report every file you changed (repo-relative).\n{TOOLS_NOTE}"),
-                EXECUTE, tools="required", max_turns=TURNS["execute"]))
+                EXECUTE, tools="required", max_turns=TURNS["execute"], stage="execute"))
             if r:
                 reports[owner] = r
                 changed += r["changed_files"]
@@ -497,7 +497,7 @@ class Council:
                         f"- {o}: {json.dumps(r['done'])[:1200]}" for o, r in reports.items())
                     + f"\n\n[Changed files]\n{bullets(changed)}\n[Automated checks]\n{gate['output'][:1500]}\n\n"
                     f"Open the changed files and verify each success metric yourself. {READ_ONLY_NOTE}\n{TOOLS_NOTE}"),
-                    REVIEW, read_only=True, tools="required", max_turns=TURNS["review"])))
+                    REVIEW, read_only=True, tools="required", max_turns=TURNS["review"], stage="review")))
         else:
             why = "nothing changed" if gate["ok"] else "gate failed"
             await self.room.stage("review", "skipped", why)

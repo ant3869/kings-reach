@@ -98,13 +98,15 @@ async def _collect(stream, chunks):
 
 
 async def ask(agent, prompt, *, system="", schema=None, read_only=False, tools="preferred", max_turns=None,
-              memory_query=None, resume=False, chat_id="warroom", on_event=None):
+              memory_query=None, resume=False, chat_id="warroom", on_event=None, stage=None):
     payload = {"op": "ask", "agent": agent, "prompt": prompt, "system": system, "chatId": chat_id,
                "readOnly": read_only, "tools": tools, "resume": resume}
     if schema:
         payload["schema"] = schema
     if max_turns:
         payload["maxTurns"] = max_turns
+    if stage:
+        payload["stage"] = stage  # lets the node side pick a model tier for this step
     if memory_query:
         payload["memoryQuery"] = memory_query
     return await bridge(payload, on_event=on_event)

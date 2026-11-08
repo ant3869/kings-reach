@@ -16,7 +16,7 @@ import { renderProviderSettings } from './provider-html.js';
 import { mountHistory } from './history-routes.js';
 import { defaultProviderRouting, loadProviderRouting, PROVIDERS, ROLE_GUIDANCE, saveProviderRouting } from './provider-config.js';
 import { get9RouterCatalog, getProviderHealth } from './provider-runner.js';
-import { buildModelChoices, invalidRoutes, readiness } from './provider-models.js';
+import { buildModelChoices, invalidRoutes, invalidTiers, readiness } from './provider-models.js';
 import { apiGuard } from './http-guard.js';
 import { claudeAuth } from './claude-auth.js';
 import { claudeLogin } from './claude-login.js';
@@ -82,7 +82,8 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
       // Only real, available (provider, model) pairs may be saved: the page offers dropdowns, this is the backstop.
       const models = await get9RouterCatalog();
       const health = await getProviderHealth(models);
-      const problems = invalidRoutes(body, buildModelChoices(models, health), readiness(health));
+      const choices = buildModelChoices(models, health), ready = readiness(health);
+      const problems = [...invalidRoutes(body, choices, ready), ...invalidTiers(body, choices, ready)];
       if (problems.length) return c.json({ error: `Not saved. ${problems.join('; ')}` }, 400);
       return c.json(saveProviderRouting(body));
     } catch (err) { return c.json({ error: String(err) }, 400); }

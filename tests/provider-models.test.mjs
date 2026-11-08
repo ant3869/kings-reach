@@ -68,6 +68,7 @@ test('the corrected pairing, plus unconfigured providers and empty models, are j
 test('the page renders dropdowns, not free-text model boxes, and still embeds no credentials', () => {
   const html = renderProviderSettings('tok');
   assert.match(html, /select class="model/);
-  assert.ok(!/<input/.test(html), 'no free-text inputs left on the page');
+  // checkboxes (the tier switch and role filter) are fine; what must never come back is a typeable model box
+  assert.ok(!/<input(?![^>]*type="checkbox")/.test(html), 'no free-text inputs left on the page');
   assert.ok(!/datalist/.test(html));
 });

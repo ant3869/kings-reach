@@ -37,6 +37,8 @@ interface BridgeRequest {
   readOnly?: boolean;
   tools?: 'required' | 'preferred' | 'none';
   maxTurns?: number;
+  /** Council/build stage this call belongs to (plan, investigate, debate, verdict, execute, review...): tells the difficulty tiers the step's job. */
+  stage?: string;
   schema?: Record<string, unknown>;
   /** Stream `{event:'activity',...}` lines on stdout while the agent works; the final reply is still the last line. */
   activity?: boolean;
@@ -75,9 +77,11 @@ async function ask(req: BridgeRequest): Promise<Reply> {
   let r;
   try {
     r = await runAgent({
-      message: memory ? `${memory}\n\n${req.prompt ?? ''}` : (req.prompt ?? ''),
+      // "[user]" marks where the real request starts, so the difficulty heuristic ignores the memory block above it.
+      message: memory ? `${memory}\n\n[user]\n${req.prompt ?? ''}` : (req.prompt ?? ''),
       agentId, sessionId, chatId, systemPrompt: req.system || undefined,
       readOnly: req.readOnly, toolNeed: req.tools, maxTurns: req.maxTurns, schema: req.schema,
+      stage: typeof req.stage === 'string' && /^[a-z]{2,20}$/.test(req.stage) ? req.stage : undefined,
       onActivity: req.activity ? emitActivity : undefined,
     });
   } catch (err) {
