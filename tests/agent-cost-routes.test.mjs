@@ -224,14 +224,22 @@ test('tiers: a Claude role lands on the rung its difficulty matches, and its own
   await run({ message: 'hi', stage: 'execute' }); // a medium step: the MIDDLE model, not either end
   assert.equal(state.queryCalls[1].options.model, 'sonnet-x');
   state.claudeRuns.push([init, done(0.01)]);
-  const high = await run({ message: 'hi', stage: 'plan' });
-  assert.equal(state.queryCalls[2].options.model, 'opus-x');
-  assert.deepEqual(high.tier.reasons, ['stage: plan']);
+  // The chair is mid for an ordinary council question (Opus on a plain lookup cost half a council for nothing)...
+  const ordinary = await run({ message: '[Council question]\nWhich file handles cancelling a run?\n\n[Shared memory + hive mind]\n(none)', stage: 'verdict' });
+  assert.equal(state.queryCalls[2].options.model, 'sonnet-x');
+  assert.deepEqual(ordinary.tier.reasons, ['stage: verdict']);
+  // ...and gets the strongest model only when the question itself is hard.
+  state.claudeRuns.push([init, done(0.01)]);
+  const hardQuestion = 'Fix the failing test in src/db.ts. ' + 'Here is the full stack trace and the surrounding code I pasted for context. '.repeat(300);
+  const high = await run({ message: `[Council question]\n${hardQuestion}\n\n[Shared memory + hive mind]\n(none)`, stage: 'plan' });
+  assert.equal(state.queryCalls[3].options.model, 'opus-x');
+  assert.equal(high.tier.reasons[0], 'stage: plan');
+  assert.match(high.tier.reasons[1], /^hard question: level/);
   // The picked model fails -> the role's own model (same provider) is tried next.
   state.claudeRuns.push([init, failed('error_during_execution', 0)]);
   state.claudeRuns.push([init, done(0.01)]);
   const fell = await run({ message: 'hi' });
-  assert.equal(state.queryCalls[4].options.model, 'c1');
+  assert.equal(state.queryCalls[5].options.model, 'c1');
   assert.equal(fell.provider, 'claude');
 });
 

@@ -1,7 +1,7 @@
 // Difficulty tiers: the classifier, the per-provider ladders, `light` runs, and the strict settings validation.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyTiers, assessDifficulty, features, ladderIndex, levelOf, predictEffort, tierApplies, userText } from '../dist/difficulty.js';
+import { applyTiers, assessDifficulty, councilQuestion, features, ladderIndex, levelOf, predictEffort, tierApplies, userText } from '../dist/difficulty.js';
 import { MODEL } from '../dist/difficulty-model.js';
 import { cleanTierConfig } from '../dist/provider-config.js';
 import { invalidTiers } from '../dist/provider-models.js';
@@ -31,7 +31,7 @@ test('classifier: the memory block the chat surfaces prepend does not inflate th
 test('classifier: an explicit request beats a stage, and a known stage beats the text', () => {
   assert.equal(assessDifficulty('hi', { difficulty: 'high' }).tier, 'high');
   assert.equal(assessDifficulty(BIG, { stage: 'record' }).tier, 'low');
-  assert.equal(assessDifficulty('hi', { stage: 'verdict' }).tier, 'high');
+  assert.equal(assessDifficulty('hi', { stage: 'verdict' }).tier, 'mid'); // the chair starts mid, see the chair test below
   assert.equal(assessDifficulty('hi', { stage: 'debate' }).tier, 'mid');
   assert.equal(assessDifficulty('hi', { stage: 'not-a-stage' }).tier, 'low'); // unknown stage: fall back to the text
 });
@@ -68,13 +68,36 @@ test('levelOf: interpolates between anchors and clamps outside them', () => {
   assert.equal(levelOf(99, anchors), 1);
 });
 
+const council = (question) => `[Council question]\n${question}\n\n[Shared memory + hive mind]\n(nothing on file)\n\n[Objective]\nobj`;
+
+test('chair: plan and verdict start at mid, and only a hard council question raises them', () => {
+  const easy = 'Which file handles cancelling a run?';
+  assert.equal(councilQuestion(council(easy)), easy);
+  assert.equal(councilQuestion('no block here'), undefined);
+  for (const stage of ['plan', 'verdict']) {
+    const plain = assessDifficulty(council(easy), { stage });
+    assert.deepEqual([plain.level, plain.tier, plain.reasons], [0.5, 'mid', [`stage: ${stage}`]], 'an ordinary question gets a mid chair');
+    const hard = assessDifficulty(council(BIG), { stage });
+    assert.equal(hard.level, assessDifficulty(BIG).level, 'a hard question gets the chair its own difficulty');
+    assert.ok(hard.level > 0.5 && hard.tier === 'high' && hard.reasons.some((r) => /^hard question/.test(r)));
+    assert.equal(assessDifficulty('no question block', { stage }).level, 0.5, 'without a question the stage level stands');
+  }
+  // The question only raises the chair, never any other stage and never below the stage's own level.
+  assert.equal(assessDifficulty(council(BIG), { stage: 'investigate' }).level, 0.55);
+  assert.equal(assessDifficulty(council('hi'), { stage: 'plan' }).level, 0.5);
+  // What this buys on the real ladders (Claude: sonnet-5, opus-5, sonnet-5-5, opus-5-5): a mid chair is not the top rung.
+  const claude = ['sonnet-5', 'opus-5', 'sonnet-5-5', 'opus-5-5'];
+  assert.equal(claude[ladderIndex(4, assessDifficulty(council(easy), { stage: 'verdict' }).level)], 'sonnet-5-5');
+  assert.equal(claude[ladderIndex(4, assessDifficulty(council(BIG), { stage: 'verdict' }).level)], 'opus-5-5');
+});
+
 const LADDER = ['haiku-4', 'sonnet-4-6', 'opus-4-6', 'sonnet-5', 'opus-5-5'];
 const CFG = { enabled: true, providers: { claude: LADDER, openai: ['gpt-mini', 'gpt-big'] } };
 const names = (routes) => routes.map((r) => `${r.provider}:${r.model}`);
 
 test('level: a difficulty is continuous, from trivial (0) to the hardest (1), and stages have fixed levels', () => {
   assert.equal(assessDifficulty('hi').level, 0);
-  assert.equal(assessDifficulty('hi', { stage: 'plan' }).level, 1);
+  assert.equal(assessDifficulty('hi', { stage: 'plan' }).level, 0.5);
   assert.equal(assessDifficulty('hi', { stage: 'execute' }).level, 0.5);
   assert.equal(assessDifficulty('hi', { difficulty: 'mid' }).level, 0.5);
   const big = assessDifficulty(BIG), small = assessDifficulty('Add a unit test for parseDate in src/utils.ts');

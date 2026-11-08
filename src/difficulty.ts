@@ -28,12 +28,24 @@ export interface TierConfig {
  */
 export interface Assessment { tier: Tier; level: number; score: number; reasons: string[]; light: boolean }
 
-/** Council and build stages have a known job, so their difficulty is known, not guessed. */
+/**
+ * Council and build stages have a known job, so their difficulty is known, not guessed. The chair's two steps (plan, verdict)
+ * are synthesis: the plan is told to skim a file or two and the verdict to decide from what the specialists already found, so
+ * they start at mid like the investigation they depend on. Always giving the chair the top model cost about half of a council
+ * (an Opus verdict, $1.02 of $2.03) on a plain "which file does X" question that Sonnet answered as well.
+ */
 export const STAGE_LEVEL: Record<string, number> = {
   recall: 0, record: 0, preflight: 0, gate: 0,
   investigate: 0.55, debate: 0.55, execute: 0.5, review: 0.5,
-  plan: 1, verdict: 1,
+  plan: 0.5, verdict: 0.5,
 };
+/** Stages whose level the QUESTION can raise: a genuinely hard question deserves the strongest chair. */
+const CHAIR_STAGES = new Set(['plan', 'verdict']);
+
+/** The council's own question, from the `[Council question]` block every chair prompt starts with. */
+export function councilQuestion(message: string): string | undefined {
+  return /\[Council question\]\n([\s\S]*?)(?:\n\n\[|$)/.exec(message)?.[1]?.trim() || undefined;
+}
 
 const tierOf = (level: number): Tier => (level >= 0.75 ? 'high' : level >= 1 / 3 ? 'mid' : 'low');
 const TIER_LEVEL: Record<Tier, number> = { high: 1, mid: 0.5, low: 0 };
@@ -79,7 +91,13 @@ export function levelOf(effort: number, anchors: [number, number][] = MODEL.anch
 export function assessDifficulty(message: string, hint: { stage?: string; difficulty?: Tier } = {}): Assessment {
   if (hint.difficulty) return { tier: hint.difficulty, level: TIER_LEVEL[hint.difficulty], score: -1, reasons: ['requested'], light: false };
   const stageLevel = hint.stage ? STAGE_LEVEL[hint.stage.toLowerCase()] : undefined;
-  if (stageLevel !== undefined) return { tier: tierOf(stageLevel), level: stageLevel, score: -1, reasons: [`stage: ${hint.stage}`], light: stageLevel === 0 };
+  if (stageLevel !== undefined) {
+    const question = CHAIR_STAGES.has(hint.stage!.toLowerCase()) ? councilQuestion(message) : undefined;
+    const asked = question ? assessDifficulty(question).level : 0;
+    const level = Math.max(stageLevel, asked);
+    const reasons = [`stage: ${hint.stage}`, ...(asked > stageLevel ? [`hard question: level ${asked.toFixed(2)}`] : [])];
+    return { tier: tierOf(level), level, score: -1, reasons, light: stageLevel === 0 };
+  }
 
   const text = userText(message).trim();
   if (text.length <= 2 || /^(?:ok(?:ay)?|k|yes|no|thanks?|thank you|thx|got it|sure|hi|hello|hey|bye)[.!]?$/i.test(text)) {

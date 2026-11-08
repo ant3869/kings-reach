@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.17.3 - The council chair no longer always gets the top model
+
+**Fixed**
+- **Plan and verdict always ran on the strongest model.** Both stages were fixed at difficulty 1, so with tiers on, Main (the chair) landed on the top rung of its ladder (Claude Opus 5.5) for every council, however plain the question. In a real run on "which file handles cancelling a run" the Opus chair cost $1.02 of a $2.03 council, while Ops on Sonnet 5.5 had reached the same answer for $0.61; verdict confidence (0.85) was inside the usual 0.78-0.93 range. The chair's jobs are synthesis (the plan is told to skim a file or two; the verdict to decide from what the specialists found), so both now start at mid, like the investigation they depend on.
+- The council question can still raise the chair: its own text is scored with the same fitted model as free-form prompts, and the chair takes the higher of that and its stage level. A hard question (large, points at code) still gets the strongest model; the reason is logged as `hard question: level N`. No other stage is affected, and no stage goes below its own level.
+
+**Tests:** 221 Node (new: chair levels, question extraction, the ladder rung an ordinary and a hard question land on; the integration test for tiers now pins Sonnet for an ordinary verdict and Opus for a hard plan). Python unchanged (87).
+
+**Note:** council steps run in the War Room's Node bridge, whose log lines do not reach `core.log`; the model each step used is in the live status panel ("Main - Asking claude (...)") and in `store/council-runs.jsonl` under each agent's `models`.
+
 ## 2.17.2 - Council quorum and the Claude CLI version
 
 **Fixed**
