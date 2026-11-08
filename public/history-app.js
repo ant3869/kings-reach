@@ -99,7 +99,9 @@ function renderList() {
       `<span class="when">${esc(when(r.started))}</span></div>` +
       `<div class="q">${esc(r.title)}</div><div class="meta"><span class="id">${esc(r.id)}</span> &middot; ${esc(facts.filter(Boolean).join(' &middot; ').replace(/&middot;/g, '\u00b7'))}</div>` +
       `</button></li>`;
-  }).join('') : '<li class="meta" style="padding:14px">No runs match these filters.</li>';
+  }).join('') : (!overview.runs.length
+    ? '<li class="meta" style="padding:14px">No council runs yet. <a href="/warroom">Convene the council</a> to create the first plan.</li>'
+    : '<li class="meta" style="padding:14px">No runs match these filters.</li>');
 }
 
 // --- detail pieces ---------------------------------------------------------------------
@@ -146,7 +148,7 @@ function plansSection(d) {
     section('Verdict', `<div class="verdict">${md(p.verdict || '')}</div>` +
       `<div class="chips">${(p.decided_by || []).map((x) => `<span>${esc(x)}</span>`).join('')}</div>` +
       (conf == null ? '' : `<div class="meta" style="margin-top:8px">Confidence <span class="conf"><i style="width:${Math.round(conf * 100)}%"></i></span>${conf.toFixed(2)}</div>`)) +
-    (p.dissent && p.dissent.length ? section('Dissent', bullets(p.dissent)) : '') +
+    (p.dissent && p.dissent.length ? `<span id="dissent"></span>` + section('Dissent', bullets(p.dissent)) : '') +
     section(`Plan (${(p.plan || []).length} steps)`, planSteps(p)) +
     section('Success metrics', bullets(p.success_metrics)) +
     (d.planMarkdown ? `<details><summary>Full council record (takes, evidence)</summary><div class="verdict">${md(d.planMarkdown)}</div></details>` : '');
@@ -177,12 +179,25 @@ function artifactsSection(d) {
     '</ul><div id="artifact"></div>');
 }
 
+// Above-the-fold digest: verdict headline, a one-click jump to dissent, and where the money went.
+function glance(d) {
+  const p = d.plan, r = d.run;
+  if (!p) return '';
+  const headline = String(p.verdict || '').replace(/[#*_`>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 220);
+  const dis = (p.dissent || []).length;
+  const costs = Object.entries(r.agents || {}).filter(([, a]) => a.cost_usd > 0).sort((a, b) => b[1].cost_usd - a[1].cost_usd);
+  const split = costs.length ? costs.map(([id, a]) => `${esc(id)} ${money(a.cost_usd)}`).join(' &middot; ') : 'no cost recorded';
+  return `<div class="notice glance"><b>Verdict:</b> ${esc(headline) || 'none recorded'}<br>` +
+    (dis ? `<a href="#dissent" onclick="document.getElementById('dissent').scrollIntoView({block:'start'});return false">${dis} dissenting view${dis > 1 ? 's' : ''}</a> &middot; ` : 'No dissent recorded &middot; ') +
+    `<span class="meta">Cost split: ${split}</span></div>`;
+}
+
 function summitDetail(d) {
   const r = d.run;
   return `<h3>Council <span class="id">${esc(r.id)}</span> ${badge(r.outcome)}</h3>` +
     `<div class="meta">${esc(when(r.started))} &middot; ${duration(r.total_s)} &middot; ${money(r.total_cost_usd)} &middot; ` +
     `${(r.specialists || []).length} specialists &middot; ${r.memory_lines_used || 0} memories recalled</div>` +
-    actionsFor(d) +
+    glance(d) + actionsFor(d) +
     `<details><summary>Question put to the council</summary><pre>${esc((d.plan && d.plan.question) || r.question)}</pre></details>` +
     plansSection(d) + buildsSection(d) +
     section('Stage timings', stageBar(r.stages)) + section('Who did the work', agentsTable(r.agents)) + artifactsSection(d);
@@ -236,7 +251,8 @@ async function showDetail(id) {
     // Single-column layout (phones): the detail sits below the list, so bring it into view.
     if (window.matchMedia('(max-width:900px)').matches) el.scrollIntoView({ block: 'start' });
   } catch (err) {
-    el.innerHTML = `<div class="notice bad">${esc(err.message)}</div>`;
+    el.innerHTML = `<div class="notice bad">Could not load this run: ${esc(err.message)} ` +
+      `<button class="btn" data-act="retry" data-id="${esc(id)}">Retry</button></div>`;
   }
 }
 
@@ -294,6 +310,9 @@ async function onAction(e) {
   try {
     if (act === 'open') { if (location.hash === '#run=' + id) showDetail(id); else location.hash = 'run=' + id; }
     else if (act === 'activate') { await activate(id); toast(`Plan ${id} is now the active plan.`); showDetail(id); }
+    else if (act === 'retry') {
+      if (id) await showDetail(id); else { await refresh(); $('detail').innerHTML = '<div class="empty">Pick a run on the left.</div>'; routeFromHash(); }
+    }
     else if (act === 'build') await confirmBuild(id);
     else if (act === 'reconvene') reconvene(id);
     else if (act === 'artifact') {
@@ -326,7 +345,7 @@ async function init() {
   $('refresh').onclick = () => refresh().then(() => toast('Refreshed.')).catch((err) => toast(err.message));
   window.addEventListener('hashchange', routeFromHash);
   window.addEventListener('focus', () => refresh().catch(() => {}));
-  try { await refresh(); } catch (err) { $('detail').innerHTML = `<div class="notice bad">Could not load history: ${esc(err.message)}</div>`; return; }
+  try { await refresh(); } catch (err) { $('detail').innerHTML = `<div class="notice bad">Could not load history: ${esc(err.message)} <button class="btn" data-act="retry">Retry</button></div>`; return; }
   routeFromHash();
 }
 

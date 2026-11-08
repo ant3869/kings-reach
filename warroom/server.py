@@ -42,8 +42,8 @@ except ImportError:  # run as a script: python warroom/server.py
     from router import COUNCIL, read_pin, route, write_pin
     from voice import Voice
 
-PROTOCOL = "council-v4"  # bump only when the wire protocol changes (v4: activity + meter messages)
-SERVER_VERSION = 17  # bump on every server.py deploy; shown in the client via pong
+PROTOCOL = "council-v5"  # bump only when the wire protocol changes (v4: activity + meter messages; v5: cancel_ack)
+SERVER_VERSION = 18  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
@@ -219,8 +219,10 @@ class Session:
             self.hush()
         elif kind == "cancel":
             self.hush()
-            for task in list(self.tasks):
+            running = list(self.tasks)
+            for task in running:
                 task.cancel()
+            await self.send({"type": "cancel_ack", "stopped": len(running)})
         elif kind in ("text", "summit") and text:
             await self.handle_text(text, kind)
         elif kind == "build":

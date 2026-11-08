@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.18.0 - Cancel is honest, and the dashboard shows what is running
+
+**Changed**
+- **War Room: Cancel run and Hush voices are now two buttons.** *Cancel run* sits in the live status header while a run is active. It shows *Cancelling...* until the server answers (new `cancel_ack` message: the wire protocol is now `council-v5`, War Room server v18), the CANCELLED badge arrives when the run really ends, and if neither arrives within 8 s it says so and offers *Retry cancel*. *Hush voices* (the old *Cancel / hush*) now only mutes speech and says the run keeps going.
+- **Dashboard: new "Running now" panel.** It reads `GET /api/runs`, shows each run's agent, origin (dashboard chat, council step, or a chat id for Telegram and scheduled runs) and a ticking elapsed time. *Stop this run* is offered only for dashboard-owned runs, with *Stopping...*, a receipt, and *Retry stop* on failure. An empty list and a failing endpoint each have their own message.
+
+**Needs a restart:** the server keeps the page HTML in memory, so the new buttons and panel appear after the dashboard and War Room are restarted. Until then the old page keeps working with the new script (its single button still cancels).
+
+**Tests:** 225 Node, Python unchanged, 107 browser checks (14 new: cancel pending, ack, stuck retry, hush split, runs panel).
+
 ## 2.17.4 - Council steps are now logged
 
 **Fixed**

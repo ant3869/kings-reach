@@ -10,8 +10,8 @@ import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const WARROOM_CLIENT_VERSION = 35;
-export const WARROOM_PROTOCOL = 'council-v4'; // must match PROTOCOL in warroom/server.py
+export const WARROOM_CLIENT_VERSION = 36;
+export const WARROOM_PROTOCOL = 'council-v5'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
 const CARD_ASSETS = CARD_STATES.flatMap((state) =>
@@ -108,23 +108,25 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 @media(max-width:1050px){.seat{--ch:241px;width:164px;height:284px}.strip-a,.strip-b{width:164px;height:241px}.seat .plate{left:9px;right:9px}.seat .voice select{max-width:104px}}
 #stages{display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin:8px 0}
 .stage{font:12px Georgia;padding:5px 14px;border-radius:9px;border:1px solid #735628;color:#9d8b65;background:linear-gradient(#16140f,#090a0e);box-shadow:inset 0 0 9px #d4a01712}
-.stage.active{color:#1a1103;background:linear-gradient(#f4d77c,#a26b16);border-color:#ffe29a;animation:pulse 1.4s ease-in-out infinite}
+.stage.active{color:#000;background:linear-gradient(#f4d77c,#a26b16);border-color:#ffe29a;animation:pulse 1.4s ease-in-out infinite}
 .stage.done{color:#e6cb7b;border-color:#b88a36}.stage.failed{color:#f85149;border-color:#f85149}.stage.skipped{text-decoration:line-through}
 .stage i{font-style:normal;opacity:.75}
 @keyframes pulse{50%{box-shadow:0 0 14px var(--gold)}}
 #prog{text-align:center;font:12px system-ui;color:var(--gold);min-height:18px}
 .main{display:grid;grid-template-columns:1fr 300px;gap:14px;margin-top:8px}
 @media(max-width:900px){.main{grid-template-columns:1fr}}
+/* once a run starts (first stage chip exists) shrink the seats so the log and verdict sit above the fold; layout-affecting zoom */
+body:has(#stages .stage) #council{zoom:.62;margin:10px 0 4px}
 
 #log{height:45vh;min-height:310px;overflow-y:auto;border:2px solid #8e6a2c;border-radius:4px;padding:18px;background:linear-gradient(#060a11ed,#080b12f5);font:14px/1.55 system-ui;display:flex;flex-direction:column;gap:12px;box-shadow:inset 0 0 0 3px #05060a,inset 0 0 30px #000,0 8px 24px #000}
 .bubble{--ac:var(--gold);border-left:3px solid var(--ac);padding:2px 0 2px 12px;max-width:96%}
 .bubble .who{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--ac)}
 .bubble .tag{font-size:10px;margin-left:8px;padding:1px 7px;border-radius:999px;border:1px solid var(--ac);color:var(--ac)}
-.bubble .when{font-size:10px;color:#6e7681;margin-left:6px}
+.bubble .when{font-size:10px;color:#9aa3ad;margin-left:6px}
 .bubble p{margin:5px 0}.bubble ul,.bubble ol{margin:5px 0;padding-left:20px}.bubble h3,.bubble h4{margin:8px 0 4px;color:var(--gold)}
 .bubble pre{background:#000;border:1px solid #30363d;border-radius:6px;padding:8px;overflow-x:auto;font-size:12px}
 .bubble code{background:#000;padding:1px 5px;border-radius:4px;font-size:12px}.bubble pre code{padding:0}.bubble a{color:#79c0ff}
-.bubble.you{--ac:#8b949e;align-self:flex-end;text-align:right}.bubble.sys{--ac:#555;font-style:italic;color:#8b949e}
+.bubble.you{--ac:#8b949e;align-self:flex-end;text-align:right}.bubble.sys{--ac:#9aa3ad;font-style:italic;color:#8b949e}
 .bubble.err{--ac:#f85149;color:#f85149}.bubble.verdict{background:#d4a01712;border-radius:0 10px 10px 0;padding:8px 12px}
 .bubble .brief{font:600 14px/1.5 system-ui;color:#eadfbe;margin:5px 0}.bubble details{margin-top:7px;border-top:1px solid #8e6a2c55;padding-top:6px}.bubble summary{cursor:pointer;color:#d9b85d;font:11px system-ui;text-transform:uppercase;letter-spacing:.5px}.bubble .full{margin-top:8px;color:#bdb6a5}.bubble.you .full{text-align:left}
 .buildlive{border:1px solid #8e6a2c;border-radius:8px;background:#080b12e8;margin:8px auto;padding:10px 12px;max-width:980px;font:12px system-ui;box-shadow:inset 0 0 18px #000}.buildlive h3{margin:0 0 8px;color:#e4c468;font:600 13px Georgia}.buildphases{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.buildphase{border:1px solid #302b22;border-radius:6px;padding:7px;color:#7f786a}.buildphase.active{border-color:#c28b31;color:#f0d78f;box-shadow:inset 0 0 10px #d4a01718}.buildphase.done{border-color:#3fb95088;color:#72d487}.buildphase.failed{border-color:#f85149;color:#ff7b72}.buildphase.skipped{text-decoration:line-through}.buildphase b,.buildphase span{display:block}.buildphase span{margin-top:3px;color:inherit}.builddetail{margin-top:7px;color:#9d9481}.metricfail{margin-top:9px;border-left:3px solid #f85149;padding:6px 9px;color:#ff9b94;background:#f8514910}@media(max-width:700px){.buildphases{grid-template-columns:1fr 1fr}}
@@ -132,9 +134,9 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 .panel{border:2px solid #8e6a2c;border-radius:4px;background:linear-gradient(#090d15ee,#0c0e14f5);padding:14px;font:13px system-ui;box-shadow:inset 0 0 0 3px #05060a,inset 0 0 22px #000}
 .panel h3{margin:0 0 8px;font:600 13px system-ui;color:var(--gold);letter-spacing:.5px}.panel h3 small{color:#6e7681;font-weight:400}
 .panel table{width:100%;border-collapse:collapse}.panel td{padding:3px 0;border-bottom:1px solid #1e1e2a}.panel td+td{text-align:right;color:#e8dcc0}
-.stagetimes{margin-top:8px;color:#6e7681;font-size:11px}
+.stagetimes{margin-top:8px;color:#9aa3ad;font-size:11px}
 #mic{display:block;width:116px;height:116px;margin:8px auto 14px;padding:20px;border-radius:50%;border:3px double #ffd26c;background:radial-gradient(circle,#3b280d 0 38%,#0b0b0d 42% 58%,#b37a20 60% 62%,#08090c 65%);color:#ffe7a2;font:600 12px Georgia;cursor:pointer;user-select:none;touch-action:none;box-shadow:0 0 22px #d79b35,inset 0 0 18px #000;text-shadow:0 1px #000}
-#mic.hot{background:#f85149;border-color:#f85149;color:#fff;box-shadow:0 0 22px #f85149}
+#mic.hot{background:#b62324;border-color:#f85149;color:#fff;box-shadow:0 0 22px #f85149}
 #mic:disabled{opacity:.4;cursor:not-allowed}
 #micstate,#heard{font:12px system-ui;color:#8b949e;min-height:16px;margin-top:6px}
 .panel label{display:block;margin-top:7px;color:#c9d1d9;cursor:pointer}
@@ -143,7 +145,14 @@ input#msg{flex:1;background:#161b22;color:#e8dcc0;border:1px solid var(--line);b
 button.go{background:linear-gradient(#755724,#3d2d12);color:#fff0bd;border:1px solid #c99a42;border-radius:8px;padding:10px 16px;cursor:pointer;font:14px Georgia;box-shadow:inset 0 0 8px #000}
 button.go:hover{background:linear-gradient(#977335,#4e3815)}button.alt{background:#090b10dd;border:1px solid var(--gold);color:#e9c96e}
 button.stop{background:transparent;border:1px solid #f85149;color:#f85149}
-.hint{font:11px system-ui;color:#6e7681;margin-top:6px}
+.hint{font:11px system-ui;color:#9aa3ad;margin-top:6px}
+.panel h3 small{color:#9aa3ad}
+.bubble.verdict{border:1px solid #d4a017;border-left:4px solid #d4a017;box-shadow:0 0 14px #d4a01733}
+.bubble .vhead{font:700 12px system-ui;letter-spacing:.5px;color:#f4d77c;text-transform:uppercase}
+.bubble .vfull{max-height:40vh;overflow-y:auto;color:#e8dcc0}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,#mic:focus-visible,a:focus-visible{outline:3px solid #f4d77c;outline-offset:2px}
+button.go,input#msg{min-height:44px}
+@media(max-width:760px){.main>*,.main aside{min-width:0}.composer{flex-wrap:wrap}.composer input#msg{min-width:0;flex-basis:100%}body{overflow-x:hidden}}
 .planline{font:12px/1.5 system-ui;color:#b2a47d;margin-top:8px}.planline a{color:#e2bf62}.planline b{color:#f0d88e}.planline.none{color:#8f856c}
 .now{max-width:980px;margin:8px auto;padding:10px 14px;border:1px solid #8e6a2c;border-radius:8px;background:#080b12e8;font:13px system-ui}
 .nowhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -248,7 +257,7 @@ ${wrapInShell('warroom', '', `<div class="wrap">
 <div id="stages"></div>
 <div id="prog"></div>
 <section id="now" class="now" aria-label="Live status">
-<div class="nowhead"><span id="nowbadge" class="nowbadge idle">\u00b7 IDLE</span><span id="nowlabel" role="status" aria-live="polite">Nothing running. Convene the council or build the verdict.</span><span id="nowclock"></span></div>
+<div class="nowhead"><span id="nowbadge" class="nowbadge idle">\u00b7 IDLE</span><span id="nowlabel" role="status" aria-live="polite">Nothing running. Convene the council or build the verdict.</span><span id="nowclock"></span><button class="go stop" id="nowcancel" hidden>Cancel run</button><span id="cancelnote" role="status" aria-live="polite"></span></div>
 <div id="meter" class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Estimated progress"><div id="meterfill"></div></div>
 <div id="meterlabel"></div>
 <div id="agentlines"></div>
@@ -258,10 +267,10 @@ ${wrapInShell('warroom', '', `<div class="wrap">
 <div id="buildlive" class="buildlive" role="status" aria-live="polite" hidden></div>
 <div class="main">
 <section>
-<div id="log"></div>
+<div id="log" role="log" aria-live="polite" aria-label="Council transcript" tabindex="0"></div>
 <div class="composer"><input id="msg" placeholder="Speak to one agent (Enter), or convene the council (Ctrl+Enter)..." autocomplete="off">
 <button class="go" id="send">Send</button><button class="go alt" id="summitbtn">Convene council</button></div>
-<div class="composer"><button class="go alt" id="buildbtn">Build the verdict</button><button class="go stop" id="cancelbtn">Cancel / hush</button></div>
+<div class="composer"><button class="go alt" id="buildbtn">Build the verdict</button><button class="go stop" id="cancelbtn">Hush voices</button></div>
 <div id="planbox">${planLine(plan)}</div>
 <div class="hint">Voice tips: say "council, ..." for a full deliberation, "hey Ops, ..." for one agent, "build it" to execute the plan.</div>
 </section>

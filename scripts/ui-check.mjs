@@ -376,6 +376,52 @@ try {
   const after = await stopState();
   check('stop: clicking Stop cancels the dashboard chat by chat id', JSON.stringify(after.cancels) === JSON.stringify([{ chatId: 'dashboard' }]), JSON.stringify(after.cancels));
   check('stop: the log shows the run as stopped, and the console is ready again', after.last.includes('Stopped.') && after.lastClass.includes('stopped') && after.hidden === true && after.sendDisabled === false, JSON.stringify(after));
+
+  // --- War Room: Cancel run (live header) is separate from Hush voices; pending, ack, retry -----------------
+  await open('/warroom', { fake: true });
+  const deliver = (m) => js(`window.__ws.onmessage({ data: ${JSON.stringify(JSON.stringify(m))} })`);
+  const cancelUi = async () => JSON.parse(await js(`JSON.stringify({ hidden: document.getElementById('nowcancel').hidden, disabled: document.getElementById('nowcancel').disabled,
+    text: document.getElementById('nowcancel').textContent, note: document.getElementById('cancelnote').textContent })`));
+  check('cancel: Cancel run is hidden while nothing runs', (await cancelUi()).hidden === true);
+  await deliver({ type: 'meter', pct: 10, phase: 'plan', label: 'plan', failed: false });
+  check('cancel: Cancel run appears in the live header while a run is active', (await cancelUi()).hidden === false, JSON.stringify(await cancelUi()));
+  await js(`document.getElementById('cancelbtn').click()`);
+  check('cancel: Hush voices sends hush and never cancel the run', (await sent()).some((m) => m && m.type === 'hush') && !(await sent()).some((m) => m && m.type === 'cancel'), JSON.stringify(await sent()));
+  check('cancel: the hush receipt says the run keeps going', (await cancelUi()).note.includes('keeps going'), JSON.stringify(await cancelUi()));
+  await js(`document.getElementById('nowcancel').click()`);
+  const pending = await cancelUi();
+  check('cancel: clicking Cancel run sends cancel and shows a pending state', (await sent()).filter((m) => m && m.type === 'cancel').length === 1 && pending.disabled === true && pending.text === 'Cancelling...', JSON.stringify(pending));
+  await deliver({ type: 'cancel_ack', stopped: 2 });
+  check('cancel: the server ack is shown', (await cancelUi()).note.includes('confirmed: stopping 2 tasks'), JSON.stringify(await cancelUi()));
+  await deliver({ type: 'meter', pct: 40, phase: 'cancelled', label: 'cancelled', failed: false, state: 'cancelled', final: true });
+  check('cancel: the CANCELLED badge replaces the run and the button hides', (await js(`document.getElementById('nowbadge').textContent`)).includes('CANCELLED') && (await cancelUi()).hidden === true);
+  await open('/warroom', { fake: true, pre: `window.__fastRetry = true; var __st = window.setTimeout; window.setTimeout = function (f, ms) { return __st(f, ms === 8000 ? 300 : ms); };` });
+  await deliver({ type: 'meter', pct: 10, phase: 'plan', label: 'plan', failed: false });
+  await js(`document.getElementById('nowcancel').click()`);
+  await sleep(600);
+  const stuck = await cancelUi();
+  check('cancel: with no ack and no CANCELLED, a retry hint appears and the button re-enables', stuck.disabled === false && stuck.text === 'Retry cancel' && stuck.note.includes('Retry'), JSON.stringify(stuck));
+
+  // --- Dashboard runs panel: origin, elapsed ticker, Stop only for dashboard-owned runs ---------------------
+  const stubRuns = (runs) => `(function () { var real = window.fetch.bind(window); window.__cancels = [];
+    window.fetch = function (url, init) { var u = String(url);
+      if (u.indexOf('api/runs/cancel') >= 0) { window.__cancels.push(JSON.parse(init.body)); return Promise.resolve(new Response('{"cancelled":1}', { headers: { 'Content-Type': 'application/json' } })); }
+      if (u.indexOf('api/runs') >= 0) return Promise.resolve(new Response(JSON.stringify({ runs: ${runs} }), { headers: { 'Content-Type': 'application/json' } }));
+      return real(url, init); }; })();`;
+  await open('/', { pre: stubRuns(`[{ id: 'd1', agentId: 'main', chatId: 'dashboard', startedAt: 1, seconds: 5 }, { id: 't1', agentId: 'comms', chatId: '555123', startedAt: 1, seconds: 70 }]`) });
+  const runRows = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('#runs .run')].map(function (r) { return { text: r.textContent, stop: !!r.querySelector('button[data-action=stop-run]') }; }))`));
+  check('runs: a Telegram or scheduled run shows its origin and elapsed time', runRows.length === 2 && runRows[1].text.includes('Chat 555123') && runRows[1].text.includes('1:1'), JSON.stringify(runRows));
+  check('runs: Stop is offered for the dashboard run only', runRows[0].stop === true && runRows[1].stop === false, JSON.stringify(runRows));
+  const t0 = await js(`document.querySelector('#runs .runtime').textContent`);
+  await sleep(2200);
+  check('runs: the elapsed time ticks without a refresh', (await js(`document.querySelector('#runs .runtime').textContent`)) !== t0, t0);
+  await js(`document.querySelector('button[data-action=stop-run]').click()`);
+  await sleep(400);
+  check('runs: Stop this run cancels by run id and gives a receipt', JSON.stringify(await js(`window.__cancels`)) === JSON.stringify([{ id: 'd1' }]) && (await js(`document.querySelector('#runs .runnote').textContent`)).includes('Stop sent'));
+  await open('/', { pre: stubRuns('[]') });
+  check('runs: empty state renders', (await js(`document.getElementById('runs').textContent`)).includes('Nothing is running'));
+  await open('/', { pre: `(function () { var real = window.fetch.bind(window); window.fetch = function (u, i) { return String(u).indexOf('api/runs') >= 0 && String(u).indexOf('cancel') < 0 ? Promise.resolve(new Response('{}', { status: 500 })) : real(u, i); }; })();` });
+  check('runs: a failing endpoint shows an error state, not a stale list', (await js(`document.getElementById('runs').textContent`)).includes('Could not read'));
 } catch (err) {
   check('ui-check ran to completion', false, String(err));
 } finally {

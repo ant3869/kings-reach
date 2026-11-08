@@ -96,5 +96,5 @@ function readTiers(){
   if(picked.length===all.length)delete t.roles;else t.roles=picked;
   state.tiers=t;
 }
-function bindTiers(){var box=document.getElementById('tiers');if(!box)return;box.onchange=function(){readTiers();renderTiers();note()}}
+function bindTiers(){var box=document.getElementById('tiers');if(!box)return;box.onchange=function(){dirty=true;readTiers();renderTiers();note()}}
 `;

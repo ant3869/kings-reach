@@ -152,6 +152,7 @@
       $('nowbadge').className = 'nowbadge ' + o.key;
       $('nowbadge').textContent = glyph + ' ' + word;
       $('nowlabel').textContent = o.text;
+      if (hooks.onRun) hooks.onRun(o.key === 'working' || o.key === 'quiet' || o.key === 'stalled' || o.key === 'running', o.key);
       const m = live.s.meter, pct = m ? m.pct : 0;
       $('meterfill').style.width = pct + '%';
       $('meter').setAttribute('aria-valuenow', String(pct));

@@ -4,7 +4,7 @@
 import { CLIENT_MD_JS } from './client-md.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const DASHBOARD_CLIENT_VERSION = 7;
+export const DASHBOARD_CLIENT_VERSION = 8;
 const REFRESH_MS = 15_000;
 const STALE_MS = 45_000;
 
@@ -20,7 +20,12 @@ var selAgent='main', selName='Main', lastOk=0, failures=[], everOk=false;
 var snapshot={agents:0,missions:0,memory:0,hive:0,war:false,tokens:0};
 function hdrs(extra){var h=extra||{};if(TOKEN)h['x-kings-reach-token']=TOKEN;return h;}
 async function j(p){var r=await fetch(p,{headers:hdrs()});if(!r.ok)throw new Error(p+' (HTTP '+r.status+')');return r.json();}
-async function send(method,p,b){var r=await fetch(p,{method:method,headers:hdrs({'Content-Type':'application/json'}),body:b?JSON.stringify(b):undefined});return r.json();}
+async function send(method,p,b){var r=await fetch(p,{method:method,headers:hdrs({'Content-Type':'application/json'}),body:b?JSON.stringify(b):undefined});
+  var d=null;try{d=await r.json();}catch(e){}
+  if(!r.ok)throw new Error((d&&d.error)||('request failed (HTTP '+r.status+')'));
+  return d||{};}
+var noticeTimer=0;
+function notify(msg,bad){var n=byId('notice');n.textContent=msg;n.className='notice'+(bad?' bad':'');n.hidden=!msg;clearTimeout(noticeTimer);if(msg)noticeTimer=setTimeout(function(){n.hidden=true;},8000);}
 function byId(id){return document.getElementById(id);}
 function ago(ts){var d=Date.now()-Number(ts);if(!(d>=0))return '';var s=Math.floor(d/1000);if(s<60)return s+'s ago';var m=Math.floor(s/60);if(m<60)return m+'m ago';var h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago';}
 function empty(text){return '<p class="empty">'+esc(text)+'</p>';}
@@ -43,6 +48,16 @@ function renderTasks(t){
   snapshot.missions=t.filter(function(m){return (m.status||'active')!=='disabled';}).length;
   byId('tasks').innerHTML=t.length?t.map(function(m){return '<article class="mission"><div class="missiontop"><span class="cron">'+esc(m.schedule)+'</span><span class="st">'+esc(m.status||'active')+'</span></div><div class="missionprompt">'+esc(String(m.prompt||'').slice(0,220))+'</div><div class="meta">'+esc(m.agent_id)+' · next '+(m.next_run?new Date(m.next_run).toLocaleString():'unscheduled')+'</div><button class="textbtn danger" data-action="del-mission" data-id="'+esc(m.id)+'">Delete mission</button></article>';}).join(''):empty('No active missions. Use New mission to schedule the first order.');paintFinding();
 }
+function runOrigin(r){if(r.chatId==='dashboard')return 'Dashboard chat';if(r.stage)return 'Council step: '+r.stage;if(r.chatId)return 'Chat '+r.chatId+' (Telegram or scheduled)';return 'Internal';}
+function runClock(sec){sec=Math.max(0,Math.round(sec));return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');}
+var runNotes={};
+function renderRuns(d){
+  var runs=(d&&d.runs)||[],at=Date.now();
+  byId('runscount').textContent=runs.length?runs.length+' running':'idle';
+  byId('runs').innerHTML=runs.length?runs.map(function(r){var own=r.chatId==='dashboard';return '<article class="run" data-id="'+esc(r.id)+'"><div><b>'+esc(r.agentId)+'</b> <span class="meta">'+esc(runOrigin(r))+'</span></div><span class="runtime" data-sec="'+Number(r.seconds||0)+'" data-at="'+at+'">'+runClock(r.seconds)+'</span>'+(own?'<button class="stop" data-action="stop-run" data-id="'+esc(r.id)+'"'+(runNotes[r.id]==='Stop sent.'?' disabled>Stopped':'>Stop this run')+'</button>':'<span class="meta">Stop from its own channel</span>')+'<span class="runnote meta" role="status">'+esc(runNotes[r.id]||'')+'</span></article>';}).join(''):empty('Nothing is running right now.');
+}
+function runsFailed(){byId('runscount').textContent='unknown';byId('runs').innerHTML=empty('Could not read running tasks. Retrying every refresh.');}
+function tickRuns(){var n=Date.now();document.querySelectorAll('.runtime').forEach(function(el){el.textContent=runClock(Number(el.dataset.sec)+(n-Number(el.dataset.at))/1000);});}
 function renderHive(h){
   snapshot.hive=h.length;byId('hive').innerHTML=h.length?h.slice(0,6).map(function(x){return '<article class="ledgeritem"><div>'+esc(String(x.summary||x.action_type||'').slice(0,180))+'</div><div class="meta">'+esc(x.agent_id)+' · '+esc(x.action_type)+' · '+ago(x.created_at)+'</div></article>';}).join(''):empty('No shared-agent activity yet.');
 }
@@ -63,6 +78,7 @@ var PANELS=[
   {name:'hive mind',url:'api/hive-mind',render:renderHive},
   {name:'memory',url:'api/memories',render:renderMem},
   {name:'war room',url:'api/warroom/status',render:renderWar},
+  {name:'runs',url:'api/runs',render:renderRuns,fail:runsFailed},
   {name:'tokens',url:'api/tokens',render:renderTokens}
 ];
 async function refresh(){
@@ -70,7 +86,7 @@ async function refresh(){
   failures=[];
   results.forEach(function(r,i){
     var p=PANELS[i];
-    if(r.status!=='fulfilled'){failures.push(p.name+': '+(r.reason&&r.reason.message||'failed'));return;}
+    if(r.status!=='fulfilled'){if(p.fail)p.fail();failures.push(p.name+': '+(r.reason&&r.reason.message||'failed'));return;}
     try{p.render(r.value);}catch(e){failures.push(p.name+': render error '+e.message);}
   });
   if(!failures.length){lastOk=Date.now();everOk=true;}
@@ -96,28 +112,49 @@ async function sendChat(){
     var r=await send('POST','api/chat',{message:msg,agentId:selAgent,chatId:'dashboard'});
     typing.className='msg agent'+(r.cancelled?' stopped':'');typing.innerHTML='<span class="who">'+esc(r.agentId||selName)+'</span>'+md(r.text||r.error||'(no reply)');
   }catch(e){typing.className='msg agent';typing.innerHTML='<span class="who">error</span>'+esc(String(e));}
-  byId('stopbtn').hidden=true;byId('stopbtn').disabled=false;byId('sendbtn').disabled=false;log.scrollTop=log.scrollHeight;refresh();
+  byId('stopbtn').hidden=true;byId('stopbtn').disabled=false;byId('stopbtn').textContent='Stop';byId('sendbtn').disabled=false;log.scrollTop=log.scrollHeight;refresh();
 }
 async function createMission(){
   var prompt=byId('mprompt').value.trim(),schedule=byId('msched').value.trim(),chatId=byId('mchat').value.trim();
-  if(!prompt||!schedule||!chatId){alert('prompt + cron schedule + chat ID required');return;}
-  var r=await send('POST','api/tasks',{prompt:prompt,schedule:schedule,chatId:chatId,agentId:selAgent});
-  if(r.id){byId('mprompt').value='';alert('Scheduled: '+r.id);}else alert('Error: '+(r.error||'unknown'));
+  if(!prompt||!schedule||!chatId){notify('Prompt, cron schedule and chat ID are all required.',true);return;}
+  try{var r=await send('POST','api/tasks',{prompt:prompt,schedule:schedule,chatId:chatId,agentId:selAgent});
+    if(r.id){byId('mprompt').value='';notify('Scheduled: '+r.id);}else notify('Error: '+(r.error||'unknown'),true);
+  }catch(e){notify('Could not schedule: '+e.message,true);}
   refresh();
 }
 var ACTIONS={
   'agent':function(el){selAgent=el.dataset.id;selName=el.dataset.name;byId('chatmsg').placeholder='Message '+selName+'... (Enter to send)';refresh();},
-  'del-mission':async function(el){if(!confirm('Delete mission '+el.dataset.id+'?'))return;await send('DELETE','api/tasks/'+encodeURIComponent(el.dataset.id));refresh();},
-  'war-start':async function(el){el.disabled=true;var r=await send('POST','api/warroom/start');if(!r.ok)alert('War room: '+(r.error||'failed'));el.disabled=false;refresh();},
-  'war-stop':async function(el){var r=await send('POST','api/warroom/stop');if(!r.ok)alert('War room: '+(r.error||'failed'));refresh();},
+  'del-mission':async function(el){
+    if(!el.dataset.armed){el.dataset.armed='1';el.dataset.label=el.textContent;el.textContent='Confirm delete';
+      setTimeout(function(){if(el.isConnected&&el.dataset.armed){delete el.dataset.armed;el.textContent=el.dataset.label;}},4000);return;}
+    delete el.dataset.armed;el.disabled=true;
+    try{await send('DELETE','api/tasks/'+encodeURIComponent(el.dataset.id));notify('Mission deleted.');}
+    catch(e){el.disabled=false;el.textContent=el.dataset.label||'Delete';notify('Delete failed: '+e.message,true);}
+    refresh();},
+  'war-start':async function(el){el.disabled=true;
+    try{await send('POST','api/warroom/start');notify('War Room started.');}catch(e){notify('War Room start failed: '+e.message,true);}
+    el.disabled=false;refresh();},
+  'war-stop':async function(el){el.disabled=true;
+    try{await send('POST','api/warroom/stop');notify('War Room stopped.');}catch(e){notify('War Room stop failed: '+e.message,true);}
+    el.disabled=false;refresh();},
   'send-chat':sendChat,
-  'stop-chat':async function(el){el.disabled=true;await send('POST','api/runs/cancel',{chatId:'dashboard'});},
+  'stop-chat':async function(el){el.disabled=true;el.textContent='Stopping...';notify('');
+    try{var r=await send('POST','api/runs/cancel',{chatId:'dashboard'});
+      if(!(r.cancelled>0)){el.disabled=false;el.textContent='Stop';notify('Nothing to stop: the run may have just finished.',true);}
+    }catch(e){el.disabled=false;el.textContent='Stop';notify('Stop failed: '+e.message,true);}},
+  'stop-run':async function(el){
+    var note=el.parentNode.querySelector('.runnote');el.disabled=true;el.textContent='Stopping...';note.textContent='';delete runNotes[el.dataset.id];
+    try{var r=await send('POST','api/runs/cancel',{id:el.dataset.id});
+      if(r&&r.cancelled>0){runNotes[el.dataset.id]='Stop sent.';note.textContent='Stop sent.';el.textContent='Stopped';}
+      else{el.disabled=false;el.textContent='Stop this run';note.textContent='Nothing to stop: it may have just finished.';}
+    }catch(e){el.disabled=false;el.textContent='Retry stop';note.textContent='Stop failed: '+e.message;}
+    refresh();},
   'create-mission':createMission,
   'blur':function(){document.body.classList.toggle('blur');}
 };
 document.addEventListener('click',function(e){var el=e.target.closest('[data-action]');if(el&&ACTIONS[el.dataset.action])ACTIONS[el.dataset.action](el);});
 byId('chatmsg').addEventListener('keydown',function(e){if(e.key==='Enter')sendChat();});
-refresh();setInterval(refresh,${REFRESH_MS});setInterval(paintStatus,1000);
+refresh();setInterval(refresh,${REFRESH_MS});setInterval(paintStatus,1000);setInterval(tickRuns,1000);
 `;
 
 /** Complete Mission Control page. Single column, readable type, markdown replies. */
@@ -134,7 +171,9 @@ export function renderDashboard(data: DashboardData = {}): string {
 <section class="s-chat" aria-labelledby="chat-title"><div class="sectionhead"><h2 id="chat-title">Command console</h2><span>Enter to send</span></div>
 <div id="chatlog" aria-live="polite"><div class="msg agent"><span class="who">Main</span>The Hand of the King is at your service. Issue an order or ask for counsel.</div></div>
 <div class="composer"><label class="sr" for="chatmsg">Message selected agent</label><input id="chatmsg" placeholder="Message Main..."><button id="stopbtn" class="stop" data-action="stop-chat" hidden>Stop</button><button id="sendbtn" data-action="send-chat">Send</button></div>
+<div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 <p class="hint">Route explicitly with <code>@comms:</code>, <code>@research:</code>, or another agent name.</p><div class="consolemeta"><span>Selected route</span><span id="consoleroute">Main</span></div></section>
+<section class="s-runs" aria-labelledby="runs-title"><div class="sectionhead"><h2 id="runs-title">Running now</h2><span id="runscount">loading</span></div><div id="runs"><p class="empty">Loading runs...</p></div></section>
 <section class="s-missions" id="missions" aria-labelledby="missions-title"><div class="sectionhead"><h2 id="missions-title">Active missions</h2><span>Ordered by next run</span></div>
 <div id="tasks"><p class="empty">Loading missions...</p></div>
 <details class="missioncreate"><summary>New mission</summary><div class="formgrid">
@@ -148,7 +187,7 @@ export function renderDashboard(data: DashboardData = {}): string {
 <div class="systemrows"><div class="systemrow"><span>Agent network</span><span class="systemvalue" id="pillagents"><span class="dot"></span><span id="pillagentstext">loading</span></span></div>
 <div class="systemrow"><span>War Room</span><span class="systemvalue" id="warstat">checking...</span></div>
 <div class="systemrow"><span>24h usage</span><span class="tokenvalue"><span class="systemvalue" id="tokenstat">loading</span><span class="meta" id="tokendetail"></span></span></div></div>
-<div class="waractions"><a class="buttonlink" href="/warroom">Enter</a><button class="ghost" data-action="war-start">Start</button><button class="ghost" data-action="war-stop">Stop</button></div></section>
+<div class="waractions"><a class="buttonlink" href="/warroom">Enter</a><button class="ghost" data-action="war-start">Start</button><button class="ghost" data-action="war-stop">Stop War Room</button></div></section>
 <section class="s-agents"><div class="sectionhead"><h2>Agent roster</h2><span>Select console route</span></div><div class="agents" id="agents"></div></section>
 <section class="s-mem" id="memory"><div class="sectionhead"><h2>Memory</h2><span id="memcount">loading</span></div><div id="mem"><p class="empty">Loading memory...</p></div></section>
 </aside>
@@ -238,17 +277,17 @@ section{margin:0;padding:15px 16px;background:var(--card);border:1px solid var(-
 .pill{border:0;border-radius:0;padding:0;color:var(--dim);font-size:12px}.pill.ok{color:var(--green);border:0}.pill .dot{width:6px;height:6px}.pill.ok .dot{background:var(--green)}
 .agents{display:grid;grid-template-columns:1fr;gap:0;margin:0}.agentcard{width:100%;display:grid;grid-template-columns:1fr;gap:2px;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--rule);border-radius:0;padding:9px 4px;color:var(--txt);min-height:48px}.agentcard:last-child{border-bottom:0}.agentcard small{color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.agentcard{border-left:2px solid transparent;padding-left:10px}.agentcard:hover{background:var(--raised)}.agentcard.sel{border-color:var(--rule);border-left-color:var(--acc);box-shadow:none;color:var(--txt);background:var(--acc-soft)}
 #chatlog{max-height:300px;margin:0 0 12px;gap:8px}.msg{border-radius:3px;padding:8px 10px;max-width:90%;font-size:13px}.msg.you{background:var(--raised);border:1px solid var(--line)}.msg.you .who{color:var(--txt)}.msg.agent{background:#0c1014;border:1px solid var(--rule)}.msg.agent .who{color:var(--blue)}
-.composer{display:grid;grid-template-columns:minmax(0,1fr);grid-auto-flow:column;grid-auto-columns:auto;gap:8px}button[hidden]{display:none}button.stop{background:transparent;color:var(--red);border-color:var(--red)}button.stop:hover{background:rgba(229,121,130,.12)}input,select{width:100%;background:#0a0d10;color:var(--txt);border:1px solid var(--line);border-radius:3px;padding:10px 11px;font-size:13px;min-height:42px}label{display:block;color:var(--dim);font-size:11px;margin:0 0 5px}
+.composer{display:grid;grid-template-columns:minmax(0,1fr);grid-auto-flow:column;grid-auto-columns:auto;gap:8px}button[hidden],.notice[hidden]{display:none}.notice{margin:8px 0 0;padding:8px 11px;border:1px solid var(--line);border-radius:3px;font-size:12px;color:var(--txt)}.notice.bad{border-color:var(--red);color:var(--red)}button.stop{background:transparent;color:var(--red);border-color:var(--red)}button.stop:hover{background:rgba(229,121,130,.12)}input,select{width:100%;background:#0a0d10;color:var(--txt);border:1px solid var(--line);border-radius:3px;padding:10px 11px;font-size:13px;min-height:42px}label{display:block;color:var(--dim);font-size:11px;margin:0 0 5px}
 button,.buttonlink{background:var(--acc);color:#14110a;border:1px solid var(--acc);font-weight:600;border-radius:3px;padding:9px 14px;font-size:13px;cursor:pointer;min-height:42px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}button:hover,.buttonlink:hover{background:#d8b960;border-color:#d8b960}button.ghost,.buttonlink.ghost{background:transparent;color:var(--txt);border:1px solid var(--line);font-weight:400}button.ghost:hover,.buttonlink.ghost:hover{border-color:var(--acc);background:var(--acc-soft)}button:disabled{opacity:.45;cursor:not-allowed}
 .mission{position:relative;border:0;border-bottom:1px solid var(--rule);border-radius:0;padding:11px 0;margin:0;font-size:13px}.mission:last-child{border-bottom:0}.missiontop{display:flex;align-items:center;gap:8px;margin-bottom:5px}.mission .cron{font-family:inherit;font-variant-numeric:tabular-nums;background:transparent;border:0;border-radius:0;padding:0;color:var(--txt)}.mission .st{font-size:11px;border:0;color:var(--green);border-radius:0;padding:0;margin-left:auto;text-transform:uppercase}.missionprompt{padding-right:80px}.textbtn{min-height:auto;background:transparent!important;border:0!important;color:var(--dim)!important;padding:3px 0;font-size:12px}.textbtn.danger{position:absolute;right:0;bottom:10px}.textbtn.danger:hover{color:var(--red)!important}
 .missioncreate{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}.missioncreate summary{cursor:pointer;color:var(--txt);font-size:12px}.formgrid{margin-top:12px}.formgrid .row{display:grid;grid-template-columns:1fr 1fr;gap:9px}.field{min-width:0}.formactions{margin-top:10px}
-.ledgeritem,.memoryitem{padding:9px 0;border-bottom:1px solid var(--rule);font-size:13px}.ledgeritem:last-child,.memoryitem:last-child{border-bottom:0}.memorycopy{line-height:1.45}.pinlabel{color:var(--acc);font-size:11px;letter-spacing:.2px}.meta{font-size:11px;color:var(--faint);margin-top:4px}.empty{font-style:normal;margin:8px 0;color:var(--dim)}
+.ledgeritem,.memoryitem{padding:9px 0;border-bottom:1px solid var(--rule);font-size:13px}.ledgeritem:last-child,.memoryitem:last-child{border-bottom:0}.memorycopy{line-height:1.45}.pinlabel{color:var(--acc);font-size:11px;letter-spacing:.2px}.meta{font-size:11px;color:var(--faint);margin-top:4px}.empty{font-style:normal;margin:8px 0;color:var(--dim)}.run{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--rule)}.run:last-child{border-bottom:0}.run>div{flex:1;min-width:140px}.runtime{font-variant-numeric:tabular-nums;color:var(--gold)}.run .meta{margin:0}
 .hint{color:var(--faint);font-size:12px;margin:8px 0 0}.hint code{color:var(--blue)}.consolemeta{display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--rule);padding-top:8px;margin-top:9px;color:var(--faint);font-size:12px}.consolemeta span:last-child{color:var(--txt);font-variant-numeric:tabular-nums}.memorycopy,.ledgeritem{overflow-wrap:anywhere;padding-right:12px}footer{text-align:left;border-top:1px solid var(--line);padding-top:16px;margin:22px 0 0;color:var(--faint);font-size:12px}.s-mem #mem{max-height:238px;overflow:auto;padding-right:3px}.blur .workspace{filter:blur(6px)}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 @media(max-width:1100px){.workspace{padding:22px}}
 @media(max-width:980px){.dashboard{grid-template-columns:1fr}.intel{display:flex}.s-mem #mem{max-height:280px}}
-@media(max-width:760px){.workspace{padding:16px}.commandhead{display:block}.headmeta{text-align:left;margin-top:10px}.headlinks{justify-content:flex-start}.dashboard{display:flex;flex-direction:column}.primary,.intel{display:contents}.s-system{order:1}.s-chat{order:2}.s-missions{order:3}.s-agents{order:4}.s-mem{order:5}.s-hive{order:6}.formgrid .row{grid-template-columns:1fr}.missionprompt{padding-right:0}.textbtn.danger{position:static;margin-top:4px}.composer{grid-template-columns:1fr}.composer button{width:100%}}
+@media(max-width:760px){.workspace{padding:16px}.commandhead{display:block}.headmeta{text-align:left;margin-top:10px}.headlinks{justify-content:flex-start}.dashboard{display:flex;flex-direction:column}.primary,.intel{display:contents}.s-system{order:1}.s-chat,.s-runs{order:2}.s-missions{order:3}.s-agents{order:4}.s-mem{order:5}.s-hive{order:6}.formgrid .row{grid-template-columns:1fr}.missionprompt{padding-right:0}.textbtn.danger{position:static;margin-top:4px}.composer{grid-template-columns:1fr}.composer button{width:100%}}
 </style></head><body>
 ${wrapInShell('command', token, body, {
   sub: [['#command', 'Overview'], ['#missions', 'Missions'], ['#memory', 'Memory']],

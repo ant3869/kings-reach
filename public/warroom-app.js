@@ -35,10 +35,36 @@ const desiredCardState = (id) => CardDirector.resolve(cardActivity[id], Date.now
 // Live status panel (warroom-live.js). Its clock is swappable so the demo replay can run on virtual time.
 let liveClock = Date.now;
 const live = WarLive.mount(document, Object.fromEntries(WR.council.map((c) => [c.id, c.name])),
-  { pose: (id, state) => setPose(id, state) }, () => liveClock());
+  { pose: (id, state) => setPose(id, state), onRun: (active, key) => cancelSync(active, key) }, () => liveClock());
 
 // Voice dropdown under each card (warroom-casting.js): the server lists real voices and validates every change.
 const casting = WarCasting.mount(document, (m) => send(m));
+
+// Cancel run (in the live header) is separate from Hush voices. A cancel is pending until the server acks it, and
+// the run itself only ends when the CANCELLED meter arrives; if neither comes, say so and let the owner retry.
+const CANCEL_RETRY_MS = 8000;
+let cancelAt = 0, cancelTimer = 0;
+function cancelNote(text) { if ($('cancelnote')) $('cancelnote').textContent = text; }
+function cancelSync(active, key) {
+  const b = $('nowcancel');
+  if (!b) return;
+  b.hidden = !active;
+  if (!active || key === 'cancelled') { cancelAt = 0; clearTimeout(cancelTimer); b.disabled = false; b.textContent = 'Cancel run'; if (!active) cancelNote(''); }
+}
+function requestCancel() {
+  if (!send({ type: 'cancel' })) { cancelNote('Not connected, so nothing was sent. Reconnect and try again.'); return; }
+  cancelAt = Date.now();
+  $('nowcancel').disabled = true;
+  $('nowcancel').textContent = 'Cancelling...';
+  cancelNote('Cancel sent to the War Room.');
+  clearTimeout(cancelTimer);
+  cancelTimer = setTimeout(() => {
+    if (!cancelAt) return;
+    $('nowcancel').disabled = false;
+    $('nowcancel').textContent = 'Retry cancel';
+    cancelNote('No confirmation yet. The run may still be going (and spending). Retry cancel.');
+  }, CANCEL_RETRY_MS);
+}
 
 function setPose(id, state, ms) {
   if (!cardActivity[id]) return;
@@ -155,6 +181,17 @@ function disclosure(text, label) {
     '</summary><div class="full">' + md(text) + '</div></details>';
 }
 
+// The verdict is the answer: show it open, with a header pulled from the text (confidence, numbered plan steps).
+function verdictView(text) {
+  const t = String(text || '');
+  const conf = t.match(/confidence\W{0,12}(\d{1,3}\s*%|0?\.\d+|high|medium|low)/i);
+  const steps = (t.match(/^\s*\d+[.)]\s+\S/gm) || []).length;
+  const bits = [];
+  if (conf) bits.push('confidence ' + conf[1].replace(/\s+/g, ''));
+  if (steps) bits.push(steps + ' plan step' + (steps === 1 ? '' : 's'));
+  return '<div class="vhead">' + (bits.length ? esc(bits.join(' · ')) : 'Decision') + '</div><div class="full vfull">' + md(t) + '</div>';
+}
+
 function agentLine(id, text, kind) {
   if (kind === 'critique') { // the critic goes on offense; whoever they name ("to **research**: ...") defends
     setPose(id, 'offense');
@@ -166,7 +203,7 @@ function agentLine(id, text, kind) {
   if (!c) return bubble(id, md(text), 'sys');
   const compact = ['plan', 'take', 'critique', 'verdict', 'build', 'review'].includes(kind);
   const label = salvaged ? 'recovered after turn cap' : KIND_LABEL[kind];
-  return bubble(c.name + ' \u00b7 ' + c.title, compact ? disclosure(text) : md(text),
+  return bubble(c.name + ' \u00b7 ' + c.title, kind === 'verdict' ? verdictView(text) : compact ? disclosure(text) : md(text),
     kind === 'error' ? 'err' : kind || '', c.color, label);
 }
 
@@ -346,6 +383,10 @@ function onMessage(m) {
     return;
   }
   if (m.pinned !== undefined) return markPin(m.pinned);
+  if (m.type === 'cancel_ack') {
+    cancelNote(m.stopped ? 'War Room confirmed: stopping ' + m.stopped + ' task' + (m.stopped === 1 ? '' : 's') + '.' : 'War Room confirmed: nothing was running in this tab.');
+    return;
+  }
   if (m.type === 'voice') return voiceInfo(m);
   if (m.type === 'casting') return casting.handle(m);
   if (m.type === 'stage') return setStage(m.stage, m.state, m.detail);
@@ -499,10 +540,12 @@ function init() {
   $('send').onclick = () => submit('text');
   $('summitbtn').onclick = () => submit('summit');
   $('buildbtn').onclick = () => submit('build');
-  $('cancelbtn').onclick = () => {
+  $('cancelbtn').onclick = () => { // Hush voices only; it never aborts a run (Cancel run, in the live header, does)
     WarVoice.silence();
-    send({ type: 'cancel' });
+    send({ type: $('nowcancel') ? 'hush' : 'cancel' }); // an old cached page has no Cancel run button, so keep its old behaviour
+    cancelNote('Hushed in the War Room. Any run keeps going.');
   };
+  if ($('nowcancel')) $('nowcancel').onclick = requestCancel; // absent only on a page served before the server restart
   $('msg').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') submit(e.ctrlKey ? 'summit' : 'text');
   });
