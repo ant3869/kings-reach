@@ -20,6 +20,8 @@ import { closeDb, getDb, initDatabase } from './db.js';
 import { startConsolidationLoop, stopConsolidationLoop } from './memory-consolidate.js';
 import { runDecaySweep } from './memory.js';
 import { startDashboard } from './dashboard.js';
+import { getProviderHealth } from './provider-runner.js';
+import { cancelRuns } from './run-control.js';
 import { initScheduler, stopScheduler } from './scheduler.js';
 import { createBot, isAllowed, type BotHandle } from './bot.js';
 import { startWarroom } from './warroom-supervisor.js';
@@ -58,6 +60,9 @@ function shutdown(reason: string): void {
   if (stopping) return;
   stopping = true;
   logger.info({ reason }, 'shutting down');
+  // Stop in-flight runs first: exiting alone leaves the Claude CLI and whatever it started running with no parent.
+  const stopped = cancelRuns({ all: true });
+  if (stopped) logger.info({ stopped }, 'cancelled in-flight runs');
   stopScheduler();
   stopConsolidationLoop();
   void bot?.bot.stop().catch(() => undefined);
@@ -77,6 +82,9 @@ async function main(): Promise<void> {
 
   // Signal handlers FIRST: bot.start() below never resolves while polling.
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK'] as const) process.on(sig, () => shutdown(sig));
+  // One stray rejection from a library must not take the whole assistant down; a true crash stops cleanly (runs cancelled, DB closed).
+  process.on('unhandledRejection', (err) => logger.error({ err: String(err) }, 'unhandled promise rejection (continuing)'));
+  process.on('uncaughtException', (err) => { logger.fatal({ err: String(err), stack: err.stack }, 'uncaught exception'); shutdown('uncaughtException'); });
 
   // Lock BEFORE shared state: a twin core dies here without ever opening the DB.
   try {
@@ -97,6 +105,8 @@ async function main(): Promise<void> {
   logger.info('database ready');
   startMemoryUpkeep();
   logger.info(`dashboard on http://${DASHBOARD_HOST}:${DASHBOARD_PORT}  (health: /api/health)`);
+  // Warm the slow provider probes (OpenClaw starts slowly) so the first Settings visit does not pay for them. Best effort.
+  void getProviderHealth().catch(() => undefined);
 
   if (WARROOM_AUTOSTART) {
     void startWarroom().then((r) =>

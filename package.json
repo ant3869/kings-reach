@@ -1,8 +1,8 @@
 {
   "name": "kings-reach",
-  "version": "2.17.0",
+  "version": "2.17.1",
   "type": "module",
-  "description": "King's Reach - personal AI assistant hub (Telegram + voice + memory v2 + scheduler + WhatsApp + multi-agent + war room + dashboard)",
+  "description": "King's Reach - personal AI assistant hub (Telegram + voice + memory v2 + scheduler + multi-agent + war room + dashboard)",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
@@ -32,17 +32,13 @@
     "hono": "^4.6.0",
     "js-yaml": "^4.1.0",
     "pino": "^9.6.0",
-    "pino-pretty": "^13.0.0",
-    "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.26.0"
+    "pino-pretty": "^13.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.7.0",
-    "@types/qrcode-terminal": "^0.12.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "typescript": "^5.6.0"
   }
 }

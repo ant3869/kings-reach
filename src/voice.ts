@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { logger } from './logger.js';
 import {
   GROQ_API_KEY,
   KOKORO_MODEL,
@@ -24,11 +25,6 @@ const execFileAsync = promisify(execFile);
 const GROQ_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const KOKORO_SPEECH_PATH = '/v1/audio/speech';
 const XAI_TTS_URL = 'https://api.x.ai/v1/tts';
-
-export interface VoiceCapabilities {
-  stt: 'groq' | 'whisper-cpp' | null;
-  tts: 'xai' | 'kokoro' | 'os' | 'off';
-}
 
 
 /** Groq rejects .oga (Telegram voice notes) - same bytes as .ogg, just rename. */
@@ -76,7 +72,7 @@ export async function transcribeAudio(filePath: string): Promise<string> {
     try {
       return await transcribeAudioGroq(filePath);
     } catch (err) {
-      console.error(`[voice] groq stt failed, trying whisper-cpp: ${String(err)}`);
+      logger.warn({ err: String(err) }, 'voice: groq stt failed, trying whisper-cpp');
     }
   }
   return transcribeAudioLocal(filePath);
@@ -141,7 +137,7 @@ export async function synthesizeOs(text: string): Promise<Buffer | null> {
     }
     return fs.readFileSync(wav);
   } catch (err) {
-    console.error(`[voice] os tts failed: ${String(err)}`);
+    logger.warn({ err: String(err) }, 'voice: os tts failed');
     return null;
   } finally {
     fs.rmSync(wav, { force: true });
@@ -155,13 +151,13 @@ export async function synthesizeSpeech(text: string): Promise<Buffer | null> {
     try {
       return await synthesizeXai(text);
     } catch (err) {
-      console.error(`[voice] xai tts failed, trying kokoro: ${String(err)}`);
+      logger.warn({ err: String(err) }, 'voice: xai tts failed, trying kokoro');
     }
   }
   try {
     return await synthesizeKokoro(text);
   } catch (err) {
-    console.error(`[voice] kokoro tts failed, trying os speech: ${String(err)}`);
+    logger.warn({ err: String(err) }, 'voice: kokoro tts failed, trying os speech');
   }
   return synthesizeOs(text);
 }

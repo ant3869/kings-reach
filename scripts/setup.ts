@@ -62,11 +62,8 @@ async function main(): Promise<void> {
   env.GROQ_API_KEY = await ask(rl, 'Groq API key for voice STT (blank to skip): ', true);
   env.KOKORO_URL = (await ask(rl, 'Kokoro TTS URL [http://127.0.0.1:8880]: ')) || 'http://127.0.0.1:8880';
   env.GOOGLE_API_KEY = await ask(rl, 'Google API key for memory v2 + War Room (blank to skip): ', true);
-  const wa = await ask(rl, 'Enable WhatsApp bridge? [y/N]: ');
-  env.WHATSAPP_ENABLED = wa.toLowerCase().startsWith('y') ? 'true' : 'false';
   env.DASHBOARD_PORT = (await ask(rl, 'Dashboard port [3141]: ')) || '3141';
   env.WARROOM_PORT = (await ask(rl, 'War Room port [7860]: ')) || '7860';
-  env.AGENT_TIMEOUT_MS = '900000';
   env.AGENT_MAX_TURNS = '30';
 
   const lines = Object.entries(env)

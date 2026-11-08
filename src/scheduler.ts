@@ -4,6 +4,7 @@
 import cronParser from 'cron-parser';
 import { runAgent } from './agent.js';
 import { isCancelled } from './run-control.js';
+import { logger } from './logger.js';
 import {
   getDueTasks,
   updateTaskRun,
@@ -51,7 +52,7 @@ export async function runDueTasks(): Promise<void> {
   try {
     for (const task of getDueTasks()) {
       await runOneTask(task).catch((err) => {
-        console.error(`[scheduler] task ${task.id} crashed: ${String(err)}`);
+        logger.error({ taskId: task.id, err: String(err) }, 'scheduled task crashed');
       });
     }
   } finally {

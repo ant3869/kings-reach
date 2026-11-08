@@ -69,7 +69,6 @@ export const CONSOLIDATION_INTERVAL_MS = CONSOLIDATION_INTERVAL_MIN * 60 * 1000;
 // --- war room / dashboard ---
 // War room voice/council settings are read by warroom/config.py (the side that uses them).
 export const WARROOM_PORT = num('WARROOM_PORT', 7860);
-export const AGENT_BRIDGE_PATH = str('AGENT_BRIDGE_PATH', '');
 export const DASHBOARD_PORT = num('DASHBOARD_PORT', 3141);
 export const DASHBOARD_TOKEN = str('DASHBOARD_TOKEN', '');
 /** Loopback by default. A non-loopback host REQUIRES DASHBOARD_TOKEN (enforced at startup). */
@@ -79,15 +78,11 @@ export const WARROOM_PYTHON = str('WARROOM_PYTHON', '');
 /** Core supervises the war room: start it on boot when :WARROOM_PORT is free. */
 export const WARROOM_AUTOSTART = bool('WARROOM_AUTOSTART', true);
 
-// --- scheduler / whatsapp ---
+// --- scheduler ---
 export const SCHEDULER_ENABLED = bool('SCHEDULER_ENABLED', true);
 export const SCHEDULER_POLL_MS = num('SCHEDULER_POLL_MS', 60_000);
-export const WHATSAPP_ENABLED = bool('WHATSAPP_ENABLED', true);
-
-// --- multi-agent tokens ---
 
 // --- agent behavior ---
-export const AGENT_TIMEOUT_MS = num('AGENT_TIMEOUT_MS', 900_000);
 export const AGENT_MAX_TURNS = num('AGENT_MAX_TURNS', 30);
 export const SHOW_COST_FOOTER = str('SHOW_COST_FOOTER', 'compact');
 export const MAX_MESSAGE_LENGTH = num('MAX_MESSAGE_LENGTH', 4096);

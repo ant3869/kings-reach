@@ -153,11 +153,27 @@ export async function runHarness(id: HarnessId, req: HarnessRequest, run: Comman
 export interface HarnessStatus { id: HarnessId; available: boolean; detail: string }
 const HEALTH_TTL_MS = 60_000;
 let healthCache: { at: number; value: HarnessStatus[] } | null = null;
+let probing: Promise<HarnessStatus[]> | null = null;
 
-/** "Is it installed and answering?" Cached: OpenClaw starts slowly and Settings refreshes often. */
+/**
+ * "Is it installed and answering?" OpenClaw starts slowly (up to the 20 s timeout), so a Settings visit must not wait for it:
+ * the last answer is served at once, even when stale, and a refresh runs behind it. Callers that arrive while a probe is
+ * running share it instead of starting their own. Only the very first call (nothing cached yet) waits.
+ */
 export async function harnessHealth(run: CommandFn, now: () => number = Date.now): Promise<HarnessStatus[]> {
-  if (healthCache && now() - healthCache.at < HEALTH_TTL_MS) return healthCache.value;
-  const value = await Promise.all(HARNESS_IDS.map(async (id): Promise<HarnessStatus> => {
+  if (!healthCache) return probe(run, now);
+  if (now() - healthCache.at >= HEALTH_TTL_MS) void probe(run, now);
+  return healthCache.value;
+}
+
+function probe(run: CommandFn, now: () => number): Promise<HarnessStatus[]> {
+  probing ??= measure(run).then((value) => { healthCache = { at: now(), value }; return value; }).finally(() => { probing = null; });
+  return probing;
+}
+
+/** Never rejects: every failure is reported as that harness being unavailable. */
+async function measure(run: CommandFn): Promise<HarnessStatus[]> {
+  return Promise.all(HARNESS_IDS.map(async (id): Promise<HarnessStatus> => {
     try {
       const cmd = launch(id, ['--version']);
       const r = await run(cmd.exe, cmd.args, '', 20_000);
@@ -167,7 +183,5 @@ export async function harnessHealth(run: CommandFn, now: () => number = Date.now
       return { id, available: false, detail: /ENOENT/.test(String(err)) ? `${EXE[id]} is not installed or not on PATH` : String(err).slice(0, 120) };
     }
   }));
-  healthCache = { at: now(), value };
-  return value;
 }
-export const resetHarnessHealth = (): void => { healthCache = null; };
+export const resetHarnessHealth = (): void => { healthCache = null; probing = null; };

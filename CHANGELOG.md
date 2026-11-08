@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.17.1 - Audit and polish pass
+
+**Fixed**
+- **Shutdown no longer orphans running agents.** Stopping or restarting the core while a run was in flight closed the database and exited, leaving the Claude CLI and any command it had started running with no parent. Shutdown now cancels in-flight runs first (verified live: the agent and its `ping` were both gone, nothing left behind).
+- **The core no longer dies silently on a stray rejection.** There were no `unhandledRejection` / `uncaughtException` handlers, so one rejected promise from any library could kill the whole daemon on modern Node. A rejection is now logged and the core carries on; a true uncaught exception is logged and the core shuts down cleanly (runs cancelled, database closed).
+- **Settings no longer stalls for up to 10 s.** The provider health check (OpenClaw starts slowly) blocked every Settings visit that came more than a minute after the last one. It is now stale-while-revalidate: the last answer is served at once and refreshed behind it, concurrent callers share one probe, and the core warms it at boot. First load measured 10.5 s before, 0.8 s after.
+- Runtime failures in voice (speech-to-text and text-to-speech fallbacks) and the scheduler wrote to the console instead of the structured log, so they never reached `core.log`. They use the logger now.
+
+**Removed (dead code and unused dependencies)**
+- **WhatsApp.** `src/whatsapp.ts` was never started (`initWhatsApp` had no caller), yet `WHATSAPP_ENABLED` defaulted to `true`, the setup wizard asked "Enable WhatsApp bridge?" and `package.json` advertised it. Gone: the file, the setting, the wizard prompt, `whatsapp-web.js` and `qrcode-terminal`. A real WhatsApp channel would be a feature to build; the old stub is in git at `v2.17.0`. Your own `.env` is untouched and any leftover `WHATSAPP_*` lines in it are harmless.
+- `vitest` (never referenced; the tests run on `node:test`), the unread `AGENT_TIMEOUT_MS` setting (the runtime never read it; **Stop** is how to end a run), the unused TypeScript copy of `AGENT_BRIDGE_PATH` (the War Room reads it from `.env` itself), and an unused `VoiceCapabilities` type.
+- Effect: 213 fewer packages, `node_modules` 416 MB to 331 MB, and `npm audit` from 17 findings (11 high, 2 critical in dev tooling) to 1 moderate. The one left is `@hono/node-server`'s `serveStatic`, which this project does not use; the MCP SDK carries its own copy of that line, so it cannot be cleared from here.
+
+**Tests:** 220 Node (new: Telegram `/stop` driven through the real bot with a fake Telegram API, including a refused stranger and the queue clearing; stale-while-revalidate and shared probes), 82 Python, 93 browser checks. The `/stop` test was mutation-checked: putting the old blocking handler back makes it fail.
+
 ## 2.17.0 - Cancel any run, and a difficulty model fitted to real usage
 
 **Added**

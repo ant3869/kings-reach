@@ -139,8 +139,31 @@ test('health: missing CLIs are reported unavailable with a fix, installed ones w
   assert.match(first[1].detail, /not installed/);
   await harnessHealth(run, () => (t = 30_000));
   assert.equal(calls, 3);
-  await harnessHealth(run, () => (t = 61_000));
+  // Stale (61 s): the old answer comes back immediately and a refresh runs behind it.
+  assert.deepEqual((await harnessHealth(run, () => (t = 61_000))).map((h) => h.available), [true, false, false]);
+  await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(calls, 6);
+  resetHarnessHealth();
+});
+
+test('health: a stale answer is served without waiting for a slow probe, and callers during a probe share it', async () => {
+  resetHarnessHealth();
+  let calls = 0, release;
+  const slow = new Promise((resolve) => { release = resolve; });
+  let gate = Promise.resolve();
+  const run = async () => { calls += 1; await gate; return { code: 0, stdout: 'OpenClaw 1.0.0\n', stderr: '' }; };
+  // Cold: three simultaneous first callers run ONE probe (3 harnesses = 3 commands), not three.
+  await Promise.all([harnessHealth(run, () => 0), harnessHealth(run, () => 0), harnessHealth(run, () => 0)]);
+  assert.equal(calls, 3);
+  // Now the refresh is slow. Stale callers must not wait for it, and must not start more than one.
+  gate = slow;
+  const started = Date.now();
+  const answers = await Promise.all([harnessHealth(run, () => 90_000), harnessHealth(run, () => 90_000)]);
+  assert.ok(Date.now() - started < 1000, 'stale answer returned without waiting on the slow refresh');
+  assert.ok(answers.every((a) => a.length === 3 && a[0].available));
+  assert.equal(calls, 6, 'exactly one refresh (3 commands) started for both callers');
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 20));
   resetHarnessHealth();
 });
 
