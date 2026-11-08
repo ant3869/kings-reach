@@ -8,6 +8,7 @@ import http from 'node:http';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { readEnv } from './env.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // The wire protocol is defined once (src/warroom-html.ts); never hardcode it here (it broke when v4 shipped).
@@ -15,20 +16,7 @@ const { WARROOM_PROTOCOL } = await import(new URL('../dist/warroom-html.js', imp
 const LOG_DIR = path.join(ROOT, 'store', 'logs');
 const WANT_TURN = process.argv.includes('--turn');
 
-function readEnv() {
-  const out = {};
-  const text = fs.existsSync(path.join(ROOT, '.env')) ? fs.readFileSync(path.join(ROOT, '.env'), 'utf8') : '';
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    const eq = line.indexOf('=');
-    if (!line || line.startsWith('#') || eq <= 0) continue;
-    const value = line.slice(eq + 1).trim();
-    const quoted = /^(['"])(.*?)\1/.exec(value);
-    out[line.slice(0, eq).trim()] = quoted ? quoted[2] : value.startsWith('#') ? '' : value.replace(/\s#.*$/, '').trim(); // mirrors src/env.ts
-  }
-  return out;
-}
-const ENV = readEnv();
+const ENV = readEnv(ROOT);
 const DASH = Number(ENV.DASHBOARD_PORT || 3141);
 const WAR = Number(ENV.WARROOM_PORT || 7860);
 const TOKEN = ENV.DASHBOARD_TOKEN || '';

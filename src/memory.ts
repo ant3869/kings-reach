@@ -1,4 +1,4 @@
-import { getEmbedding, callGemini } from './gemini.js';
+import { getEmbedding } from './gemini.js';
 import { findSimilarMemories } from './embeddings.js';
 import {
   getDb,
@@ -10,14 +10,9 @@ import {
 } from './db.js';
 import { ingestConversationTurn } from './memory-ingest.js';
 import { logger } from './logger.js';
-import { MEMORY_NUDGE_INTERVAL_HOURS, MEMORY_NUDGE_INTERVAL_TURNS } from './config.js';
 
 export const MEMORY_TOP_K = 5;
 export const MEMORY_SIM_THRESHOLD = 0.3;
-export const NUDGE_TURNS = MEMORY_NUDGE_INTERVAL_TURNS;
-export const NUDGE_HOURS = MEMORY_NUDGE_INTERVAL_HOURS;
-
-const lastNudge = new Map<string, { turns: number; at: number }>();
 
 /**
  * Turn free text into a safe FTS5 MATCH expression (issue #1). FTS5 barewords allow only letters, digits and underscore,
@@ -142,53 +137,6 @@ export async function saveConversationTurn(
   void ingestConversationTurn(chatId, 'assistant', assistantMsg, sessionId, agentId).catch((err) =>
     logger.warn({ err }, 'assistant ingest failed'),
   );
-}
-
-/** Post-response relevance feedback: reward useful memories, decay the noise. */
-export async function evaluateMemoryRelevance(
-  chatId: string,
-  response: string,
-  injectedMemories: string[],
-): Promise<void> {
-  if (injectedMemories.length === 0) return;
-  try {
-    const raw = await callGemini(
-      `Rate each memory 0-1 for how useful it was for this response. Return JSON {"scores":[0.9,0.1]}.\n\nMemories:\n${injectedMemories.slice(0, 8).join('\n')}\n\nResponse:\n${response.slice(0, 2000)}`,
-    );
-    const parsed = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)) as {
-      scores?: number[];
-    };
-    const scores = parsed.scores ?? [];
-    const handle = getDb();
-    scores.slice(0, 8).forEach((score, i) => {
-      const summary = injectedMemories[i];
-      if (!summary || typeof score !== 'number') return;
-      const row = handle
-        .prepare('SELECT id, importance FROM memories WHERE chat_id = ? AND summary = ? LIMIT 1')
-        .get(chatId, summary) as { id: number; importance: number } | undefined;
-      if (!row) return;
-      const next = Math.max(0, Math.min(1, row.importance + (score - 0.5) * 0.1));
-      handle.prepare('UPDATE memories SET importance = ? WHERE id = ?').run(next, row.id);
-    });
-  } catch (err) {
-    logger.warn({ err, chatId }, 'relevance feedback failed (non-fatal)');
-  }
-}
-
-export function shouldNudgeMemory(chatId: string): boolean {
-  const entry = lastNudge.get(chatId);
-  const now = Date.now();
-  if (!entry) {
-    lastNudge.set(chatId, { turns: 1, at: now });
-    return false;
-  }
-  entry.turns += 1;
-  const hoursSince = (now - entry.at) / 3_600_000;
-  if (entry.turns >= NUDGE_TURNS || hoursSince >= NUDGE_HOURS) {
-    lastNudge.set(chatId, { turns: 0, at: now });
-    return true;
-  }
-  return false;
 }
 
 /** Importance-weighted, multi-tier decay. Pinned memories are exempt. */

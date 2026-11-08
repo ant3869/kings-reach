@@ -37,10 +37,3 @@ export async function enqueue(chatId: string, task: QueuedTask): Promise<void> {
   }
 }
 
-export function queueDepth(chatId: string): number {
-  return queues.get(chatId)?.length ?? 0;
-}
-
-export function isProcessing(chatId: string): boolean {
-  return processing.has(chatId);
-}

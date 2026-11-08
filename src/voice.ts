@@ -30,12 +30,6 @@ export interface VoiceCapabilities {
   tts: 'xai' | 'kokoro' | 'os' | 'off';
 }
 
-/** Which engines are actually usable with the current env. */
-export function voiceCapabilities(): VoiceCapabilities {
-  const stt = GROQ_API_KEY ? 'groq' : null;
-  const tts = TTS_PROVIDER === 'off' ? 'off' : XAI_API_KEY ? 'xai' : KOKORO_URL ? 'kokoro' : 'os';
-  return { stt, tts };
-}
 
 /** Groq rejects .oga (Telegram voice notes) - same bytes as .ogg, just rename. */
 function withSendableExtension(filePath: string): { sendPath: string; cleanup: () => void } {

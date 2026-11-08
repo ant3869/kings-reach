@@ -1,6 +1,6 @@
 {
   "name": "kings-reach",
-  "version": "2.15.6",
+  "version": "2.16.0",
   "type": "module",
   "description": "King's Reach - personal AI assistant hub (Telegram + voice + memory v2 + scheduler + WhatsApp + multi-agent + war room + dashboard)",
   "scripts": {
@@ -15,6 +15,7 @@
     "skills": "node dist/skill-cli.js",
     "setup:research": "node scripts/setup-research-tools.mjs",
     "research-check": "node scripts/research-check.mjs",
+    "test:py": "node scripts/test-py.mjs",
     "test": "tsc && node --experimental-test-module-mocks --test \"tests/**/*.test.mjs\""
   },
   "engines": {

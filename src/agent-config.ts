@@ -154,10 +154,6 @@ export function getAgentConfig(agentId: string): AgentConfig | undefined {
   return loadAgentConfigs().find((a) => a.id === agentId);
 }
 
-export function getDefaultAgent(): AgentConfig {
-  return getAgentConfig('main') ?? mainConfig();
-}
-
 export function resolveAgentDir(agentId: string): string {
   if (!agentId || agentId === 'main') return ROOT;
   return join(ROOT, 'agents', agentId);

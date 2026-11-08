@@ -7,7 +7,7 @@
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.15.5.
+and a dashboard. Version 2.16.0.
 
 ## The five roles
 
@@ -36,6 +36,19 @@ The War Room shows a live status panel for every council and build: a badge (wor
 cancelled), an estimated progress bar, what each agent is doing right now, and spoken plus captioned commentary. Try it
 for free with `/warroom?demo=build`, `build-fail`, `stall` or `summit`. See [`docs/LIVE.md`](docs/LIVE.md).
 
+## Providers and adaptive models
+
+Each role routes to an ordered list of providers: Claude (Agent SDK), Codex CLI, the OpenAI and Gemini APIs, OpenRouter,
+Ollama, 9Router (ChatGPT and Meta models), and three full-trust agent harnesses (**OpenClaw**, **Hermes Agent**, **Code
+Puppy**) that bring their own tools. Routes are set per
+role in Settings (`/providers`) from dropdowns of valid models only.
+
+**Difficulty tiers** (off by default) pick the model by how hard the step is. Each provider has its own ladder: choose the
+weakest (Low) and strongest (High) model you accept and everything ranked between them is allowed. A step is rated from
+trivial to very hard (council steps by their job, free-form messages by their wording) and lands on the matching rung, so
+an in-between task gets an in-between model. A role never leaves its own provider: a role on OpenAI uses OpenAI's range, and
+only Claude roles can reach Opus. Quick, tool-free steps also skip loading MCP servers, so they answer faster.
+
 ## Skills and research
 
 Agents follow a vetted, integrity-checked skill library (`skillpack/`) and
@@ -62,7 +75,7 @@ npm start
 ```
 
 Other useful commands: `npm run dev`, `npm run setup`, `npm run status`,
-`npm run verify`, `npm test`. History: [`CHANGELOG.md`](CHANGELOG.md).
+`npm run verify`, `npm test`, `npm run test:py` (War Room), `npm run ui-check` (real browser). History: [`CHANGELOG.md`](CHANGELOG.md).
 
 The war-room council is Python (see `warroom/`). Install its dependencies
 with `pip install -r warroom/requirements.txt`, then run it as

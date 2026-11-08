@@ -272,12 +272,6 @@ export function setSession(chatId: string, sessionId: string, agentId = 'main'):
     .run(chatId, agentId, sessionId, Date.now());
 }
 
-export function clearSession(chatId: string, agentId = 'main'): void {
-  getDb()
-    .prepare('DELETE FROM sessions WHERE chat_id = ? AND agent_id = ?')
-    .run(chatId, agentId);
-}
-
 // --- Memories ---
 export interface StructuredMemory {
   chat_id: string;
@@ -379,16 +373,6 @@ export function getUnconsolidatedMemories(chatId: string, limit = 20): MemoryRow
        ORDER BY created_at DESC LIMIT ?`,
     )
     .all(chatId, limit) as MemoryRow[];
-}
-
-export function searchMemoriesFts(chatId: string, query: string, limit = 5): MemoryRow[] {
-  return getDb()
-    .prepare(
-      `SELECT m.* FROM memories_fts f JOIN memories m ON m.id = f.rowid
-       WHERE memories_fts MATCH ? AND m.chat_id = ? AND m.superseded_by IS NULL
-       LIMIT ?`,
-    )
-    .all(query, chatId, limit) as MemoryRow[];
 }
 
 // --- Consolidations ---
@@ -532,9 +516,4 @@ export function getRecentHiveMind(limit = 5): Array<{
     .all(limit) as Array<{ agent_id: string; action_type: string; summary: string; created_at: number }>;
 }
 
-// --- Audit ---
-export function logAuditEvent(eventType: string, details?: string, chatId?: string): void {
-  getDb()
-    .prepare('INSERT INTO audit_log (event_type, details, chat_id, created_at) VALUES (?, ?, ?, ?)')
-    .run(eventType, details ?? null, chatId ?? null, Date.now());
-}
+

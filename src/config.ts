@@ -39,7 +39,6 @@ export const KINGS_REACH_CONFIG = str('KINGS_REACH_CONFIG', '');
 export const DEFAULT_AGENT_ID = str('DEFAULT_AGENT_ID', 'main');
 
 // --- voice: stt_groq + tts_kokoro_local (selected) ---
-export const STT_PROVIDER = str('STT_PROVIDER', 'groq');
 /** 'off' disables spoken replies; anything else runs the cascade xAI -> Kokoro -> OS speech. */
 export const TTS_PROVIDER = str('TTS_PROVIDER', 'auto').toLowerCase();
 export const GROQ_API_KEY = str('GROQ_API_KEY', '');
@@ -58,16 +57,12 @@ export const XAI_VOICE = str('XAI_VOICE', 'eve');
 export const XAI_LANG = str('XAI_LANG', 'en');
 export const WHISPER_CPP_BIN = str('WHISPER_CPP_BIN', 'whisper-cpp');
 export const WHISPER_CPP_MODEL = str('WHISPER_CPP_MODEL', '');
-export const ELEVENLABS_API_KEY = str('ELEVENLABS_API_KEY', '');
-export const ELEVENLABS_VOICE_ID = str('ELEVENLABS_VOICE_ID', '');
 export const VOICE_REPLY_DEFAULT = bool('VOICE_REPLY_DEFAULT', false);
 
 // --- memory v2 / gemini ---
 export const GOOGLE_API_KEY = str('GOOGLE_API_KEY', '');
 export const GEMINI_TEXT_MODEL = str('GEMINI_TEXT_MODEL', 'gemini-3-flash-preview');
 export const GEMINI_EMBED_MODEL = str('GEMINI_EMBED_MODEL', 'gemini-embedding-001');
-export const MEMORY_NUDGE_INTERVAL_TURNS = num('MEMORY_NUDGE_INTERVAL_TURNS', 10);
-export const MEMORY_NUDGE_INTERVAL_HOURS = num('MEMORY_NUDGE_INTERVAL_HOURS', 2);
 export const CONSOLIDATION_INTERVAL_MIN = num('CONSOLIDATION_INTERVAL_MIN', 30);
 export const CONSOLIDATION_INTERVAL_MS = CONSOLIDATION_INTERVAL_MIN * 60 * 1000;
 
@@ -88,40 +83,22 @@ export const WARROOM_AUTOSTART = bool('WARROOM_AUTOSTART', true);
 export const SCHEDULER_ENABLED = bool('SCHEDULER_ENABLED', true);
 export const SCHEDULER_POLL_MS = num('SCHEDULER_POLL_MS', 60_000);
 export const WHATSAPP_ENABLED = bool('WHATSAPP_ENABLED', true);
-export const WHATSAPP_SESSION_PATH = str('WHATSAPP_SESSION_PATH', 'store/wa-session');
 
 // --- multi-agent tokens ---
-export const COMMS_TELEGRAM_TOKEN = str('COMMS_TELEGRAM_TOKEN', '');
-export const CONTENT_TELEGRAM_TOKEN = str('CONTENT_TELEGRAM_TOKEN', '');
-export const OPS_TELEGRAM_TOKEN = str('OPS_TELEGRAM_TOKEN', '');
-export const RESEARCH_TELEGRAM_TOKEN = str('RESEARCH_TELEGRAM_TOKEN', '');
 
 // --- agent behavior ---
 export const AGENT_TIMEOUT_MS = num('AGENT_TIMEOUT_MS', 900_000);
 export const AGENT_MAX_TURNS = num('AGENT_MAX_TURNS', 30);
 export const SHOW_COST_FOOTER = str('SHOW_COST_FOOTER', 'compact');
-export const STREAM_STRATEGY = str('STREAM_STRATEGY', 'off');
 export const MAX_MESSAGE_LENGTH = num('MAX_MESSAGE_LENGTH', 4096);
-export const TYPING_REFRESH_MS = num('TYPING_REFRESH_MS', 4000);
 
 // --- security (compat, not selected) ---
-export const PIN_HASH = str('PIN_HASH', '');
-export const PIN_SALT = str('PIN_SALT', '');
-export const IDLE_LOCK_MINUTES = num('IDLE_LOCK_MINUTES', 30);
-export const KILL_PHRASE = str('KILL_PHRASE', '');
 
 // --- meeting bot / slack (compat, not selected) ---
-export const PIKA_API_KEY = str('PIKA_API_KEY', '');
-export const RECALL_API_KEY = str('RECALL_API_KEY', '');
-export const SLACK_BOT_TOKEN = str('SLACK_BOT_TOKEN', '');
 
 // --- obsidian ---
-export const OBSIDIAN_VAULT_PATH = str('OBSIDIAN_VAULT_PATH', '');
 
 // --- budgets ---
-export const DAILY_TOKEN_LIMIT = num('DAILY_TOKEN_LIMIT', 0);
-export const DAILY_COST_LIMIT = num('DAILY_COST_LIMIT', 0);
-export const HOURLY_TOKEN_LIMIT = num('HOURLY_TOKEN_LIMIT', 0);
 
 // --- system ---
 export const LOG_LEVEL = str('LOG_LEVEL', 'info');
@@ -135,20 +112,6 @@ export interface AgentOverrides {
 }
 
 const overrides: AgentOverrides = {};
-
-export function setAgentOverrides(next: Partial<AgentOverrides>): void {
-  if (next.model !== undefined) overrides.model = next.model;
-  if (next.timeoutMs !== undefined) overrides.timeoutMs = next.timeoutMs;
-  if (next.maxTurns !== undefined) overrides.maxTurns = next.maxTurns;
-}
-
-export function getAgentOverrides(): Readonly<AgentOverrides> {
-  return overrides;
-}
-
-export function effectiveTimeoutMs(): number {
-  return overrides.timeoutMs ?? AGENT_TIMEOUT_MS;
-}
 
 export function effectiveMaxTurns(): number {
   return overrides.maxTurns ?? AGENT_MAX_TURNS;

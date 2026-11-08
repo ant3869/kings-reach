@@ -14,7 +14,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROJECT_ROOT } from './config.js';
 import { probeResearch } from './research-probe.js';
-import { hasErrors, hashSkillDir, parseFrontmatter, scanSkillDir } from './skill-scan.js';
+import { hasErrors, hashSkillDir, scanSkillDir } from './skill-scan.js';
 
 export const SKILLPACK_DIR = join(PROJECT_ROOT, 'skillpack');
 export const SKILLS_DIR = join(SKILLPACK_DIR, 'skills');
@@ -117,15 +117,6 @@ export function skillsFor(agentId: string, registry: Registry = readRegistry()):
   const requiredOk = keep(required);
   const availableOk = keep(available).filter((name) => !required.has(name));
   return { required: requiredOk, available: availableOk, rejected };
-}
-
-export function skillDescription(name: string): string {
-  try {
-    const meta = parseFrontmatter(readFileSync(join(SKILLS_DIR, name, 'SKILL.md'), 'utf8'));
-    return String(meta?.['description'] ?? '').replace(/\s+/g, ' ').trim();
-  } catch {
-    return '';
-  }
 }
 
 /** Options merged into the Agent SDK call: load the plugin, and show the model only this agent's verified skills. */

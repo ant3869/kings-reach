@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.16.0 - Adaptive per-provider model ladders, agent harness providers, polish pass
+
+**Added**
+- **Difficulty tiers (off by default, Settings -> Difficulty tiers).** Each provider has its own ordered model ladder: pick the weakest (Low) and strongest (High) model and everything ranked between them is allowed (untick any). A step gets a continuous difficulty level from 0 to 1 and lands on the matching rung, so an in-between task gets an in-between model; two adjacent models make it effectively binary. A role never leaves its own provider: a role on OpenAI only uses OpenAI's range and only Claude roles can reach Opus. The role's own model stays behind the pick as the fallback. Difficulty comes from an explicit request, then the pipeline stage (`plan`/`verdict` hardest, `investigate`/`debate`/`execute`/`review` middle, `recall`/`record`/`preflight`/`gate` easiest), then a deterministic wording heuristic (the memory block the chat surfaces prepend is ignored).
+- `src/model-rank.ts` orders models weakest to strongest from their names (generation first, then size: `sonnet-4-6 < opus-4-6 < sonnet-5 < opus-5-5`). Image, speech and embedding models are never ranked. Served to Settings as `ranked` on `GET /api/providers`.
+- **Quick-answer wiring:** with tiers on, an easy step that does not mention repos, files, GitHub or URLs runs `light` (no MCP servers), which is most of the first-response latency. Never when the caller needs tools or set `light` itself. Logged as `difficulty tier chosen` and `mcp servers for run`.
+- **Harness providers** `openclaw`, `hermes` and `codepuppy` as full-trust, tool-capable routes with health checks and model dropdowns. OpenClaw runs through `openclaw.cmd` (bare `openclaw` resolves to an unrelated executable on Windows); Code Puppy's echoed prompt is stripped from its answer; model ids reaching `cmd.exe` are restricted to safe characters.
+- Council stages (`plan`, `investigate`, `debate`, `verdict`, `execute`, `review`) are forwarded to the core so the tier is known, not guessed.
+- Claude sign-in prompt: logged-out Claude calls are skipped without SDK work or spend, the dashboard offers `claude auth login`, and Telegram/dashboard errors say how to sign in.
+- `npm run test:py` runs the War Room's Python tests with the interpreter from `WARROOM_PYTHON`; `scripts/env.mjs` is the one shared `.env` reader for `verify` and `test:py`.
+- 7 new real-browser checks for the tier editor (88 total) and 12 new unit tests (198 total).
+
+**Fixed**
+- Memory decay uses its own `decayed_at` timestamp (pure `decayStep()`); embeddings decode aligned `Float32Array`s and reject dimension mismatches.
+- Settings could not un-tier a provider once one end of its range was cleared.
+- Saving routes tolerates `null`/`undefined` targets instead of throwing.
+
+**Removed (dead code, verified unreferenced by TypeScript, Python, scripts and tests)**
+- Modules `hooks`, `message-classifier`, `rate-tracker`, `obsidian`, `state` and the unused functions `getDefaultAgent`, `setAgentOverrides`, `getAgentOverrides`, `effectiveTimeoutMs`, `clearSession`, `searchMemoriesFts`, `logAuditEvent`, `evaluateMemoryRelevance`, `shouldNudgeMemory`, `queueDepth`, `isProcessing`, `skillDescription`, `voiceCapabilities`.
+- **Settings that never did anything**, removed from `config.ts` and `.env.example`: `PIN_HASH`, `PIN_SALT`, `IDLE_LOCK_MINUTES`, `KILL_PHRASE`, `DAILY_TOKEN_LIMIT`, `DAILY_COST_LIMIT`, `HOURLY_TOKEN_LIMIT`, `MEMORY_NUDGE_INTERVAL_*`, `STREAM_STRATEGY`, `TYPING_REFRESH_MS`, `STT_PROVIDER`, `OBSIDIAN_VAULT_PATH`, `WHATSAPP_SESSION_PATH`, the per-agent `*_TELEGRAM_TOKEN` constants and unused ElevenLabs/Pika/Recall/Slack keys. **The PIN lock, idle lock, kill phrase and spend limits were never enforced**; see HANDOFF for the decision this leaves you.
+
 ## 2.15.6 - Per-agent MCP allowlists (agent.yaml `mcp_allowlist`) and a quick-answer `light` run
 
 - `agent.yaml` now accepts `mcp_allowlist` per agent (inline `[a, b]` or block list). Omitted keeps the old behaviour (every server from Claude settings), `[]` means no MCP servers, a list means exactly those names. An unreadable value fails closed (no servers) and is logged. Server definitions and credentials stay in Claude settings; project still wins over user.
