@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.17.2 - Council quorum and the Claude CLI version
+
+**Fixed**
+- **A council that assigned a single specialist could never finish.** The chair may pick "1 to 4" specialists, but quorum was `max(2, ceil(2n/3))`, so one specialist answering perfectly still ended as `no_quorum` ("1/1 answered; 2 required") and the whole run was thrown away. Quorum is now never more than the number assigned (`quorum_for`): 1 of 1, 2 of 2, 2 of 3, 3 of 4. A lone specialist that fails is still a `no_quorum`. Seen live; five new tests, and three of them fail if the old rule is put back.
+- **Opus steps silently fell back to Sonnet.** The Claude Agent SDK bundled Claude Code 2.1.141, which the API rejects for `claude-opus-5-5` ("version 2.1.280 or newer is required"), so every Opus attempt failed and the route moved on. Upgraded `@anthropic-ai/claude-agent-sdk` 0.2.141 to 0.3.319 (bundled CLI 2.1.319). Checked live: Opus and Sonnet both answer on the bundled CLI, strict TypeScript is clean, and the cancel hook still ends the whole process tree on the new SDK (the agent's `ping` was dead by the time the cancel request returned).
+
+**Note:** a War Room server keeps the Python it started with, so restart it after updating (the core only starts one when none is running).
+
 ## 2.17.1 - Audit and polish pass
 
 **Fixed**

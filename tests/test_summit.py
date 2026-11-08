@@ -29,6 +29,7 @@ class SummitTests(unittest.IsolatedAsyncioTestCase):
         self.saved_ab = (council.ab.ask, council.ab.record, council.ab.recall)
         self.prompts = {}
         self.ops_has_tools, self.fail_debate_for = False, None
+        self.assigned, self.fail_take_for = ["research", "ops"], set()  # who the chair picks; whose investigation fails
 
         def take(conf, rec):
             return {"spoken": "s", "recommendation": rec, "findings": ["f"], "evidence": ["e"], "risks": ["r"], "confidence": conf}
@@ -36,10 +37,11 @@ class SummitTests(unittest.IsolatedAsyncioTestCase):
         async def ask(agent, prompt, *, schema=None, on_event=None, **kw):
             if schema is council.PLAN:
                 data = {"spoken": "go", "objective": "obj", "success_criteria": ["c"], "assignments": [
-                    {"agent": "research", "task": "check", "tools_required": True},
-                    {"agent": "ops", "task": "check", "tools_required": False}]}
+                    {"agent": a, "task": "check", "tools_required": a == "research"} for a in self.assigned]}
                 tools = True
             elif schema is council.TAKE:
+                if agent in self.fail_take_for:
+                    return {"ok": False, "text": "boom", "provider": "claude", "hasTools": True}
                 data = take(0.91, "Keep the cli wrapper") if agent == "research" else take(0.80, "Keep the cli wrapper too")
                 tools = True if agent == "research" else self.ops_has_tools
             elif schema is council.VERDICT:
@@ -150,6 +152,33 @@ class SummitTests(unittest.IsolatedAsyncioTestCase):
         _, data = await self.convene()
         self.assertEqual(data["provider_diversity"], 1)
         self.assertNotIn("chatgpt", data["providers"])
+
+    def test_quorum_never_asks_for_more_answers_than_specialists_were_assigned(self):
+        # (assigned -> needed): the old rule wanted max(2, ceil(2n/3)) even of a single specialist
+        self.assertEqual({n: council.quorum_for(n) for n in range(0, 6)}, {0: 1, 1: 1, 2: 2, 3: 2, 4: 3, 5: 4})
+
+    async def test_a_plan_that_assigns_one_specialist_can_reach_a_verdict(self):
+        self.assigned = ["ops"]  # the chair is allowed to pick "1 to 4"
+        _, data = await self.convene()
+        self.assertEqual((data["outcome"], data["specialists"]), ("verdict", ["ops"]))
+        self.assertEqual(data["challenges"], 0, "one voice has nobody to cross-examine, so debate is skipped")
+        self.assertEqual(council.json.loads(council.VERDICT_JSON.read_text(encoding="utf-8"))["verdict"], "keep it")
+
+    async def test_the_lone_specialist_failing_is_still_no_quorum(self):
+        self.assigned, self.fail_take_for = ["ops"], {"ops"}
+        room, data = await self.convene()
+        self.assertEqual((data["outcome"], data["failed_specialists"]), ("no_quorum", ["ops"]))
+        self.assertTrue(any("0/1 specialists answered; 1 required" in said for _, said in room.said))
+
+    async def test_two_assigned_still_need_both(self):
+        self.fail_take_for = {"ops"}
+        _, data = await self.convene()
+        self.assertEqual(data["outcome"], "no_quorum")
+
+    async def test_three_assigned_survive_one_failure(self):
+        self.assigned, self.fail_take_for = ["research", "ops", "comms"], {"comms"}
+        _, data = await self.convene()
+        self.assertEqual((data["outcome"], sorted(data["specialists"])), ("verdict", ["ops", "research"]))
 
     async def test_cancelling_mid_summit_reports_cancelled(self):
         room = Room()

@@ -88,6 +88,13 @@ TOOLS_NOTE = (f"Repo root: {PROJECT_ROOT}. Shared memory and the hive mind (what
 READ_ONLY_NOTE = "This is deliberation: read, search and verify freely, but change NOTHING (Build acts later)."
 
 
+def quorum_for(assigned):
+    """How many answers a council of `assigned` specialists needs: two thirds rounded up, and at least two so there is
+    something to cross-examine, but never more than were asked. The chair may assign just one specialist ("1 to 4"), and
+    demanding two answers from one specialist made every such council fail (no_quorum) however good the answer was."""
+    return max(1, min(assigned, max(2, (2 * assigned + 2) // 3)))
+
+
 def bullets(items):
     return "\n".join(f"- {i}" for i in items) or "- (none)"
 
@@ -267,7 +274,7 @@ class Council:
         await self._stage(run, "investigate", asyncio.gather(*(investigate(a) for a in assigned)),
                           expected=len(assigned))
         failed_specialists = sorted(set(assigned) - set(takes))
-        quorum = max(2, (2 * len(assigned) + 2) // 3)
+        quorum = quorum_for(len(assigned))
         if len(takes) < quorum:
             return await self._adjourn(run, "no_quorum",
                 f"Council adjourned: {len(takes)}/{len(assigned)} specialists answered; {quorum} required. "
