@@ -370,7 +370,7 @@ async function routeLoop(opts: AgentOptions): Promise<AgentResult> {
   const tier = tierApplies(tiers, agentId) ? assessDifficulty(opts.message, { stage: opts.stage, difficulty: opts.difficulty }) : undefined;
   if (tier && tiers) {
     routes = applyTiers(routes, tier.level, tiers);
-    logger.info({ agentId, stage: opts.stage, tier: tier.tier, level: Number(tier.level.toFixed(2)), score: tier.score, reasons: tier.reasons, light: tier.light, routes: routes.map((r) => `${r.provider}:${r.model}`) }, 'difficulty tier chosen');
+    logger.info({ agentId, stage: opts.stage, tier: tier.tier, difficulty: Number(tier.level.toFixed(2)), score: tier.score, reasons: tier.reasons, light: tier.light, routes: routes.map((r) => `${r.provider}:${r.model}`) }, 'difficulty tier chosen');
   }
   // A quick, tool-free step skips loading MCP servers; never when the caller needs tools or chose for itself.
   const claudeOpts: AgentOptions = { ...opts, light: opts.light ?? (tier?.light === true && opts.toolNeed !== 'required') };

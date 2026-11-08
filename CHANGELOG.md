@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.17.4 - Council steps are now logged
+
+**Fixed**
+- **The War Room's agent calls were invisible in the logs.** Every council step runs in a short-lived Node bridge whose stdout is the JSON channel back to Python, and Python deliberately drops every line that is not a reply, so each log line the bridge wrote (which model a step picked and why, which route failed and why, MCP servers loaded) was thrown away. The bridge now writes to `store/logs/bridge.log` (one JSON line per event, tagged `"proc":"bridge"`; at 5 MB it rotates to `bridge.log.1`). See the model each step chose with `findstr "tier chosen" store\logs\bridge.log`. As a side effect the bridge's stdout is now the reply and nothing else, so a log line that happened to contain an `ok` key can no longer be mistaken for the answer.
+- **The difficulty-tier log line overwrote its own severity.** It carried a `level` field (the difficulty) beside pino's `level` (severity 30), so any JSON reader saw the difficulty where the severity belonged. The field is now `difficulty`. A test scans every logger call in `src` for keys pino owns (`level`, `time`, `msg`, `pid`, `hostname`); it fails if the old key comes back.
+
+**Tests:** 225 Node (new: which process gets a log file, the size cap, bridge stdout is the reply alone, the reserved-key guard), 87 Python, 93 browser checks. Checked live with one cheap recall-stage bridge call: the decision line landed in `bridge.log` and stdout was a single reply line.
+
 ## 2.17.3 - The council chair no longer always gets the top model
 
 **Fixed**
