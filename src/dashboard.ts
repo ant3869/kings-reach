@@ -19,6 +19,7 @@ import { get9RouterCatalog, getProviderHealth } from './provider-runner.js';
 import { buildModelChoices, invalidRoutes, invalidTiers, readiness } from './provider-models.js';
 import { apiGuard } from './http-guard.js';
 import { claudeAuth } from './claude-auth.js';
+import { rankModels } from './model-rank.js';
 import { claudeLogin } from './claude-login.js';
 import { collectHealth } from './health.js';
 import { logger } from './logger.js';
@@ -72,8 +73,11 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
     const catalog = { '9router': models, chatgpt: models.filter((m) => /^cx\//.test(m.id)),
       meta: models.filter((m) => /^(meta\/|cf\/@cf\/meta\/)/.test(m.id)) };
     const health = await getProviderHealth(models);
+    const choices = buildModelChoices(models, health);
+    // Weakest -> strongest per provider (only models whose names can be ranked): the Settings ladders are built from this.
+    const ranked = Object.fromEntries(Object.entries(choices).map(([id, list]) => [id, rankModels(list.map((m) => m.id))]));
     return c.json({ config: loadProviderRouting(), providers: PROVIDERS, guidance: ROLE_GUIDANCE,
-      health, catalog, choices: buildModelChoices(models, health) });
+      health, catalog, choices, ranked });
   });
   app.get('/api/providers/defaults', (c) => c.json({ config: defaultProviderRouting() }));
   app.put('/api/providers/config', async (c) => {

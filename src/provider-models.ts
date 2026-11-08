@@ -49,20 +49,21 @@ export function readiness(health: ProviderHealth[]): Record<string, boolean> {
   return Object.fromEntries(health.map((h) => [h.id, h.configured ?? h.available]));
 }
 
-const TIER_KEYS = ['high', 'mid', 'low'] as const;
-
-/** An enabled tier setup must name three real, available models (a disabled one may be saved as it is, so it can always be switched off). */
+/** Every rung of an enabled tier setup must be a real model of an available provider (a disabled setup may be saved as it is, so it can always be switched off). */
+// (A ladder is an ordered list of model ids per provider.)
 export function invalidTiers(value: unknown, choices: ModelChoices, ready: Record<string, boolean>): string[] {
-  const tiers = (value as { tiers?: unknown } | null)?.tiers as Record<string, unknown> | null | undefined;
+  const tiers = (value as { tiers?: unknown } | null)?.tiers as { enabled?: unknown; providers?: Record<string, unknown> } | null | undefined;
   if (tiers === undefined) return [];
   if (!tiers || typeof tiers !== 'object') return ['tiers must be an object'];
   if (tiers.enabled !== true) return [];
   const problems: string[] = [];
-  for (const key of TIER_KEYS) {
-    const { provider = '', model = '' } = (tiers[key] ?? {}) as { provider?: string; model?: string };
-    if (!provider || !model) problems.push(`tiers.${key}: pick a provider and a model`);
-    else if (ready[provider] !== true) problems.push(`tiers.${key}: provider "${provider}" is not available right now`);
-    else if (!(choices[provider] ?? []).some((m) => m.id === model)) problems.push(`tiers.${key}: "${model}" is not a ${provider} model`);
+  for (const [provider, ladder] of Object.entries(tiers.providers ?? {})) {
+    if (!Array.isArray(ladder)) { problems.push(`tiers.${provider}: a ladder must be a list of models`); continue; }
+    for (const model of ladder) {
+      if (typeof model !== 'string' || !model) continue;
+      if (ready[provider] !== true) problems.push(`tiers.${provider}: provider "${provider}" is not available right now`);
+      else if (!(choices[provider] ?? []).some((m) => m.id === model)) problems.push(`tiers.${provider}: "${model}" is not a ${provider} model`);
+    }
   }
   return problems;
 }

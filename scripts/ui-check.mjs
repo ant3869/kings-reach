@@ -314,6 +314,40 @@ try {
     var m = [...document.querySelector('.route').querySelectorAll('select.model option')].map((o) => o.value);
     return JSON.stringify({ n: m.length, allCx: m.every((v) => v.startsWith('cx/')), flagged: document.querySelectorAll('select.model.invalid').length }); })()`));
   check('provider page: switching a route to ChatGPT offers only ChatGPT models, none flagged', afterSwitch.n > 0 && afterSwitch.allCx && afterSwitch.flagged === 0, JSON.stringify(afterSwitch));
+
+  // --- Difficulty tiers editor: Low/High ends fill in the models between, which can be unticked (never saved) ---
+  await open('/providers');
+  for (let i = 0; i < 60 && !(await js(`document.querySelectorAll('.tprow').length`)); i++) await sleep(250);
+  const tierState = () => js(`JSON.stringify({ on: document.getElementById('tiers-on').checked, ladder: (window.state.tiers && window.state.tiers.providers.claude) || null })`).then(JSON.parse);
+  const setSel = async (cls, value) => { await js(`(function () { var s = document.querySelector('.tprow[data-provider="claude"] .${cls}'); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`); await sleep(150); };
+  const claudeRanked = JSON.parse(await js(`JSON.stringify(window.ranked.claude || [])`));
+  const tiersBox = JSON.parse(await js(`JSON.stringify({ off: document.getElementById('tiers').classList.contains('off'), rows: document.querySelectorAll('.tprow').length,
+    textInputs: [...document.querySelectorAll('#tiers input')].filter((i) => i.type !== 'checkbox').length })`));
+  check('tiers: panel starts switched off, one row per rankable provider, and no free-text inputs', tiersBox.off && tiersBox.rows > 0 && tiersBox.textInputs === 0, JSON.stringify(tiersBox));
+  if (claudeRanked.length >= 3) {
+    const [lo, hi] = [claudeRanked[0], claudeRanked[claudeRanked.length - 1]];
+    const inner = claudeRanked.slice(1, -1);
+    await js(`(function () { var c = document.getElementById('tiers-on'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await sleep(200);
+    check('tiers: switching on pre-fills a Claude ladder', (await tierState()).on === true && Array.isArray((await tierState()).ladder), JSON.stringify(await tierState()));
+    await setSel('tlow', lo); await setSel('thigh', hi);
+    check('tiers: picking Low and High allows every model between them, in weakest-to-strongest order', JSON.stringify((await tierState()).ladder) === JSON.stringify(claudeRanked), JSON.stringify(await tierState()));
+    const chips = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('.tprow[data-provider="claude"] .tchip')].map((c) => [c.value, c.checked]))`));
+    check('tiers: the in-between models are offered as ticked boxes', JSON.stringify(chips.map((c) => c[0])) === JSON.stringify(inner) && chips.every((c) => c[1]), JSON.stringify(chips));
+    if (inner.length) {
+      await js(`(function () { var c = document.querySelector('.tprow[data-provider="claude"] .tchip'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await sleep(150);
+      const trimmed = (await tierState()).ladder;
+      check('tiers: unticking a model removes it but keeps both ends', trimmed[0] === lo && trimmed[trimmed.length - 1] === hi && !trimmed.includes(inner[0]) && trimmed.length === claudeRanked.length - 1, JSON.stringify(trimmed));
+    }
+    await setSel('tlow', hi); await setSel('thigh', lo); // ends given the wrong way round
+    const flipped = (await tierState()).ladder;
+    check('tiers: ends entered backwards are put in weakest-to-strongest order', flipped[0] === lo && flipped[flipped.length - 1] === hi, JSON.stringify(flipped));
+    await setSel('tlow', ''); await setSel('thigh', '');
+    check('tiers: clearing both ends stops tiering that provider', (await tierState()).ladder === null, JSON.stringify(await tierState()));
+  } else {
+    check('tiers: needs 3+ rankable Claude models to exercise the range editor (skipped)', true);
+  }
 } catch (err) {
   check('ui-check ran to completion', false, String(err));
 } finally {

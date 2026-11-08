@@ -12,7 +12,7 @@ import { claudeAuth, CLAUDE_LOGGED_OUT } from './claude-auth.js';
 import { classifyError } from './errors.js';
 import { logger } from './logger.js';
 import { loadTierConfig, providerHasTools, recordProviderOutcome, routesFor, type ProviderId, type ToolNeed } from './provider-config.js';
-import { applyTier, assessDifficulty, tierApplies, type Tier } from './difficulty.js';
+import { applyTiers, assessDifficulty, tierApplies, type Tier } from './difficulty.js';
 import { runExternalProvider } from './provider-runner.js';
 import { agentEnv, claudeSkillOptions, skillContext } from './skills.js';
 import { describeTool, redact, TurnCounter, WorkLog, type ActivitySink } from './activity.js';
@@ -335,13 +335,15 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
   const attempts: Attempt[] = [];
   let handoff = '';
   let routes = routesFor(agentId);
-  // Difficulty tiers (opt-in in Settings): the tier's model goes first, the role's own routes stay behind it as fallbacks.
+  // Difficulty tiers (opt-in in Settings): each route moves up or down ITS OWN provider's model ladder; providers never change.
   const tiers = loadTierConfig();
   const tier = tierApplies(tiers, agentId) ? assessDifficulty(opts.message, { stage: opts.stage, difficulty: opts.difficulty }) : undefined;
   if (tier && tiers) {
-    routes = applyTier(routes, tier.tier, tiers);
-    logger.info({ agentId, stage: opts.stage, tier: tier.tier, score: tier.score, reasons: tier.reasons, first: routes[0] }, 'difficulty tier chosen');
+    routes = applyTiers(routes, tier.level, tiers);
+    logger.info({ agentId, stage: opts.stage, tier: tier.tier, level: Number(tier.level.toFixed(2)), score: tier.score, reasons: tier.reasons, light: tier.light, routes: routes.map((r) => `${r.provider}:${r.model}`) }, 'difficulty tier chosen');
   }
+  // A quick, tool-free step skips loading MCP servers; never when the caller needs tools or chose for itself.
+  const claudeOpts: AgentOptions = { ...opts, light: opts.light ?? (tier?.light === true && opts.toolNeed !== 'required') };
   for (const target of routes) {
     if (opts.toolNeed === 'required' && !providerHasTools(target.provider)) {
       attempts.push({ ...target, error: 'skipped: tools required' });
@@ -357,11 +359,11 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
       // A logged-out Claude fails every call anyway (and salvage would call it again): skip straight to the fallback.
       if (target.provider === 'claude' && !(await claudeAuth()).loggedIn) throw new Error(CLAUDE_LOGGED_OUT);
       let result = target.provider === 'claude'
-        ? await runClaudeAgent({ ...opts, message, model: target.model })
+        ? await runClaudeAgent({ ...claudeOpts, message, model: target.model })
         : await runExternalProvider(target, { ...externalOpts, message });
       let salvaged = false;
       if (result.error && target.provider === 'claude') {
-        const rescued = await salvage({ ...opts, message }, target.model, result);
+        const rescued = await salvage({ ...claudeOpts, message }, target.model, result);
         if (rescued) { result = rescued; salvaged = true; }
       }
       if (result.error || (!result.text && result.structured === undefined)) {

@@ -1,7 +1,7 @@
-// Difficulty tiers: the classifier, the tier->routes rule, and the strict settings validation.
+// Difficulty tiers: the classifier, the per-provider ladders, `light` runs, and the strict settings validation.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyTier, assessDifficulty, tierApplies, userText } from '../dist/difficulty.js';
+import { applyTiers, assessDifficulty, ladderIndex, tierApplies, userText } from '../dist/difficulty.js';
 import { cleanTierConfig } from '../dist/provider-config.js';
 import { invalidTiers } from '../dist/provider-models.js';
 
@@ -31,13 +31,61 @@ test('classifier: an explicit request beats a stage, and a known stage beats the
   assert.equal(assessDifficulty('hi', { stage: 'not-a-stage' }).tier, 'low'); // unknown stage: fall back to the text
 });
 
-const CFG = { enabled: true, high: { provider: 'claude', model: 'opus' }, mid: { provider: 'claude', model: 'sonnet' }, low: { provider: 'claude', model: 'haiku' } };
+test('light: only quick steps with no sign of needing tools may skip loading MCP servers', () => {
+  assert.equal(assessDifficulty('hi').light, true);
+  assert.equal(assessDifficulty('Summarize this paragraph for me').light, true);
+  assert.equal(assessDifficulty('list my open github issues').tier, 'low');
+  assert.equal(assessDifficulty('list my open github issues').light, false); // low, but it clearly needs a tool server
+  assert.equal(assessDifficulty('summarize src/db.ts').light, false);
+  assert.equal(assessDifficulty('hi', { stage: 'recall' }).light, true);
+  assert.equal(assessDifficulty('hi', { stage: 'plan' }).light, false);
+  assert.equal(assessDifficulty('hi', { difficulty: 'low' }).light, false); // an explicit request never silently drops tools
+  assert.equal(assessDifficulty(HARD).light, false);
+});
 
-test('applyTier: the tier model goes first, the role routes follow, and the pick is never duplicated', () => {
-  const routes = [{ provider: 'claude', model: 'sonnet' }, { provider: 'codex', model: 'default' }];
-  assert.deepEqual(applyTier(routes, 'high', CFG).map((r) => r.model), ['opus', 'sonnet', 'default']);
-  assert.deepEqual(applyTier(routes, 'mid', CFG).map((r) => r.model), ['sonnet', 'default']);
-  assert.equal(routes.length, 2); // input untouched
+const LADDER = ['haiku-4', 'sonnet-4-6', 'opus-4-6', 'sonnet-5', 'opus-5-5'];
+const CFG = { enabled: true, providers: { claude: LADDER, openai: ['gpt-mini', 'gpt-big'] } };
+const names = (routes) => routes.map((r) => `${r.provider}:${r.model}`);
+
+test('level: a difficulty is continuous, from trivial (0) to the hardest (1), and stages have fixed levels', () => {
+  assert.equal(assessDifficulty('hi').level, 0);
+  assert.equal(assessDifficulty('hi', { stage: 'plan' }).level, 1);
+  assert.equal(assessDifficulty('hi', { stage: 'execute' }).level, 0.5);
+  assert.equal(assessDifficulty('hi', { difficulty: 'mid' }).level, 0.5);
+  const hard = assessDifficulty(HARD), easy = assessDifficulty('Add a unit test for parseDate in src/utils.ts');
+  assert.ok(hard.level > easy.level && easy.level > 0 && hard.level <= 1);
+  assert.equal(assessDifficulty(HARD).tier, 'high'); // the coarse label still follows the level
+});
+
+test('ladderIndex: the level lands proportionally on the rungs, clamped to the ends', () => {
+  assert.deepEqual([0, 0.25, 0.5, 0.75, 1].map((l) => ladderIndex(5, l)), [0, 1, 2, 3, 4]);
+  assert.equal(ladderIndex(5, 0.4), 2);
+  assert.equal(ladderIndex(5, -3), 0);
+  assert.equal(ladderIndex(5, 9), 4);
+  assert.equal(ladderIndex(1, 0.9), 0);
+  assert.deepEqual([0.2, 0.4, 0.6, 0.8].map((l) => ladderIndex(2, l)), [0, 0, 1, 1]); // two rungs is the binary case
+});
+
+test('ladders: an in-between task gets an in-between model, not just one of the two ends', () => {
+  const role = [{ provider: 'claude', model: 'own-model' }];
+  assert.equal(applyTiers(role, 0, CFG)[0].model, 'haiku-4');
+  assert.equal(applyTiers(role, 0.25, CFG)[0].model, 'sonnet-4-6');
+  assert.equal(applyTiers(role, 0.5, CFG)[0].model, 'opus-4-6');
+  assert.equal(applyTiers(role, 0.75, CFG)[0].model, 'sonnet-5');
+  assert.equal(applyTiers(role, 1, CFG)[0].model, 'opus-5-5');
+  assert.deepEqual(names(applyTiers(role, 1, CFG)), ['claude:opus-5-5', 'claude:own-model']); // the role's own model stays as the fallback
+});
+
+test('ladders: a role moves along ITS OWN provider only, others keep their order and their own model', () => {
+  const mixed = [{ provider: 'claude', model: 'sonnet-4-6' }, { provider: 'codex', model: 'default' }];
+  assert.deepEqual(names(applyTiers(mixed, 1, CFG)), ['claude:opus-5-5', 'claude:sonnet-4-6', 'codex:default']);
+  assert.deepEqual(names(applyTiers(mixed, 0.25, CFG)), ['claude:sonnet-4-6', 'codex:default']); // the pick equals the role's model: no duplicate
+  const openaiRole = [{ provider: 'openai', model: 'gpt-mid' }];
+  for (const level of [0, 0.3, 0.6, 1]) assert.ok(!names(applyTiers(openaiRole, level, CFG)).some((n) => n.includes('opus')));
+  assert.deepEqual(names(applyTiers(openaiRole, 1, CFG)), ['openai:gpt-big', 'openai:gpt-mid']);
+  const noLadder = [{ provider: 'gemini', model: 'g' }];
+  assert.deepEqual(applyTiers(noLadder, 1, CFG), noLadder);
+  assert.equal(mixed.length, 2); // input untouched
 });
 
 test('tierApplies: needs enabled, and respects the role list when there is one', () => {
@@ -48,26 +96,29 @@ test('tierApplies: needs enabled, and respects the role list when there is one',
   assert.equal(tierApplies({ ...CFG, roles: ['ops'] }, 'ops'), true);
 });
 
-const CHOICES = { claude: [{ id: 'opus' }, { id: 'sonnet' }, { id: 'haiku' }], codex: [{ id: 'default' }] };
-const READY = { claude: true, codex: false };
+const CHOICES = { claude: [{ id: 'opus' }, { id: 'sonnet' }, { id: 'haiku' }], openai: [{ id: 'gpt-big' }, { id: 'gpt-mini' }], codex: [{ id: 'default' }] };
+const READY = { claude: true, openai: true, codex: false };
 
-test('save check: an enabled tier setup needs three real, available models; a disabled one can always be saved', () => {
+test('save check: every model on an enabled ladder must be real and available; a disabled setup always saves', () => {
   assert.deepEqual(invalidTiers({ agents: {} }, CHOICES, READY), []); // no tiers key: nothing to check
-  assert.deepEqual(invalidTiers({ tiers: CFG }, CHOICES, READY), []);
-  assert.deepEqual(invalidTiers({ tiers: { ...CFG, enabled: false, low: { provider: 'nope', model: 'x' } } }, CHOICES, READY), []);
-  const bad = invalidTiers({ tiers: { enabled: true, high: { provider: 'claude', model: 'gpt-9' }, mid: { provider: 'codex', model: 'default' }, low: {} } }, CHOICES, READY);
+  assert.deepEqual(invalidTiers({ tiers: { enabled: true, providers: { claude: ['haiku', 'sonnet', 'opus'], openai: ['gpt-mini', 'gpt-big'] } } }, CHOICES, READY), []);
+  assert.deepEqual(invalidTiers({ tiers: { enabled: false, providers: { nope: ['x'] } } }, CHOICES, READY), []);
+  const bad = invalidTiers({ tiers: { enabled: true, providers: { claude: ['sonnet', 'gpt-9'], codex: ['default'], openai: 'x' } } }, CHOICES, READY);
   assert.equal(bad.length, 3);
-  assert.match(bad[0], /tiers\.high.*not a claude model/);
-  assert.match(bad[1], /tiers\.mid.*codex.*not available/);
-  assert.match(bad[2], /tiers\.low.*pick a provider/);
+  assert.match(bad[0], /tiers\.claude.*"gpt-9" is not a claude model/);
+  assert.match(bad[1], /tiers\.codex.*not available/);
+  assert.match(bad[2], /tiers\.openai.*list of models/);
   assert.deepEqual(invalidTiers({ tiers: 'on' }, CHOICES, READY), ['tiers must be an object']);
 });
 
-test('settings: a half-filled or invalid tier setup is dropped, never half-applied', () => {
+test('settings: only well-formed ladders survive cleaning; order is kept and nothing is invented', () => {
   assert.equal(cleanTierConfig(undefined), undefined);
-  assert.equal(cleanTierConfig({ enabled: true, high: CFG.high, mid: CFG.mid }), undefined); // no low model
-  assert.equal(cleanTierConfig({ enabled: true, high: CFG.high, mid: CFG.mid, low: { provider: 'nope', model: 'x' } }), undefined);
-  const ok = cleanTierConfig({ ...CFG, roles: ['main', 'Bad Role!', 5], extra: 'ignored', high: { ...CFG.high, junk: 1 } });
-  assert.deepEqual(ok, { enabled: true, roles: ['main'], high: CFG.high, mid: CFG.mid, low: CFG.low });
-  assert.equal(cleanTierConfig({ ...CFG, enabled: 'yes' }).enabled, false); // only a real true enables it
+  assert.equal(cleanTierConfig({ enabled: true }), undefined); // no providers object
+  const ok = cleanTierConfig({
+    enabled: true, roles: ['main', 'Bad Role!', 5], extra: 'ignored',
+    providers: { claude: ['haiku', 'sonnet', 'sonnet', '', 7, 'opus'], nope: ['x'], openai: [], gemini: 'str', codex: ['default'] },
+  });
+  assert.deepEqual(ok, { enabled: true, roles: ['main'], providers: { claude: ['haiku', 'sonnet', 'opus'], codex: ['default'] } });
+  assert.equal(cleanTierConfig({ enabled: 'yes', providers: {} }).enabled, false); // only a real true enables it
+  assert.equal(cleanTierConfig({ enabled: true, providers: { claude: Array.from({ length: 30 }, (_, n) => `m${n}`) } }).providers.claude.length, 12);
 });

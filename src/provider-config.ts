@@ -109,13 +109,23 @@ function validTarget(v: unknown): v is RouteTarget {
   if (!x || typeof x !== 'object') return false; // a null/missing entry is invalid, not a crash
   return PROVIDER_IDS.includes(x.provider as ProviderId) && typeof x.model === 'string' && x.model.length > 0 && x.model.length <= 120;
 }
-/** Strict: a half-filled tier setup must never silently route work to a missing model, so anything invalid is dropped. */
+const MAX_LADDER = 12;
+
+/**
+ * Keeps only what is well-formed: known providers and a de-duplicated, ordered list of non-empty model ids per ladder. A
+ * provider whose ladder ends up empty is dropped (it simply is not tiered). Nothing here can invent a model the user did not choose.
+ */
 export function cleanTierConfig(value: unknown): TierConfig | undefined {
-  const v = value as Partial<TierConfig> | null | undefined;
-  if (!v || typeof v !== 'object' || !validTarget(v.high) || !validTarget(v.mid) || !validTarget(v.low)) return undefined;
+  const v = value as { enabled?: unknown; roles?: unknown; providers?: unknown } | null | undefined;
+  if (!v || typeof v !== 'object' || !v.providers || typeof v.providers !== 'object') return undefined;
+  const providers: Record<string, string[]> = {};
+  for (const [id, ladder] of Object.entries(v.providers as Record<string, unknown>)) {
+    if (!PROVIDER_IDS.includes(id as ProviderId) || !Array.isArray(ladder)) continue;
+    const models = [...new Set(ladder.filter((m): m is string => typeof m === 'string' && m.length > 0 && m.length <= 120))].slice(0, MAX_LADDER);
+    if (models.length) providers[id] = models;
+  }
   const roles = Array.isArray(v.roles) ? v.roles.filter((r) => typeof r === 'string' && /^[a-z][a-z0-9_-]{0,29}$/.test(r)) : undefined;
-  const pick = (t: RouteTarget): RouteTarget => ({ provider: t.provider, model: t.model });
-  return { enabled: v.enabled === true, ...(roles ? { roles } : {}), high: pick(v.high), mid: pick(v.mid), low: pick(v.low) };
+  return { enabled: v.enabled === true, ...(roles ? { roles } : {}), providers };
 }
 export function loadTierConfig(): TierConfig | null {
   return loadProviderRouting().tiers ?? null;

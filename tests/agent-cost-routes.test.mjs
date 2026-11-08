@@ -211,9 +211,9 @@ test('runAgentWithRetry contract: each runAgent call owns its ledger, so a faile
   close(r.costUsd, 0.3);
 });
 
-const TIERS = { enabled: true, high: { provider: 'claude', model: 'opus-x' }, mid: { provider: 'claude', model: 'sonnet-x' }, low: { provider: 'claude', model: 'haiku-x' } };
+const TIERS = { enabled: true, providers: { claude: ['haiku-x', 'sonnet-x', 'opus-x'], codex: ['codex-small', 'codex-big'] } };
 
-test('tiers: a trivial message runs on the low model, a planning stage on the high one, and the role routes stay as fallbacks', async () => {
+test('tiers: a Claude role lands on the rung its difficulty matches, and its own model stays as the fallback', async () => {
   reset();
   state.tiers = TIERS;
   state.claudeRuns.push([init, done(0.01)]);
@@ -221,15 +221,46 @@ test('tiers: a trivial message runs on the low model, a planning stage on the hi
   assert.equal(state.queryCalls[0].options.model, 'haiku-x');
   assert.equal(low.tier.tier, 'low');
   state.claudeRuns.push([init, done(0.01)]);
+  await run({ message: 'hi', stage: 'execute' }); // a medium step: the MIDDLE model, not either end
+  assert.equal(state.queryCalls[1].options.model, 'sonnet-x');
+  state.claudeRuns.push([init, done(0.01)]);
   const high = await run({ message: 'hi', stage: 'plan' });
-  assert.equal(state.queryCalls[1].options.model, 'opus-x');
+  assert.equal(state.queryCalls[2].options.model, 'opus-x');
   assert.deepEqual(high.tier.reasons, ['stage: plan']);
-  // The tier's model fails -> the role's own route is still tried next.
+  // The picked model fails -> the role's own model (same provider) is tried next.
   state.claudeRuns.push([init, failed('error_during_execution', 0)]);
   state.claudeRuns.push([init, done(0.01)]);
   const fell = await run({ message: 'hi' });
-  assert.equal(state.queryCalls[3].options.model, 'c1');
+  assert.equal(state.queryCalls[4].options.model, 'c1');
   assert.equal(fell.provider, 'claude');
+});
+
+test('tiers: a role whose provider has no ladder is untouched, and a codex role never sees a Claude model', async () => {
+  reset([CODEX]);
+  state.tiers = { enabled: true, providers: { claude: ['haiku-x', 'opus-x'] } };
+  state.external.push({ text: 'ok', costUsd: 0.01 });
+  const r = await run({ message: 'hi' });
+  assert.equal(state.queryCalls.length, 0);
+  assert.deepEqual(state.externalCalls[0].target, CODEX);
+  assert.equal(r.provider, 'codex');
+  // ...but when codex has its own ladder, codex climbs it.
+  reset([CODEX]);
+  state.tiers = TIERS;
+  state.external.push({ text: 'ok', costUsd: 0.01 });
+  await run({ message: 'hi', stage: 'plan' });
+  assert.deepEqual(state.externalCalls[0].target, { provider: 'codex', model: 'codex-big' });
+});
+
+test('tiers: a quick tool-free message runs light (no MCP servers); a caller that needs tools never does', async () => {
+  reset();
+  state.tiers = TIERS;
+  state.claudeRuns.push([init, done(0.01)]);
+  await run({ message: 'hi' });
+  assert.deepEqual(state.queryCalls[0].options.mcpServers, {});
+  // An explicit light: false from the caller wins over the tier's suggestion (here we only check it is honoured, not what loads).
+  state.claudeRuns.push([init, done(0.01)]);
+  await run({ message: 'hi', light: false });
+  assert.notEqual(state.queryCalls[1].options.mcpServers, undefined);
 });
 
 test('tiers: off by default, and roles outside the tier list keep their fixed model', async () => {
