@@ -10,7 +10,13 @@
 })(typeof self !== 'undefined' ? self : globalThis, function () {
   'use strict';
 
-  const NAMES = ['build', 'build-fail', 'stall', 'summit'];
+  const NAMES = ['build', 'build-fail', 'build-review', 'stall', 'summit'];
+
+  const FILES = ['src/activity.ts', 'src/agent.ts', 'tests/live.test.mjs'];
+  // The same wording the server sends (warroom/ledger.py FOLLOWUPS); tests/live.test.mjs checks they have not drifted.
+  const REVIEW = { id: 'review', label: 'Re-check only', hint: 'Research looks at the files again. Nothing is edited. The cheapest option; useful if you changed something yourself.' };
+  const FIX = { id: 'fix', label: 'Fix what was flagged', hint: 'The Hand of the King fixes only the issues listed here, then the checks and the review run again. Nothing already done is redone.' };
+  const ACCEPT = { id: 'accept', label: 'Keep as is', hint: 'Accept the files as they are. Free. Restarts the core if the changes need it.' };
 
   function builder() {
     const T = [];
@@ -40,12 +46,15 @@
       done: (t, id, ok) => { at(t, { type: 'activity', kind: 'done', agent_id: id }); at(t, { type: 'activity', kind: 'result', agent_id: id, ok }); },
       progress: (t, phase, state, message, extra) => at(t, { type: 'build_progress', phase, state, elapsed: 0, message, ...(extra || {}) }),
       status: (t, text) => at(t, { agent_id: 'war-room', text }),
-      final: (t, state, ok) => at(t, { type: 'meter', pct: ok ? 100 : 55, phase: state, label: state, failed: state === 'failed', state, final: true }),
+      final: (t, state, ok, note) => at(t, { type: 'meter', pct: ok ? 100 : 55, phase: state, label: state, failed: state === 'failed', state, final: true, note: note || '' }),
+      result: (t, card) => at(t, { type: 'build_result', files: [], issues: [], output: '', ...card }),
     };
     return b;
   }
 
-  function build(failing) {
+  // mode: undefined = a clean build, 'fail' = the checks break, 'review' = checks pass but Research is not satisfied.
+  function build(mode) {
+    const failing = mode === 'fail';
     const b = builder();
     b.stage(0, 'preflight', 'active', 'checking clean baseline');
     b.meter(0, 1, 'preflight', 'preflight \u00b7 compiling and syntax-checking before anyone edits');
@@ -103,8 +112,11 @@
       b.stage(105, 'review', 'skipped', 'gate failed');
       b.progress(105, 'review', 'skipped', 'Review skipped because automated checks failed');
       b.narr(106, 'main', 'Build did not succeed. Automated checks failed; changes remain on disk but were not activated.');
-      b.progress(106, 'complete', 'failed', 'Automated checks failed; changes remain on disk but were not activated.');
-      b.final(106, 'failed', false);
+      b.progress(106, 'complete', 'failed', 'The automated checks failed');
+      b.result(106, { state: 'failed', headline: 'The automated checks failed', files: ['src/activity.ts', 'src/agent.ts', 'tests/live.test.mjs'],
+        detail: '3 files changed and are kept on disk, but they did not pass the checks, so nothing was reviewed or restarted.',
+        output: 'tsc: src/agent.ts(41,3): error TS2322', actions: [FIX] });
+      b.final(106, 'failed', false, 'The automated checks failed');
       return b.T;
     }
     b.stage(104, 'gate', 'done', '12s');
@@ -118,6 +130,18 @@
     b.tool(112, 'research', 'Reading src/activity.ts', { turn: 1, max: 16, reads: 1, edits: 0, target: 'src/activity.ts' });
     b.done(130, 'research', true);
     b.off(130, 'research');
+    if (mode === 'review') {
+      b.say(130, 'research', '**Not approved**\n\n- FAIL log top under 800 at 1366x800: not measured', 'Not approved. One criterion could not be measured.', 'review');
+      b.stage(131, 'review', 'done', '25s');
+      b.progress(131, 'review', 'attention', 'Research wants changes');
+      b.narr(132, 'main', 'The build is in and the checks passed, but Research is not satisfied. Your files are kept. Choose what happens next.');
+      b.progress(132, 'complete', 'attention', 'Built, but Research is not satisfied', { files: FILES });
+      b.result(132, { state: 'attention', headline: 'Built, but Research is not satisfied', files: FILES,
+        detail: 'The checks passed and 3 files changed. Your files are kept exactly as written and nothing has been restarted. Research could confirm 1/2 of the success criteria. You decide what happens next.',
+        issues: ['The log position at 1366x800 was never measured', 'Not confirmed: Log top under 800px (not measured)'], actions: [REVIEW, FIX, ACCEPT] });
+      b.final(132, 'attention', false, 'Built, but Research is not satisfied');
+      return b.T;
+    }
     b.say(130, 'research', '**Approved**', 'The build matches the verdict. Approved.', 'review');
     b.stage(131, 'review', 'done', '25s');
     b.progress(131, 'review', 'done', 'Research approved the build');
@@ -125,7 +149,9 @@
     b.narr(131, 'ops', 'Core code changed. Restarting it and waiting for it to come back.');
     b.narr(137, 'ops', 'The core is back up.');
     b.narr(138, 'main', 'Build complete and approved.');
-    b.progress(138, 'complete', 'done', 'Build completed and approved', { files: ['src/activity.ts', 'src/agent.ts', 'tests/live.test.mjs'] });
+    b.progress(138, 'complete', 'done', 'Built and approved', { files: FILES });
+    b.result(138, { state: 'complete', headline: 'Built and approved', files: FILES, actions: [],
+      detail: '3 files changed. The automated checks passed and Research approved the work.' });
     b.final(138, 'complete', true);
     return b.T;
   }
@@ -182,7 +208,8 @@
 
   function script(name) {
     if (name === 'build') return build(false);
-    if (name === 'build-fail') return build(true);
+    if (name === 'build-fail') return build('fail');
+    if (name === 'build-review') return build('review');
     if (name === 'stall') return stall();
     if (name === 'summit') return summit();
     return [];

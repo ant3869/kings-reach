@@ -31,5 +31,8 @@ class Room:
     def final(self):
         return [m for m in self.sent if m.get("type") == "meter" and m.get("final")]
 
+    def cards(self):
+        return [m for m in self.sent if m.get("type") == "build_result"]
+
     def metrics(self):
         return [m for m in self.sent if m.get("type") == "metrics"]

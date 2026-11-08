@@ -21,6 +21,10 @@ TICK_S = 5
 
 COUNCIL_PHASES = (("recall", 3), ("plan", 10), ("investigate", 45), ("debate", 20), ("verdict", 17), ("record", 5))
 BUILD_PHASES = (("preflight", 4), ("execute", 72), ("gate", 8), ("review", 12), ("reboot", 4))
+# Follow-ups continue a finished build, so they only have the later phases (their own progress bars, never a fake preflight).
+FOLLOWUP_PHASES = {"fix": (("execute", 70), ("gate", 10), ("review", 15), ("reboot", 5)),
+                   "review": (("gate", 15), ("review", 80), ("reboot", 5)),
+                   "accept": (("reboot", 100),)}
 PROVIDER_NAMES = {"claude": "Claude", "codex": "Codex", "chatgpt": "ChatGPT", "gemini": "Gemini", "meta": "Meta"}
 
 
@@ -178,11 +182,12 @@ class Live:
         await self.room.send({"type": "meter", "pct": self.meter.pct(), "phase": self.phase, "label": label,
                               "failed": failed})
 
-    async def finish(self, state="complete"):
-        """Final meter message. state: complete | failed | cancelled (cancelled is not a failure of the work)."""
+    async def finish(self, state="complete", note=""):
+        """Final meter message. state: complete | attention | failed | cancelled (cancelled is not a failure of the work;
+        attention is finished work that needs a human decision). `note` is the one-line reason the page shows."""
         ok = state == "complete"
         await self.room.send({"type": "meter", "pct": 100 if ok else self.meter.pct(), "phase": state, "label": state,
-                              "failed": state == "failed", "state": state, "final": True})
+                              "failed": state == "failed", "state": state, "final": True, "note": note})
 
     # --- narration --------------------------------------------------------------------------
     async def announce(self, agent, text):

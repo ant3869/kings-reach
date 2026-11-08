@@ -17,6 +17,7 @@
   const BADGES = {
     idle: ['\u00b7', 'IDLE'], working: ['\u25b6', 'WORKING'], quiet: ['\u2026', 'QUIET'], stalled: ['\u26a0', 'STALLED'],
     running: ['\u25b6', 'RUNNING'], complete: ['\u2714', 'DONE'], failed: ['\u2716', 'FAILED'], cancelled: ['\u25a0', 'CANCELLED'],
+    attention: ['\u26a0', 'NEEDS REVIEW'], // finished, checks green, but it needs a human decision: NOT the same as FAILED
   };
 
   function create(now) {
@@ -111,7 +112,7 @@
       const live = states.filter(([, st]) => st === 'working');
       if (live.length) return { key: 'working', text: live.map(([a]) => a.id).join(', ') + (live.length > 1 ? ' are working' : ' is working') };
       const m = s.meter;
-      if (m && m.final) return { key: m.state || (m.failed ? 'failed' : 'complete'), text: m.state === 'cancelled' ? 'Cancelled by you. Nothing further will run.' : m.failed ? (s.caption ? s.caption.text : 'Stopped: see the log for why.') : 'Finished.' };
+      if (m && m.final) return { key: m.state || (m.failed ? 'failed' : 'complete'), text: m.state === 'cancelled' ? 'Cancelled by you. Nothing further will run.' : m.state === 'attention' ? (m.note || 'Finished, but it needs your decision.') : m.failed ? (m.note || (s.caption ? s.caption.text : 'Stopped: see the log for why.')) : 'Finished.' };
       if (m) return { key: 'running', text: m.label || m.phase || 'between steps' };
       return { key: 'idle', text: 'Nothing running. Convene the council or build the verdict.' };
     }

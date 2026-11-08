@@ -39,6 +39,7 @@ const live = WarLive.mount(document, Object.fromEntries(WR.council.map((c) => [c
 
 // Voice dropdown under each card (warroom-casting.js): the server lists real voices and validates every change.
 const casting = WarCasting.mount(document, (m) => send(m));
+const buildResult = WarResult.mount(document, (m) => send(m)); // the Build result card + its re-check / fix / keep buttons
 
 // Cancel run (in the live header) is separate from Hush voices. A cancel is pending until the server acks it, and
 // the run itself only ends when the CANCELLED meter arrives; if neither comes, say so and let the owner retry.
@@ -397,7 +398,8 @@ function onMessage(m) {
     return;
   }
   if (m.type === 'thinking') return setThinking(m.agent_id, m.on);
-  if (m.type === 'activity' || m.type === 'meter') return live.handle(m);
+  if (m.type === 'activity' || m.type === 'meter') { if (m.final) buildResult.settle(); return live.handle(m); }
+  if (m.type === 'build_result') return buildResult.show(m);
   if (m.type === 'build_progress') return buildProgress(m);
   if (m.type === 'metrics') return metrics(m);
   if (m.type === 'transcript') {
@@ -466,7 +468,7 @@ function submit(kind) {
   const text = input.value.trim();
   WarVoice.unlock();
   if (kind === 'build') {
-    $('buildlive').hidden = false; $('buildlive')._phases = {}; $('buildbtn').disabled = true;
+    $('buildlive').hidden = false; $('buildlive')._phases = {}; $('buildbtn').disabled = true; buildResult.clear();
     resetStages(BUILD_STAGES);
     buildProgress({ phase: 'preflight', state: 'active', elapsed: 0, message: 'Requesting baseline checks' });
     live.reset();

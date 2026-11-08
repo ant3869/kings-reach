@@ -176,10 +176,41 @@ try {
   check('failed build ends FAILED (never 100%) with a visible reason', await waitFor(`/FAILED/.test(${badge}) && ${meterNow} < 100`, 15000) && /checks failed/i.test(await js(`document.getElementById('feed').textContent + document.getElementById('caption').textContent`)));
   check('failed build: the gate chip is FAILED, not success-coloured, and review is skipped', await js(`document.getElementById('st-gate').classList.contains('failed') && document.getElementById('st-review').classList.contains('skipped')`));
   check('failed build: the build panel shows gate failed + review skipped, nothing stuck', await js(`(() => { const c = [...document.querySelectorAll('.buildphase')].map((x) => x.className.replace('buildphase ', '')); return c.join() === 'done,done,failed,skipped'; })()`));
-  check('failed build: the badge states the actual cause', /Automated checks failed/.test(await js(`document.getElementById('nowlabel').textContent`)));
+  check('failed build: the badge states the actual cause', /automated checks failed/i.test(await js(`document.getElementById('nowlabel').textContent`)));
   check('failed build: the fallback warning is fully on screen, not clipped', await js(`(() => { const w = document.querySelector('#feed li.warn'); const p = document.getElementById('now').getBoundingClientRect(); if (!w) return false; const r = w.getBoundingClientRect(); return r.height > 0 && r.bottom <= p.bottom + 1; })()`));
   check('failed build: the cards react (defeated pose)', await waitFor(`[...document.querySelectorAll('.seat')].some((s) => s.dataset.state === 'defeated')`, 4000));
   check('failed build: the fallback is visible in the feed', await js(`/could not finish/.test(document.getElementById('feed').textContent)`));
+
+  // --- the Build result card: what happened, are my files still changed, what can I do (demo events only: no cost) ---
+  const card = `document.getElementById('buildresult')`;
+  const actionIds = `[...${card}.querySelectorAll('button[data-action]')].map((b) => b.dataset.action).join()`;
+  check('failed build: a card says what happened and that the files are kept', await waitFor(`!${card}.hidden && /did not pass the checks/.test(${card}.textContent) && /3 files changed and kept on disk/.test(${card}.textContent)`, 8000));
+  check('failed build: the only way forward offered is Fix (never keep or re-check failing code)', (await js(actionIds)) === 'fix');
+  check('failed build: the check output is on the card', await js(`/TS2322/.test(${card}.textContent)`));
+
+  await open('/warroom?demo=build-review&speed=30&still=1', { fake: true });
+  check('review rejection ends NEEDS REVIEW, never FAILED', await waitFor(`/NEEDS REVIEW/.test(${badge}) && !/FAILED/.test(${badge})`, 15000), await js(badge));
+  check('review rejection: the status line says why in plain words', await js(`/not satisfied/.test(document.getElementById('nowlabel').textContent)`));
+  check('review rejection: the cards are NOT drawn defeated (nothing broke)', await js(`![...document.querySelectorAll('.seat')].some((s) => s.dataset.state === 'defeated')`));
+  check('review rejection: the build panel marks the review amber, not red', await js(`document.querySelector('.buildphase.attention') !== null && document.querySelector('.buildphase.failed') === null`));
+  check('card: headline, what happened to the files, and what is still wrong', await js(`/Built, but Research is not satisfied/.test(${card}.textContent) && /kept exactly as written/.test(${card}.textContent) && /never measured/.test(${card}.querySelector('.rissues').textContent)`));
+  check('card: the kept files are listed', await js(`/3 files changed and kept on disk/.test(${card}.textContent) && ${card}.querySelectorAll('.rlist li').length === 3`));
+  check('card: three options, each explained in visible text (not just a tooltip)', (await js(actionIds)) === 'review,fix,accept' && await js(`[...${card}.querySelectorAll('.raction')].every((r) => r.querySelector('.rhint').textContent.length > 30)`));
+  check('card: amber border, and the badge carries a glyph and a word', await js(`getComputedStyle(${card}).borderTopColor === 'rgb(227, 179, 65)' && /NEEDS YOUR DECISION/.test(${card}.querySelector('.rbadge').textContent)`));
+  check('card: no inline handlers or markup injection (text only)', await js(`${card}.querySelectorAll('[onclick], script, img').length === 0`));
+  await js(`document.querySelector('#buildresult button[data-action=fix]').click(); document.querySelector('#buildresult button[data-action=fix]').click();`);
+  const followups = (await sent()).filter((m) => m && m.type === 'build_followup');
+  check('clicking Fix sends exactly one build_followup (a second click while it runs does nothing)', followups.length === 1 && followups[0].action === 'fix', JSON.stringify(followups));
+  check('while a follow-up runs every option is disabled, and the page never asks for a whole new build', await js(`[...${card}.querySelectorAll('button[data-action]')].every((b) => b.disabled)`) && (await builds()) === 0);
+  await js(`window.__ws.onmessage({ data: JSON.stringify({ type: 'meter', pct: 55, phase: 'cancelled', label: 'cancelled', failed: false, state: 'cancelled', final: true, note: '' }) })`);
+  check('when that run ends (even cancelled) the options come back', await js(`[...${card}.querySelectorAll('button[data-action]')].every((b) => !b.disabled)`));
+  await js(`window.__ws.onmessage({ data: JSON.stringify({ type: 'build_result', state: 'attention', headline: 'Replayed card', detail: 'sent to a page that just connected', issues: [], files: [], output: '', actions: [{ id: 'accept', label: 'Keep as is', hint: 'Accept the files as they are. Free. Restarts the core if the changes need it.' }] }) })`);
+  check('a card sent on connect (after a refresh) shows its buttons again', (await js(actionIds)) === 'accept' && /Replayed card/.test(await js(`${card}.textContent`)));
+  await js(`document.getElementById('buildbtn').click()`);
+  check('starting a new build clears the old card (it describes files about to change)', await js(`${card}.hidden === true && ${card}.textContent === ''`) && (await builds()) === 1);
+
+  await open('/warroom?demo=build&speed=30&still=1', { fake: true });
+  check('a clean build gets a plain BUILT card with no buttons', await waitFor(`!${card}.hidden && /BUILT/.test(${card}.textContent) && ${card}.querySelectorAll('button').length === 0`, 15000));
 
   await open('/warroom?demo=summit&speed=30&still=1', { fake: true });
   // Make the footer deliberately stale; a verdict must refresh it (a real summit left it naming the previous plan).

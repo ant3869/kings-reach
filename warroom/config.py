@@ -56,6 +56,7 @@ PIN_FILE = Path(env("WARROOM_PIN_FILE", str(STORE_DIR / "warroom-pin.json")))
 PID_FILE = STORE_DIR / "warroom.pid"
 VERDICT_FILE = STORE_DIR / "summit-verdict.md"
 VERDICT_JSON = STORE_DIR / "summit-verdict.json"  # machine-readable plan the Build stage executes
+BUILD_STATE_JSON = STORE_DIR / "build-state.json"  # where the latest build stopped: what a follow-up (re-check, fix, keep) continues from
 VERDICT_ARCHIVE_DIR = STORE_DIR / "verdicts"  # every locked verdict, kept per run id (the plan library)
 RUNS_FILE = STORE_DIR / "council-runs.jsonl"  # one metrics line per summit/build: the scoreboard
 COUNCIL_DIR = PROJECT_ROOT / "workspace" / "council"  # non-code deliverables land here

@@ -174,17 +174,17 @@ test('the demo summit resolves every council stage (a DONE badge over dim chips 
 });
 
 test('demo builds resolve every phase of the build panel (no cell left waiting or active)', () => {
-  for (const name of ['build', 'build-fail']) {
+  for (const name of ['build', 'build-fail', 'build-review']) {
     const last = {};
     for (const [, m] of script(name)) if (m.type === 'build_progress' && m.phase !== 'complete') last[m.phase] = m.state;
     for (const phase of ['preflight', 'execute', 'gate', 'review']) {
-      assert.ok(['done', 'failed', 'skipped'].includes(last[phase]), `${name}: ${phase} ended ${last[phase]}`);
+      assert.ok(['done', 'failed', 'skipped', 'attention'].includes(last[phase]), `${name}: ${phase} ended ${last[phase]}`);
     }
   }
 });
 
 test('replaying the demos on a virtual clock ends in the right visible state', () => {
-  const expected = { build: 'complete', 'build-fail': 'failed', stall: 'cancelled', summit: 'complete' };
+  const expected = { build: 'complete', 'build-fail': 'failed', 'build-review': 'attention', stall: 'cancelled', summit: 'complete' };
   for (const [name, want] of Object.entries(expected)) {
     const { live, advance } = clocked();
     let prev = 0;
@@ -195,6 +195,25 @@ test('replaying the demos on a virtual clock ends in the right visible state', (
     }
     assert.equal(live.overall().key, want, name);
   }
+});
+
+test('each demo build ends with ONE plain result card that agrees with its final state, and the buttons say what the server says', () => {
+  const ledger = readFileSync(join(PROJECT_ROOT, 'warroom', 'ledger.py'), 'utf8');
+  const want = { build: ['complete', 0], 'build-fail': ['failed', 1], 'build-review': ['attention', 3] };
+  for (const [name, [state, buttons]] of Object.entries(want)) {
+    const cards = script(name).map(([, m]) => m).filter((m) => m.type === 'build_result');
+    assert.equal(cards.length, 1, name);
+    const final = script(name).map(([, m]) => m).find((m) => m.type === 'meter' && m.final);
+    assert.deepEqual([cards[0].state, final.state, cards[0].actions.length], [state, state, buttons], name);
+    assert.ok(cards[0].headline && cards[0].detail, `${name}: a card with no headline or no 'what happened' is the bug this fixes`);
+    assert.equal(final.failed, state === 'failed', `${name}: only a real failure is red; a decision is not a failure`);
+    for (const a of cards[0].actions) {
+      assert.ok(ledger.includes(`"${a.label}"`) && ledger.includes(`"${a.hint}"`), `${name}: ${a.id} wording drifted from warroom/ledger.py`);
+    }
+  }
+  const review = script('build-review').map(([, m]) => m).find((m) => m.type === 'build_result');
+  assert.deepEqual(review.actions.map((a) => a.id), ['review', 'fix', 'accept']);
+  assert.ok(review.issues.length > 0 && review.files.length > 0, 'the reviewer\'s issues and the kept files are on the card');
 });
 
 test('the stall demo passes through quiet and stalled before it is cancelled', () => {

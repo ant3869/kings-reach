@@ -1,7 +1,7 @@
 """War Room server (ws://127.0.0.1:7860): the council chamber's transport. Logic lives in council.py.
 
 Browser -> server
-  JSON  {"type": "text"|"summit"|"build"|"pin"|"ping"|"voice"|"hush"|"cancel"|"casting"|"set_voice", ...}
+  JSON  {"type": "text"|"summit"|"build"|"build_followup"|"pin"|"ping"|"voice"|"hush"|"cancel"|"casting"|"set_voice", ...}
         (set_voice: {"agent_id", "voice"}; casting asks for the voice list and who has which)
   bytes one utterance, 16 kHz mono int16 PCM -> local Whisper -> handled exactly like typed text
 Server -> browser
@@ -27,7 +27,7 @@ try:
     from . import agent_bridge as ab
     from . import casting
     from .config import ALLOWED_ORIGINS, PID_FILE, WARROOM_PORT
-    from .council import STAGES, Council
+    from .council import STAGES, Council, latest_build_card
     from .live import Live
     from .personas import get_persona, persona_prompt
     from .router import COUNCIL, read_pin, route, write_pin
@@ -36,14 +36,14 @@ except ImportError:  # run as a script: python warroom/server.py
     import agent_bridge as ab
     import casting
     from config import ALLOWED_ORIGINS, PID_FILE, WARROOM_PORT
-    from council import STAGES, Council
+    from council import STAGES, Council, latest_build_card
     from live import Live
     from personas import get_persona, persona_prompt
     from router import COUNCIL, read_pin, route, write_pin
     from voice import Voice
 
-PROTOCOL = "council-v5"  # bump only when the wire protocol changes (v4: activity + meter messages; v5: cancel_ack)
-SERVER_VERSION = 18  # bump on every server.py deploy; shown in the client via pong
+PROTOCOL = "council-v6"  # bump only when the wire protocol changes (v4: activity + meter; v5: cancel_ack; v6: build_result, build_followup)
+SERVER_VERSION = 19  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
@@ -227,6 +227,8 @@ class Session:
             await self.handle_text(text, kind)
         elif kind == "build":
             await self.handle_text("build it", "build")
+        elif kind == "build_followup":  # continue the latest build (re-check, fix what was flagged, keep it) without redoing it
+            self.spawn(self.exclusive("build follow-up", Council(self).followup(str(payload.get("action", "")))), "Build follow-up")
         elif kind not in ("text", "summit"):
             await self.send({"error": f"unknown message type: {kind}"})
 
@@ -258,6 +260,9 @@ async def handle_client(websocket):
         await session.status(f"Welcome to the War Room (server v{SERVER_VERSION}, {PROTOCOL}).")
         await session.send(VOICE.info())
         await session.send(casting.casting_message())
+        card = latest_build_card()  # a refresh must not lose the buttons that continue the last build
+        if card:
+            await session.send(card)
         async for raw in websocket:
             if isinstance(raw, bytes):
                 session.spawn(session.handle_audio(raw), "Listening")

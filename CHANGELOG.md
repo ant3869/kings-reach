@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.18.1 - A build that is not approved can be continued, and the screen says what happened
+
+**Why:** a Build whose reviewer was not satisfied ended in a red **FAILED** badge and a one-line message. It did not say whether the files were still changed (they were), that the checks had passed, or what to do next; the only way forward was to press Build again, which ran the whole plan from the start on top of files it had already edited.
+
+**Changed**
+- **A new "needs your decision" state, separate from FAILED.** Green checks with an unconvinced reviewer is now an amber **NEEDS REVIEW** badge (progress bar, build panel and cards stay calm: the cards are no longer drawn defeated). FAILED is kept for things that really broke: the checks failed, an owner never reported back, nothing changed, or the baseline was already broken. The ledger still records `needs_work`.
+- **A Build result card says what happened.** Title, one paragraph that answers "are my files still changed?" (kept exactly as written, nothing restarted), what is still wrong in the reviewer's own words (its issues plus every success criterion it could not confirm), the list of kept files, and the check output when the checks failed. Every build ends with one: built, needs your decision, failed, nothing built, or stopped before anything was edited.
+- **Three ways forward that never redo the build.** On a build that passed its checks: **Re-check only** (Research looks again, nothing edited, the cheapest), **Fix what was flagged** (the Hand of the King gets only the open issues and the files already changed, told not to redo anything, then the checks and review run again) and **Keep as is** (free; restarts the core if the changes need it, and the ledger says it was your decision). A build whose checks failed only offers Fix (re-checking or keeping failing code makes no sense). An owner that never reported back is named, and the fix takes over its unfinished steps. Each follow-up has its own progress bar, its own scoreboard line, and can be cancelled like any run.
+- **The card survives a refresh.** What the latest build left behind is saved to `store/build-state.json`; a page that connects gets the card and its buttons back. It is only offered while the verdict it was built from is still the current one (a newer council overwrites it, and the server says so rather than building the wrong thing). Files a fix changed are remembered immediately, even if it is cancelled before it finishes.
+- **Free preview:** `/warroom?demo=build-review` shows the new card (and `build-fail` / `build` now end with theirs).
+- **Internals:** the check-and-review half of a build moved out of `_execute` into `warroom/buildflow.py` and is shared by the first build and every follow-up; the council's schemas and prompt notes moved to `warroom/schemas.py` (re-exported from `council.py`). `council.py` went from 561 to about 470 lines. Wire protocol `council-v6` (new `build_result` and `build_followup` messages, `note` on the final meter), War Room server v19, client v37.
+
+**Deliberately not added:** a "discard changes" button. A build edits files that may already hold your own uncommitted work, so reverting them automatically could destroy it. The card lists the kept files; `git diff` / `git checkout -- <file>` is the safe way to undo.
+
+**Needs a restart** of the core and the War Room (new messages, new page).
+
+**Tests:** 226 Node, 104 Python (17 new: the three states, the card for every outcome, each follow-up, an unfinished owner, a failed fix, cancel mid-fix, the saved state), 125 browser checks (18 new). Each new rule was broken on purpose to confirm a test catches it. Checked live over a real WebSocket: card replayed on connect, an unavailable option refused without starting a run.
+
 ## 2.18.0 - Cancel is honest, and the dashboard shows what is running
 
 **Changed**

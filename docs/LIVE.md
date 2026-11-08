@@ -22,13 +22,13 @@ public/warroom-live.js   pure state machine + DOM panel; public/warroom-app.js w
 
 Wire protocol `council-v4` adds two message types: `activity` (`kind`: `turn`, `tool`, `route`, `narration`,
 `done`) and `meter` (`pct`, `phase`, `label`, and on the last one `final: true` with `state`
-`complete|failed|cancelled`). A page on an older protocol shows the existing "hard-refresh" notice.
+`complete|attention|failed|cancelled`). A page on an older protocol shows the existing "hard-refresh" notice.
 
 ## What the page shows
 
 | Element | Meaning |
 |---|---|
-| Badge | `WORKING` an agent produced news in the last 45 s; `QUIET` 45-90 s of silence; `STALLED` 90 s or more; `RUNNING` between agent calls (preflight, gate, reboot); `DONE`, `FAILED`, `CANCELLED` are final and distinct |
+| Badge | `WORKING` an agent produced news in the last 45 s; `QUIET` 45-90 s of silence; `STALLED` 90 s or more; `RUNNING` between agent calls (preflight, gate, reboot); `DONE`, `NEEDS REVIEW` (the work is on disk and its checks passed, but the reviewer wants changes: a decision, not a failure), `FAILED`, `CANCELLED` are final and distinct |
 | Bar | An **estimate** (`~37% (estimate)`). Phase weights are guesses; it never reaches 100% until the run really ends, and a failed run freezes where it got to |
 | Agent rows | Current action, `turn N/M` (model turns, as the SDK's cap counts them: one per message id, not per content block), files read / edited (measured), seconds since last news |
 | Plan line | "Build will execute plan X" under the buttons; re-fetched from `/warroom/planline` when a summit locks a verdict |
@@ -63,7 +63,7 @@ already queued, so commentary never lags behind the screen. Narration always rea
 
 ## Try it without spending anything
 
-- `/warroom?demo=build`, `build-fail`, `stall` (watch QUIET then STALLED then CANCELLED), `summit` (scoreboard with
+- `/warroom?demo=build`, `build-fail`, `build-review` (checks pass, reviewer not satisfied: the amber state and the result card), `stall` (watch QUIET then STALLED then CANCELLED), `summit` (scoreboard with
   measured mind-changes). Add `&speed=20` to go faster (virtual clock), `&still=1` to freeze animations.
   Browser speech stands in for the Kokoro voice; nothing is sent to the server.
 - `node scripts/demo-shots.mjs` writes `store/logs/live-*.png` from real headless Chrome.

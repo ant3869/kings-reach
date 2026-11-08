@@ -10,8 +10,8 @@ import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const WARROOM_CLIENT_VERSION = 36;
-export const WARROOM_PROTOCOL = 'council-v5'; // must match PROTOCOL in warroom/server.py
+export const WARROOM_CLIENT_VERSION = 37;
+export const WARROOM_PROTOCOL = 'council-v6'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
 const CARD_ASSETS = CARD_STATES.flatMap((state) =>
@@ -30,7 +30,7 @@ function manifestAssets(): string[] {
     return []; // no manifest: the client falls back to the original four-state art
   }
 }
-export const WARROOM_STATIC: readonly string[] = ['warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-demo.js',
+export const WARROOM_STATIC: readonly string[] = ['warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-result.js', 'warroom-demo.js',
   'warroom-casting.js', 'card-director.js', 'mic-worklet.js',
   'warroom-council-cards.png', 'warroom-chamber-bg.png', ...CARD_ASSETS, ...manifestAssets()];
 
@@ -129,7 +129,12 @@ body:has(#stages .stage) #council{zoom:.62;margin:10px 0 4px}
 .bubble.you{--ac:#8b949e;align-self:flex-end;text-align:right}.bubble.sys{--ac:#9aa3ad;font-style:italic;color:#8b949e}
 .bubble.err{--ac:#f85149;color:#f85149}.bubble.verdict{background:#d4a01712;border-radius:0 10px 10px 0;padding:8px 12px}
 .bubble .brief{font:600 14px/1.5 system-ui;color:#eadfbe;margin:5px 0}.bubble details{margin-top:7px;border-top:1px solid #8e6a2c55;padding-top:6px}.bubble summary{cursor:pointer;color:#d9b85d;font:11px system-ui;text-transform:uppercase;letter-spacing:.5px}.bubble .full{margin-top:8px;color:#bdb6a5}.bubble.you .full{text-align:left}
-.buildlive{border:1px solid #8e6a2c;border-radius:8px;background:#080b12e8;margin:8px auto;padding:10px 12px;max-width:980px;font:12px system-ui;box-shadow:inset 0 0 18px #000}.buildlive h3{margin:0 0 8px;color:#e4c468;font:600 13px Georgia}.buildphases{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.buildphase{border:1px solid #302b22;border-radius:6px;padding:7px;color:#7f786a}.buildphase.active{border-color:#c28b31;color:#f0d78f;box-shadow:inset 0 0 10px #d4a01718}.buildphase.done{border-color:#3fb95088;color:#72d487}.buildphase.failed{border-color:#f85149;color:#ff7b72}.buildphase.skipped{text-decoration:line-through}.buildphase b,.buildphase span{display:block}.buildphase span{margin-top:3px;color:inherit}.builddetail{margin-top:7px;color:#9d9481}.metricfail{margin-top:9px;border-left:3px solid #f85149;padding:6px 9px;color:#ff9b94;background:#f8514910}@media(max-width:700px){.buildphases{grid-template-columns:1fr 1fr}}
+.buildlive{border:1px solid #8e6a2c;border-radius:8px;background:#080b12e8;margin:8px auto;padding:10px 12px;max-width:980px;font:12px system-ui;box-shadow:inset 0 0 18px #000}.buildlive h3{margin:0 0 8px;color:#e4c468;font:600 13px Georgia}.buildphases{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.buildphase{border:1px solid #302b22;border-radius:6px;padding:7px;color:#7f786a}.buildphase.active{border-color:#c28b31;color:#f0d78f;box-shadow:inset 0 0 10px #d4a01718}.buildphase.done{border-color:#3fb95088;color:#72d487}.buildphase.failed{border-color:#f85149;color:#ff7b72}.buildphase.attention{border-color:#e3b341;color:#f0c75e}.buildphase.skipped{text-decoration:line-through}.buildphase b,.buildphase span{display:block}.buildphase span{margin-top:3px;color:inherit}.builddetail{margin-top:7px;color:#9d9481}.metricfail{margin-top:9px;border-left:3px solid #f85149;padding:6px 9px;color:#ff9b94;background:#f8514910}@media(max-width:700px){.buildphases{grid-template-columns:1fr 1fr}}
+.buildresult{border:1px solid #8e6a2c;border-radius:8px;background:#080b12f2;margin:8px auto;padding:12px 14px;max-width:980px;font:13px system-ui;color:#eadfbe;box-shadow:inset 0 0 18px #000}.buildresult.complete{border-color:#3fb95099}.buildresult.attention{border-color:#e3b341}.buildresult.failed{border-color:#f85149}
+.rhead{margin:0 0 6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font:600 15px Georgia}.rbadge{font:700 12px system-ui;letter-spacing:.6px;padding:3px 9px;border-radius:6px;border:2px solid;white-space:nowrap}.buildresult.complete .rbadge{color:#3fb950}.buildresult.attention .rbadge{color:#e3b341;background:#e3b34118}.buildresult.failed .rbadge{color:#ff7b72;background:#f8514922}.rtitle{color:#f4ead0}
+.rdetail{margin:6px 0 10px;line-height:1.5;color:#d9cfb4}.buildresult h4{margin:10px 0 5px;font:700 11px system-ui;letter-spacing:.6px;text-transform:uppercase;color:#b9ad8c}.rissues ul,.rlist ul{margin:0;padding-left:20px}.rissues li{margin:3px 0;color:#f0c75e;line-height:1.4}
+.rfiles,.routput{margin-top:8px;color:#b9ad8c}.rfiles summary,.routput summary{cursor:pointer}.routput pre{white-space:pre-wrap;max-height:200px;overflow:auto;margin:6px 0 0;padding:8px;background:#05070c;border-radius:6px;color:#c9d1d9;font:11px Consolas,monospace}
+.ractions{margin-top:12px;padding-top:6px;border-top:1px solid #302b22}.raction{display:flex;gap:12px;align-items:center;margin:8px 0;flex-wrap:wrap}.raction button{min-width:190px;min-height:36px}.rhint{flex:1;min-width:220px;color:#b9ad8c;line-height:1.4}.buildresult button:focus-visible{outline:2px solid #e4c468;outline-offset:2px}
 .main aside{display:flex;flex-direction:column;gap:12px}
 .panel{border:2px solid #8e6a2c;border-radius:4px;background:linear-gradient(#090d15ee,#0c0e14f5);padding:14px;font:13px system-ui;box-shadow:inset 0 0 0 3px #05060a,inset 0 0 22px #000}
 .panel h3{margin:0 0 8px;font:600 13px system-ui;color:var(--gold);letter-spacing:.5px}.panel h3 small{color:#6e7681;font-weight:400}
@@ -159,11 +164,11 @@ button.go,input#msg{min-height:44px}
 .nowbadge{font:700 12px system-ui;letter-spacing:.6px;padding:4px 10px;border-radius:6px;border:2px solid #6e7681;color:#c9d1d9;min-width:108px;text-align:center}
 .nowbadge.working,.nowbadge.running{border-color:#d4a017;color:#f4d77c}.nowbadge.working:before,.nowbadge.running:before{content:'';display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:#d4a017;animation:beat 1s ease-in-out infinite}
 .nowbadge.quiet{border:2px dashed #e3b341;color:#e3b341}.nowbadge.stalled{border:2px solid #f85149;color:#fff;background:#f8514933;animation:pulse 1s ease-in-out infinite}
-.nowbadge.complete{border-color:#3fb950;color:#3fb950}.nowbadge.failed{border-color:#f85149;color:#f85149;background:#f8514922}.nowbadge.cancelled{border:2px dotted #8b949e;color:#8b949e}
+.nowbadge.attention{border-color:#e3b341;color:#e3b341;background:#e3b34118}.nowbadge.complete{border-color:#3fb950;color:#3fb950}.nowbadge.failed{border-color:#f85149;color:#f85149;background:#f8514922}.nowbadge.cancelled{border:2px dotted #8b949e;color:#8b949e}
 #nowlabel{flex:1;min-width:200px;color:#eadfbe}#nowclock{font-variant-numeric:tabular-nums;color:#8b949e}
 .meter{height:10px;margin:9px 0 4px;border-radius:5px;background:#1a1d27;border:1px solid #3a3020;overflow:hidden}
 #meterfill{height:100%;width:0;background:repeating-linear-gradient(135deg,#d4a017 0 10px,#a47a10 10px 20px);transition:width .6s ease}
-.meter.complete #meterfill{background:#3fb950}.meter.failed #meterfill{background:#f85149}.meter.cancelled #meterfill{background:#6e7681}
+.meter.attention #meterfill{background:#e3b341}.meter.complete #meterfill{background:#3fb950}.meter.failed #meterfill{background:#f85149}.meter.cancelled #meterfill{background:#6e7681}
 #meterlabel{font-size:11px;color:#8b949e;min-height:15px}
 .arow{display:grid;grid-template-columns:90px 112px 1fr auto 56px;gap:8px;align-items:baseline;padding:3px 0;border-top:1px solid #1e1e2a;font-size:12px}
 .arow b{color:#f0d88e}.arow .st{font-weight:700}.arow .txt{color:#cbbd96;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.arow .cnt,.arow .ago{color:#8b949e;font-variant-numeric:tabular-nums}
@@ -265,6 +270,7 @@ ${wrapInShell('warroom', '', `<div class="wrap">
 <ol id="feed" class="feed" aria-label="Recent activity"></ol>
 </section>
 <div id="buildlive" class="buildlive" role="status" aria-live="polite" hidden></div>
+<section id="buildresult" class="buildresult" aria-label="Build result" aria-live="polite" hidden></section>
 <div class="main">
 <section>
 <div id="log" role="log" aria-live="polite" aria-label="Council transcript" tabindex="0"></div>
@@ -292,6 +298,7 @@ ${CLIENT_MD_JS}
 <script src="/warroom/card-director.js${v}"></script>
 <script src="/warroom/warroom-voice.js${v}"></script>
 <script src="/warroom/warroom-live.js${v}"></script>
+<script src="/warroom/warroom-result.js${v}"></script>
 <script src="/warroom/warroom-casting.js${v}"></script>
 <script src="/warroom/warroom-demo.js${v}"></script>
 <script src="/warroom/warroom-app.js${v}"></script>
