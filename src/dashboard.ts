@@ -19,6 +19,8 @@ import { get9RouterCatalog, getProviderHealth } from './provider-runner.js';
 import { buildModelChoices, invalidRoutes, invalidTiers, readiness } from './provider-models.js';
 import { apiGuard } from './http-guard.js';
 import { claudeAuth } from './claude-auth.js';
+import { clearQueue } from './message-queue.js';
+import { activeRuns, cancelRuns, isCancelled } from './run-control.js';
 import { rankModels } from './model-rank.js';
 import { claudeLogin } from './claude-login.js';
 import { collectHealth } from './health.js';
@@ -150,8 +152,18 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
       if (r.text) remember(r.text, nextSession, agentId);
       return c.json({ text: r.text ?? r.error ?? '(no reply)', agentId });
     } catch (err) {
+      if (isCancelled(err)) return c.json({ cancelled: true, text: 'Stopped.', agentId: body.agentId?.trim() || 'main' });
       return c.json({ error: signInPrompt(err) ?? String(err).slice(0, 500) }, 500);
     }
+  });
+
+  // What is running right now (dashboard chats, Telegram, scheduled tasks) and a way to stop it. The War Room has its own Cancel.
+  app.get('/api/runs', (c) => c.json({ runs: activeRuns().map((r) => ({ ...r, seconds: Math.round((Date.now() - r.startedAt) / 1000) })) }));
+  app.post('/api/runs/cancel', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { id?: string; chatId?: string; all?: boolean };
+    if (!body.id && !body.chatId && body.all !== true) return c.json({ error: 'give id, chatId, or all: true' }, 400);
+    const queuedDropped = body.chatId ? clearQueue(body.chatId) : 0; // a queued message must not start the moment its predecessor stops
+    return c.json({ cancelled: cancelRuns(body), queuedDropped });
   });
 
   app.post('/api/tasks', async (c) => {

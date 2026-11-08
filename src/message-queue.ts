@@ -37,3 +37,11 @@ export async function enqueue(chatId: string, task: QueuedTask): Promise<void> {
   }
 }
 
+/** Drop everything waiting behind the message that is running now (it is not in the queue); returns how many were dropped. */
+export function clearQueue(chatId: string): number {
+  const queue = queues.get(chatId);
+  if (!queue) return 0;
+  const waiting = queue.length;
+  queue.length = 0; // in place: the loop draining this chat holds the same array
+  return waiting;
+}

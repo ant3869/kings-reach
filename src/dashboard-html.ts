@@ -88,15 +88,15 @@ function paintStatus(){
 
 async function sendChat(){
   var inp=byId('chatmsg'),msg=inp.value.trim();if(!msg)return;
-  inp.value='';byId('sendbtn').disabled=true;
+  inp.value='';byId('sendbtn').disabled=true;byId('stopbtn').hidden=false;
   var log=byId('chatlog');
   log.insertAdjacentHTML('beforeend','<div class="msg you"><span class="who">You</span>'+md(msg)+'</div>');
   var typing=document.createElement('div');typing.className='msg agent thinking';typing.innerHTML='<span class="who">'+esc(selName)+'</span>thinking...';log.appendChild(typing);log.scrollTop=log.scrollHeight;
   try{
     var r=await send('POST','api/chat',{message:msg,agentId:selAgent,chatId:'dashboard'});
-    typing.className='msg agent';typing.innerHTML='<span class="who">'+esc(r.agentId||selName)+'</span>'+md(r.text||r.error||'(no reply)');
+    typing.className='msg agent'+(r.cancelled?' stopped':'');typing.innerHTML='<span class="who">'+esc(r.agentId||selName)+'</span>'+md(r.text||r.error||'(no reply)');
   }catch(e){typing.className='msg agent';typing.innerHTML='<span class="who">error</span>'+esc(String(e));}
-  byId('sendbtn').disabled=false;log.scrollTop=log.scrollHeight;refresh();
+  byId('stopbtn').hidden=true;byId('stopbtn').disabled=false;byId('sendbtn').disabled=false;log.scrollTop=log.scrollHeight;refresh();
 }
 async function createMission(){
   var prompt=byId('mprompt').value.trim(),schedule=byId('msched').value.trim(),chatId=byId('mchat').value.trim();
@@ -111,6 +111,7 @@ var ACTIONS={
   'war-start':async function(el){el.disabled=true;var r=await send('POST','api/warroom/start');if(!r.ok)alert('War room: '+(r.error||'failed'));el.disabled=false;refresh();},
   'war-stop':async function(el){var r=await send('POST','api/warroom/stop');if(!r.ok)alert('War room: '+(r.error||'failed'));refresh();},
   'send-chat':sendChat,
+  'stop-chat':async function(el){el.disabled=true;await send('POST','api/runs/cancel',{chatId:'dashboard'});},
   'create-mission':createMission,
   'blur':function(){document.body.classList.toggle('blur');}
 };
@@ -132,7 +133,7 @@ export function renderDashboard(data: DashboardData = {}): string {
 <div class="primary">
 <section class="s-chat" aria-labelledby="chat-title"><div class="sectionhead"><h2 id="chat-title">Command console</h2><span>Enter to send</span></div>
 <div id="chatlog" aria-live="polite"><div class="msg agent"><span class="who">Main</span>The Hand of the King is at your service. Issue an order or ask for counsel.</div></div>
-<div class="composer"><label class="sr" for="chatmsg">Message selected agent</label><input id="chatmsg" placeholder="Message Main..."><button id="sendbtn" data-action="send-chat">Send</button></div>
+<div class="composer"><label class="sr" for="chatmsg">Message selected agent</label><input id="chatmsg" placeholder="Message Main..."><button id="stopbtn" class="stop" data-action="stop-chat" hidden>Stop</button><button id="sendbtn" data-action="send-chat">Send</button></div>
 <p class="hint">Route explicitly with <code>@comms:</code>, <code>@research:</code>, or another agent name.</p><div class="consolemeta"><span>Selected route</span><span id="consoleroute">Main</span></div></section>
 <section class="s-missions" id="missions" aria-labelledby="missions-title"><div class="sectionhead"><h2 id="missions-title">Active missions</h2><span>Ordered by next run</span></div>
 <div id="tasks"><p class="empty">Loading missions...</p></div>
@@ -237,7 +238,7 @@ section{margin:0;padding:15px 16px;background:var(--card);border:1px solid var(-
 .pill{border:0;border-radius:0;padding:0;color:var(--dim);font-size:12px}.pill.ok{color:var(--green);border:0}.pill .dot{width:6px;height:6px}.pill.ok .dot{background:var(--green)}
 .agents{display:grid;grid-template-columns:1fr;gap:0;margin:0}.agentcard{width:100%;display:grid;grid-template-columns:1fr;gap:2px;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--rule);border-radius:0;padding:9px 4px;color:var(--txt);min-height:48px}.agentcard:last-child{border-bottom:0}.agentcard small{color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.agentcard{border-left:2px solid transparent;padding-left:10px}.agentcard:hover{background:var(--raised)}.agentcard.sel{border-color:var(--rule);border-left-color:var(--acc);box-shadow:none;color:var(--txt);background:var(--acc-soft)}
 #chatlog{max-height:300px;margin:0 0 12px;gap:8px}.msg{border-radius:3px;padding:8px 10px;max-width:90%;font-size:13px}.msg.you{background:var(--raised);border:1px solid var(--line)}.msg.you .who{color:var(--txt)}.msg.agent{background:#0c1014;border:1px solid var(--rule)}.msg.agent .who{color:var(--blue)}
-.composer{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}input,select{width:100%;background:#0a0d10;color:var(--txt);border:1px solid var(--line);border-radius:3px;padding:10px 11px;font-size:13px;min-height:42px}label{display:block;color:var(--dim);font-size:11px;margin:0 0 5px}
+.composer{display:grid;grid-template-columns:minmax(0,1fr);grid-auto-flow:column;grid-auto-columns:auto;gap:8px}button[hidden]{display:none}button.stop{background:transparent;color:var(--red);border-color:var(--red)}button.stop:hover{background:rgba(229,121,130,.12)}input,select{width:100%;background:#0a0d10;color:var(--txt);border:1px solid var(--line);border-radius:3px;padding:10px 11px;font-size:13px;min-height:42px}label{display:block;color:var(--dim);font-size:11px;margin:0 0 5px}
 button,.buttonlink{background:var(--acc);color:#14110a;border:1px solid var(--acc);font-weight:600;border-radius:3px;padding:9px 14px;font-size:13px;cursor:pointer;min-height:42px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}button:hover,.buttonlink:hover{background:#d8b960;border-color:#d8b960}button.ghost,.buttonlink.ghost{background:transparent;color:var(--txt);border:1px solid var(--line);font-weight:400}button.ghost:hover,.buttonlink.ghost:hover{border-color:var(--acc);background:var(--acc-soft)}button:disabled{opacity:.45;cursor:not-allowed}
 .mission{position:relative;border:0;border-bottom:1px solid var(--rule);border-radius:0;padding:11px 0;margin:0;font-size:13px}.mission:last-child{border-bottom:0}.missiontop{display:flex;align-items:center;gap:8px;margin-bottom:5px}.mission .cron{font-family:inherit;font-variant-numeric:tabular-nums;background:transparent;border:0;border-radius:0;padding:0;color:var(--txt)}.mission .st{font-size:11px;border:0;color:var(--green);border-radius:0;padding:0;margin-left:auto;text-transform:uppercase}.missionprompt{padding-right:80px}.textbtn{min-height:auto;background:transparent!important;border:0!important;color:var(--dim)!important;padding:3px 0;font-size:12px}.textbtn.danger{position:absolute;right:0;bottom:10px}.textbtn.danger:hover{color:var(--red)!important}
 .missioncreate{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}.missioncreate summary{cursor:pointer;color:var(--txt);font-size:12px}.formgrid{margin-top:12px}.formgrid .row{display:grid;grid-template-columns:1fr 1fr;gap:9px}.field{min-width:0}.formactions{margin-top:10px}

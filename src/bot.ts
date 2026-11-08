@@ -13,7 +13,8 @@ import {
   VOICE_REPLY_DEFAULT,
   effectiveMaxTurns,
 } from './config.js';
-import { enqueue } from './message-queue.js';
+import { clearQueue, enqueue } from './message-queue.js';
+import { cancelRuns, isCancelled } from './run-control.js';
 import {
   delegateToAgent,
   getAgentRegistry,
@@ -131,6 +132,7 @@ async function agentTurn(chatId: string, input: string, tick: () => void): Promi
     sessionId: prev,
     onTyping: tick,
     maxTurns: effectiveMaxTurns(),
+    chatId, // also what lets /stop find this run (and records its token usage, which Telegram runs never did)
   });
   const answer = (raw.text ?? '(empty response)').trim() || '(empty response)';
   const safe = await exfilFilter(answer);
@@ -164,6 +166,7 @@ async function answerAndReply(ctx: Context, chatId: string, input: string, voice
   try {
     res = await agentTurn(chatId, input, tick);
   } catch (err) {
+    if (isCancelled(err)) return; // /stop already answered
     logger.error({ err, chatId }, 'agent turn failed');
     await ctx.reply(signInPrompt(err) ?? `Agent error: ${String(err).slice(0, 500)}`);
     return;
@@ -188,6 +191,7 @@ const HELP_TEXT = [
   '/chatid — show this chat id',
   '/agents — list known agents',
   '/delegate <agent> <task> — hand off to a specialist (@agent: task also works)',
+  '/stop — cancel the run in progress and clear anything queued behind it',
   '/pin <id|text> — pin a memory by id, or save + pin new text',
   '/voice — toggle voice replies for this chat (coming from voice notes by default)',
   '/help — this list',
@@ -226,6 +230,16 @@ export function createBot(): BotHandle {
     await ctx.reply(`agents: ${known}`);
   });
 
+  bot.command('stop', async (ctx) => {
+    const chatId = String(ctx.chat?.id ?? '');
+    if (!isAllowed(chatId)) return deny(ctx);
+    const dropped = clearQueue(chatId); // first, so nothing queued starts the instant the running one ends
+    const stopped = cancelRuns({ chatId });
+    await ctx.reply(stopped || dropped
+      ? `Stopped${stopped ? ' the run in progress' : ''}${dropped ? `${stopped ? ' and' : ''} cleared ${dropped} queued message${dropped === 1 ? '' : 's'}` : ''}.`
+      : 'Nothing is running.');
+  });
+
   bot.command('delegate', async (ctx) => {
     const chatId = String(ctx.chat?.id ?? '');
     if (!isAllowed(chatId)) return deny(ctx);
@@ -236,7 +250,7 @@ export function createBot(): BotHandle {
       return;
     }
     const input = `@${m[1]}: ${m[2].trim()}`;
-    await enqueue(chatId, () => answerAndReply(ctx, chatId, input, false));
+    void enqueue(chatId, () => answerAndReply(ctx, chatId, input, false));
   });
 
   bot.command('pin', async (ctx) => {
@@ -292,7 +306,9 @@ export function createBot(): BotHandle {
     const text = (ctx.message?.text ?? '').trim();
     if (!text || text.startsWith('/')) return;
     const voiceReply = VOICE_REPLY_DEFAULT || voiceReplyChats.has(chatId);
-    await enqueue(chatId, () => answerAndReply(ctx, chatId, text, voiceReply));
+    // Not awaited: grammY handles updates one at a time, and the first message of a chat would hold the update loop for its whole
+    // run, so /stop could not even be received. The per-chat queue still keeps one chat's messages in order.
+    void enqueue(chatId, () => answerAndReply(ctx, chatId, text, voiceReply));
   });
 
   async function handleVoice(ctx: Context): Promise<void> {
@@ -304,7 +320,7 @@ export function createBot(): BotHandle {
       await ctx.reply('No audio found in that message.');
       return;
     }
-    await enqueue(chatId, async () => {
+    void enqueue(chatId, async () => {
       await ctx.replyWithChatAction('typing').catch(() => undefined);
       let local = '';
       try {
@@ -358,7 +374,7 @@ export function createBot(): BotHandle {
       return;
     }
     const fid: string = fileId;
-    await enqueue(chatId, async () => {
+    void enqueue(chatId, async () => {
       await ctx.replyWithChatAction('typing').catch(() => undefined);
       try {
         const local = await downloadMedia(TELEGRAM_BOT_TOKEN, fid, filename);

@@ -7,6 +7,7 @@
 //   1. an explicit request (`difficulty`),  2. the pipeline stage it belongs to,  3. a cheap text heuristic.
 // The model call itself is never made here; this only decides which model each of the role's routes should try.
 
+import { MODEL } from './difficulty-model.js';
 import type { RouteTarget } from './provider-config.js';
 
 export const TIERS = ['high', 'mid', 'low'] as const;
@@ -21,7 +22,8 @@ export interface TierConfig {
 }
 
 /**
- * `level` (0..1) is the difficulty; `tier` is only its coarse label for logs and `light`.
+ * `level` (0..1) is the difficulty; `tier` is only its coarse label for logs and `light`. `score` is the expected number of
+ * model turns plus tool calls for free-form text (-1 when an explicit request or the stage decided).
  * `light`: the step needs no tool servers, so the run can skip loading them (the slow part of a first response).
  */
 export interface Assessment { tier: Tier; level: number; score: number; reasons: string[]; light: boolean }
@@ -33,24 +35,45 @@ export const STAGE_LEVEL: Record<string, number> = {
   plan: 1, verdict: 1,
 };
 
-/** A text score at or above this is as hard as a request gets (level 1). */
-const LEVEL_SPAN = 60;
 const tierOf = (level: number): Tier => (level >= 0.75 ? 'high' : level >= 1 / 3 ? 'mid' : 'low');
 const TIER_LEVEL: Record<Tier, number> = { high: 1, mid: 0.5, low: 0 };
 
-const HARD = /\b(architect\w*|design|refactor\w*|root[- ]cause|debug\w*|security|vulnerab\w*|trade-?offs?|migrat\w*|optimi[sz]\w*|algorithm\w*|prove|strateg\w*|analy[sz]\w*|compare|investigat\w*|diagnos\w*|concurren\w*|race condition|performance|audit|rewrite|why)\b/gi;
-const WORK = /\b(write|add|fix|build|create|implement\w*|update|change|modify|test\w*|bug|error|fail\w*|function|endpoint|script|query|config\w*)\b/gi;
-const EASY = /\b(summari[sz]e|translate|rename|reformat|format|reword|proofread|list|status|remind\w*|thanks?|ok(?:ay)?|hello|hi)\b/gi;
 const CODE = /```|^\s+at .+:\d+|[\w./\\-]+\.(?:ts|tsx|js|mjs|py|json|ya?ml|md|css|html)\b/m;
 const NEEDS_TOOLS = /\b(github|issues?|pull requests?|prs?|repos?|repository|commits?|branch\w*|files?|folders?|search\w*|fetch\w*|browse\w*|download\w*|urls?|website|https?)\b|https?:|[\w./\\-]+\.(?:ts|tsx|js|mjs|py|json|ya?ml|md|css|html)\b/i;
-const STEP_LINE = /^\s*(?:\d+[.)]|[-*])\s/gm;
-
-const unique = (text: string, pattern: RegExp): number => new Set((text.match(pattern) ?? []).map((m) => m.toLowerCase())).size;
 
 /** The user's own words: dashboard/Telegram prepend a memory block ending in "[user]", which would inflate the length score. */
 export function userText(message: string): string {
   const at = message.lastIndexOf('\n[user]\n');
   return at >= 0 ? message.slice(at + 8) : message;
+}
+
+/**
+ * Raw measurements of a prompt. The model weights them; the calibration tool fits those weights from real runs.
+ * To try a new candidate feature, add it here and to MODEL.weights, then run the calibration tool: it keeps the feature only
+ * if it improves accuracy on prompts the fit has not seen. (A hard-task word list and a step counter were tried on 162 real
+ * prompts and added nothing beyond length, so they were removed.)
+ */
+export interface Features { logChars: number; code: number }
+
+export function features(text: string): Features {
+  return { logChars: Math.log1p(text.length), code: CODE.test(text) ? 1 : 0 };
+}
+
+const FEATURE_LABEL: Record<keyof Features, string> = { logChars: 'length', code: 'code or file reference' };
+
+/** Predicted ln(1 + turns + tool calls) for a prompt's features. */
+export const predictEffort = (f: Features): number =>
+  MODEL.intercept + (Object.keys(MODEL.weights) as (keyof Features)[]).reduce((sum, k) => sum + MODEL.weights[k] * f[k], 0);
+
+/** Piecewise-linear lookup through the calibration anchors, clamped to 0..1 outside them. */
+export function levelOf(effort: number, anchors: [number, number][] = MODEL.anchors): number {
+  const [first, last] = [anchors[0], anchors[anchors.length - 1]];
+  if (effort <= first[0]) return first[1];
+  if (effort >= last[0]) return last[1];
+  const i = anchors.findIndex(([x]) => x >= effort);
+  const [x0, y0] = anchors[i - 1];
+  const [x1, y1] = anchors[i];
+  return x1 === x0 ? y1 : y0 + ((effort - x0) / (x1 - x0)) * (y1 - y0);
 }
 
 export function assessDifficulty(message: string, hint: { stage?: string; difficulty?: Tier } = {}): Assessment {
@@ -62,20 +85,17 @@ export function assessDifficulty(message: string, hint: { stage?: string; diffic
   if (text.length <= 2 || /^(?:ok(?:ay)?|k|yes|no|thanks?|thank you|thx|got it|sure|hi|hello|hey|bye)[.!]?$/i.test(text)) {
     return { tier: 'low', level: 0, score: 0, reasons: ['trivial message'], light: true };
   }
-  const reasons: string[] = [];
-  let score = 0;
-  const add = (points: number, why: string): void => { if (points) { score += points; reasons.push(`${points > 0 ? '+' : ''}${points} ${why}`); } };
-  add(Math.min(30, Math.round(text.length / 40)), 'length');
-  add(Math.min(32, unique(text, HARD) * 8), 'hard-task wording');
-  add(Math.min(15, unique(text, WORK) * 5), 'concrete work');
-  if (CODE.test(text)) add(10, 'code or file reference');
-  add(Math.min(16, ((text.match(STEP_LINE) ?? []).length + (text.match(/\bthen\b/gi) ?? []).length) * 4), 'multiple steps');
-  add(-Math.min(20, unique(text, EASY) * 10), 'simple-task wording');
-  score = Math.max(0, Math.min(100, score));
-  const level = Math.min(1, score / LEVEL_SPAN);
+  const f = features(text);
+  const effort = predictEffort(f);
+  const level = levelOf(effort);
   const tier = tierOf(level);
+  const reasons = [`expected ~${Math.max(0, Math.round(Math.expm1(effort)))} model turns and tool calls`];
+  for (const k of Object.keys(MODEL.weights) as (keyof Features)[]) {
+    const part = MODEL.weights[k] * f[k];
+    if (Math.abs(part) >= 0.15) reasons.push(`${part > 0 ? '+' : ''}${part.toFixed(2)} ${FEATURE_LABEL[k]}`);
+  }
   // Easy AND clearly not about repos/files/the web: safe to run without tool servers. Anything that smells of tools keeps them.
-  return { tier, level, score, reasons, light: tier === 'low' && !NEEDS_TOOLS.test(text) };
+  return { tier, level, score: Math.max(0, Math.round(Math.expm1(effort))), reasons, light: tier === 'low' && !NEEDS_TOOLS.test(text) };
 }
 
 export const tierApplies = (cfg: TierConfig | null | undefined, agentId: string): cfg is TierConfig =>

@@ -7,7 +7,7 @@
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.16.0.
+and a dashboard. Version 2.17.0.
 
 ## The five roles
 
@@ -43,11 +43,22 @@ Ollama, 9Router (ChatGPT and Meta models), and three full-trust agent harnesses 
 Puppy**) that bring their own tools. Routes are set per
 role in Settings (`/providers`) from dropdowns of valid models only.
 
-**Difficulty tiers** (off by default) pick the model by how hard the step is. Each provider has its own ladder: choose the
+**Difficulty tiers** (switch on in Settings) pick the model by how hard the step is. Each provider has its own ladder: choose the
 weakest (Low) and strongest (High) model you accept and everything ranked between them is allowed. A step is rated from
-trivial to very hard (council steps by their job, free-form messages by their wording) and lands on the matching rung, so
+trivial to very hard (council steps by their job; free-form messages by a small model fitted to how much work your own past prompts really caused, see `npm run difficulty:calibrate`) and lands on the matching rung, so
 an in-between task gets an in-between model. A role never leaves its own provider: a role on OpenAI uses OpenAI's range, and
 only Claude roles can reach Opus. Quick, tool-free steps also skip loading MCP servers, so they answer faster.
+
+## Stopping a run
+
+Any run can be cancelled, and cancelling really stops it. **Dashboard:** a Stop button appears next to Send while the console is
+working. **Telegram:** `/stop` cancels the run in progress and clears whatever is queued behind it. **API:** `GET /api/runs` lists what
+is running; `POST /api/runs/cancel` with `{"id": ...}`, `{"chatId": ...}` or `{"all": true}` stops it (an empty body stops nothing).
+**War Room:** its own Cancel button, which now also ends the agent's whole process tree.
+
+A stop is final: it never retries and never falls through to the next provider, a cancelled scheduled task stays scheduled instead of
+being marked failed, and the Claude CLI and every command it started (a build, a long test run) are ended together rather than left
+running in the background.
 
 ## Skills and research
 
@@ -75,7 +86,7 @@ npm start
 ```
 
 Other useful commands: `npm run dev`, `npm run setup`, `npm run status`,
-`npm run verify`, `npm test`, `npm run test:py` (War Room), `npm run ui-check` (real browser). History: [`CHANGELOG.md`](CHANGELOG.md).
+`npm run verify`, `npm test`, `npm run difficulty:calibrate` (refit the free-form difficulty model; add `--write` to save it), `npm run test:py` (War Room), `npm run ui-check` (real browser). History: [`CHANGELOG.md`](CHANGELOG.md).
 
 The war-room council is Python (see `warroom/`). Install its dependencies
 with `pip install -r warroom/requirements.txt`, then run it as

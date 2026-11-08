@@ -1,20 +1,25 @@
 // Difficulty tiers: the classifier, the per-provider ladders, `light` runs, and the strict settings validation.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyTiers, assessDifficulty, ladderIndex, tierApplies, userText } from '../dist/difficulty.js';
+import { applyTiers, assessDifficulty, features, ladderIndex, levelOf, predictEffort, tierApplies, userText } from '../dist/difficulty.js';
+import { MODEL } from '../dist/difficulty-model.js';
 import { cleanTierConfig } from '../dist/provider-config.js';
 import { invalidTiers } from '../dist/provider-models.js';
 
-const HARD = 'Design a migration strategy for our database that avoids a race condition under concurrent writes, compare the trade-offs of two approaches, and analyze the performance impact. Then investigate why the audit log is slow, diagnose the root cause and fix the failing tests in src/db.ts';
+const SHORT = 'status of the project';
+const SHORT_TOOLS = 'status of the github issues';
+const BIG = 'Fix the failing test in src/db.ts. ' + 'Here is the full stack trace and the surrounding code I pasted for context. '.repeat(300);
 
-test('classifier: greetings and simple chores are low, concrete work is mid, hard analysis is high', () => {
-  assert.equal(assessDifficulty('hi').tier, 'low');
+test('classifier: greetings are the easiest; a bigger request that points at code ranks harder than a small plain one', () => {
+  assert.deepEqual([assessDifficulty('hi').tier, assessDifficulty('hi').level], ['low', 0]);
   assert.equal(assessDifficulty('thanks!').tier, 'low');
-  assert.equal(assessDifficulty('Summarize this paragraph for me').tier, 'low');
-  assert.equal(assessDifficulty('Add a unit test for the parseDate function in src/utils.ts').tier, 'mid');
-  const hard = assessDifficulty(HARD);
-  assert.equal(hard.tier, 'high');
-  assert.ok(hard.reasons.length >= 3, 'every decision explains itself');
+  const small = assessDifficulty(SHORT), big = assessDifficulty(BIG);
+  assert.equal(small.tier, 'low');
+  assert.ok(big.level > 0.5 && big.level > small.level, `big ${big.level} vs small ${small.level}`);
+  assert.match(big.reasons[0], /^expected ~\d+ model turns and tool calls$/); // every decision says what it expects
+  assert.ok(big.reasons.some((r) => /code or file reference/.test(r)));
+  // The same size of request is rated harder when it points at code (the one wording signal the real data supports).
+  assert.ok(assessDifficulty('Look at src/db.ts please').level > assessDifficulty('Look at the db layer please').level);
 });
 
 test('classifier: the memory block the chat surfaces prepend does not inflate the score', () => {
@@ -25,7 +30,7 @@ test('classifier: the memory block the chat surfaces prepend does not inflate th
 
 test('classifier: an explicit request beats a stage, and a known stage beats the text', () => {
   assert.equal(assessDifficulty('hi', { difficulty: 'high' }).tier, 'high');
-  assert.equal(assessDifficulty(HARD, { stage: 'record' }).tier, 'low');
+  assert.equal(assessDifficulty(BIG, { stage: 'record' }).tier, 'low');
   assert.equal(assessDifficulty('hi', { stage: 'verdict' }).tier, 'high');
   assert.equal(assessDifficulty('hi', { stage: 'debate' }).tier, 'mid');
   assert.equal(assessDifficulty('hi', { stage: 'not-a-stage' }).tier, 'low'); // unknown stage: fall back to the text
@@ -33,14 +38,34 @@ test('classifier: an explicit request beats a stage, and a known stage beats the
 
 test('light: only quick steps with no sign of needing tools may skip loading MCP servers', () => {
   assert.equal(assessDifficulty('hi').light, true);
-  assert.equal(assessDifficulty('Summarize this paragraph for me').light, true);
-  assert.equal(assessDifficulty('list my open github issues').tier, 'low');
-  assert.equal(assessDifficulty('list my open github issues').light, false); // low, but it clearly needs a tool server
-  assert.equal(assessDifficulty('summarize src/db.ts').light, false);
+  assert.equal(assessDifficulty(SHORT).light, true);
+  assert.equal(assessDifficulty(SHORT_TOOLS).tier, 'low');
+  assert.equal(assessDifficulty(SHORT_TOOLS).light, false); // just as easy, but it clearly needs a tool server
+  assert.equal(assessDifficulty('summarize src/db.ts').light, false); // names a file
   assert.equal(assessDifficulty('hi', { stage: 'recall' }).light, true);
   assert.equal(assessDifficulty('hi', { stage: 'plan' }).light, false);
   assert.equal(assessDifficulty('hi', { difficulty: 'low' }).light, false); // an explicit request never silently drops tools
-  assert.equal(assessDifficulty(HARD).light, false);
+  assert.equal(assessDifficulty(BIG).light, false);
+});
+
+test('model: the fitted constants are sane, so a careless refit cannot ship nonsense', () => {
+  assert.ok(Object.values(MODEL.weights).every((w) => w >= 0), 'a harder-looking prompt must never predict less work');
+  assert.ok(MODEL.fittedOn >= 60, 'fitted on enough real prompts');
+  assert.ok(MODEL.cvSpearman > 0.3, `held-out accuracy ${MODEL.cvSpearman}`);
+  const xs = MODEL.anchors.map((a) => a[0]), ys = MODEL.anchors.map((a) => a[1]);
+  assert.ok(xs.every((x, i) => i === 0 || x > xs[i - 1]), 'anchor efforts strictly ascend');
+  assert.ok(ys.every((y, i) => i === 0 || y >= ys[i - 1]) && ys[0] === 0 && ys[ys.length - 1] === 1, 'levels ascend from 0 to 1');
+  assert.ok(predictEffort(features('x'.repeat(5000))) > predictEffort(features('x'.repeat(50))), 'longer means more work');
+});
+
+test('levelOf: interpolates between anchors and clamps outside them', () => {
+  const anchors = [[1, 0], [2, 0.5], [4, 1]];
+  assert.equal(levelOf(0, anchors), 0);
+  assert.equal(levelOf(1, anchors), 0);
+  assert.equal(levelOf(1.5, anchors), 0.25);
+  assert.equal(levelOf(2, anchors), 0.5);
+  assert.equal(levelOf(3, anchors), 0.75);
+  assert.equal(levelOf(99, anchors), 1);
 });
 
 const LADDER = ['haiku-4', 'sonnet-4-6', 'opus-4-6', 'sonnet-5', 'opus-5-5'];
@@ -52,9 +77,9 @@ test('level: a difficulty is continuous, from trivial (0) to the hardest (1), an
   assert.equal(assessDifficulty('hi', { stage: 'plan' }).level, 1);
   assert.equal(assessDifficulty('hi', { stage: 'execute' }).level, 0.5);
   assert.equal(assessDifficulty('hi', { difficulty: 'mid' }).level, 0.5);
-  const hard = assessDifficulty(HARD), easy = assessDifficulty('Add a unit test for parseDate in src/utils.ts');
-  assert.ok(hard.level > easy.level && easy.level > 0 && hard.level <= 1);
-  assert.equal(assessDifficulty(HARD).tier, 'high'); // the coarse label still follows the level
+  const big = assessDifficulty(BIG), small = assessDifficulty('Add a unit test for parseDate in src/utils.ts');
+  assert.ok(big.level > small.level && small.level > 0 && big.level <= 1);
+  assert.equal(big.tier, 'high'); // the coarse label still follows the level
 });
 
 test('ladderIndex: the level lands proportionally on the rungs, clamped to the ends', () => {

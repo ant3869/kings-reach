@@ -13,6 +13,7 @@ import { classifyError } from './errors.js';
 import { logger } from './logger.js';
 import { loadTierConfig, providerHasTools, recordProviderOutcome, routesFor, type ProviderId, type ToolNeed } from './provider-config.js';
 import { applyTiers, assessDifficulty, tierApplies, type Tier } from './difficulty.js';
+import { RunCancelled, isCancelled, spawnClaudeCli, startRun, throwIfCancelled } from './run-control.js';
 import { runExternalProvider } from './provider-runner.js';
 import { agentEnv, claudeSkillOptions, skillContext } from './skills.js';
 import { describeTool, redact, TurnCounter, WorkLog, type ActivitySink } from './activity.js';
@@ -47,6 +48,10 @@ export interface AgentOptions {
   chatId?: string;
   /** Live narration of what the agent is doing (tool calls, turns, route changes). Optional and best-effort. */
   onActivity?: ActivitySink;
+  /** Lets the caller stop the run; it can also be stopped through run-control (by id, chat, or all). */
+  signal?: AbortSignal;
+  /** Internal: set when an outer wrapper (runAgentWithRetry) already registered this run, so it is not registered twice. */
+  runId?: string;
 }
 
 export interface AgentResult {
@@ -173,8 +178,13 @@ export function loadMcpServers(agentAllowlist?: string[]): McpServers {
   return out;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** Resolves after `ms`, or immediately when `signal` aborts (a cancel must not wait out a retry backoff). */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done, { once: true });
+  });
 }
 
 async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
@@ -182,6 +192,11 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
   const cwd = opts.cwd ?? agent?.cwd ?? PROJECT_ROOT;
   const maxTurns = opts.maxTurns ?? effectiveMaxTurns();
   let typingTimer: NodeJS.Timeout | undefined;
+  throwIfCancelled(opts.signal);
+  // The SDK wants an AbortController; aborting it stops the query and its CLI process.
+  const abort = new AbortController();
+  const relay = (): void => abort.abort();
+  opts.signal?.addEventListener('abort', relay, { once: true });
 
   if (opts.onTyping) {
     const cb = opts.onTyping;
@@ -216,6 +231,8 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
         settingSources: ['project', 'user'],
         permissionMode: 'bypassPermissions',
         maxTurns,
+        abortController: abort,
+        spawnClaudeCodeProcess: spawnClaudeCli, // on cancel, end the CLI's whole tree, not only the CLI
         mcpServers: mcpServers as never,
         // Without this the CLI still loads every server from the settings sources, so an allowlist would be cosmetic.
         ...(allowlist !== undefined ? { strictMcpConfig: true } : {}),
@@ -230,6 +247,7 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
 
     try {
     for await (const event of q as AsyncIterable<Record<string, unknown>>) {
+      if (opts.signal?.aborted) throw new RunCancelled();
       const type = event['type'] as string | undefined;
       if (type === 'system' && event['subtype'] === 'init') {
         const sid = event['session_id'] ?? event['sessionId'];
@@ -274,6 +292,7 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
       }
     }
     } catch (err) {
+      if (opts.signal?.aborted) throw attachReportedCost(new RunCancelled(), costUsd); // the SDK reports an abort as its own error
       const cap = turnCapMessage(err);
       if (!cap) throw attachReportedCost(err, costUsd);
       error = error ?? cap; // keep the session id and cost gathered so far: runAgent() can now resume and salvage
@@ -289,6 +308,7 @@ async function runClaudeAgent(opts: AgentOptions): Promise<AgentResult> {
     return { text, newSessionId, inputTokens, outputTokens, model, structured, costUsd, numTurns, durationMs, error, provider: 'claude',
       handoff: error ? log.handoff('claude') : undefined };
   } finally {
+    opts.signal?.removeEventListener('abort', relay);
     if (typingTimer) {
       clearInterval(typingTimer);
     }
@@ -320,8 +340,18 @@ async function salvage(opts: AgentOptions, model: string, failed: AgentResult): 
   return wrap;
 }
 
-/** One capability-aware entry point for every surface. Tries each configured route in order. */
+/** One capability-aware entry point for every surface. Tries each configured route in order. Cancellable (see run-control). */
 export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
+  if (opts.runId) return routeLoop(opts); // an outer wrapper already registered this run
+  const run = startRun({ agentId: opts.agentId ?? 'main', chatId: opts.chatId, stage: opts.stage }, opts.signal);
+  try {
+    return await routeLoop({ ...opts, signal: run.signal, runId: run.id });
+  } finally {
+    run.finish();
+  }
+}
+
+async function routeLoop(opts: AgentOptions): Promise<AgentResult> {
   const agentId = opts.agentId ?? 'main';
   const agent = getAgentConfig(agentId);
   let rolePrompt = '';
@@ -345,6 +375,7 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
   // A quick, tool-free step skips loading MCP servers; never when the caller needs tools or chose for itself.
   const claudeOpts: AgentOptions = { ...opts, light: opts.light ?? (tier?.light === true && opts.toolNeed !== 'required') };
   for (const target of routes) {
+    throwIfCancelled(opts.signal); // stopped between routes: do not start the next provider
     if (opts.toolNeed === 'required' && !providerHasTools(target.provider)) {
       attempts.push({ ...target, error: 'skipped: tools required' });
       continue;
@@ -394,6 +425,8 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
       }
       return result;
     } catch (err) {
+      // A cancel is final: not a provider failure to record, and never a reason to fall back or retry.
+      if (isCancelled(err) || opts.signal?.aborted) throw new RunCancelled();
       // Provider CLIs often prepend hook/MCP noise; the actionable API/schema error is at the end.
       const reason = String(err).slice(-1500);
       const burned = spent ?? reportedCost(err);
@@ -408,27 +441,31 @@ export async function runAgent(opts: AgentOptions): Promise<AgentResult> {
 }
 
 export async function runAgentWithRetry(opts: AgentOptions, maxRetries = 2): Promise<AgentResult> {
+  // One registered run across every attempt, so a cancel that lands during a retry backoff still finds it and ends the retries.
+  const run = startRun({ agentId: opts.agentId ?? 'main', chatId: opts.chatId, stage: opts.stage }, opts.signal);
   let attempt = 0;
-  let lastError: unknown = null;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    try {
-      return await runAgent(opts);
-    } catch (err) {
-      lastError = err;
-      const { category, recovery } = classifyError(err as Error);
-      logger.warn({ category, attempt, err: String(err) }, 'agent call failed');
-      const authDead = err instanceof ProviderRoutesError && onlyAuthFailures(err.attempts);
-      if (authDead || !recovery.shouldRetry || attempt >= maxRetries) {
-        throw err;
-      }
-      const backoff = recovery.retryAfterMs || 2000 * 2 ** attempt;
-      await sleep(Math.min(backoff, 30_000));
-      attempt += 1;
-      if (recovery.shouldNewChat) {
-        opts = { ...opts, sessionId: undefined };
+  try {
+    for (;;) {
+      throwIfCancelled(run.signal);
+      try {
+        return await runAgent({ ...opts, signal: run.signal, runId: run.id });
+      } catch (err) {
+        if (isCancelled(err)) throw err; // stopped on purpose: never retry
+        const { category, recovery } = classifyError(err as Error);
+        logger.warn({ category, attempt, err: String(err) }, 'agent call failed');
+        const authDead = err instanceof ProviderRoutesError && onlyAuthFailures(err.attempts);
+        if (authDead || !recovery.shouldRetry || attempt >= maxRetries) {
+          throw err;
+        }
+        const backoff = recovery.retryAfterMs || 2000 * 2 ** attempt;
+        await sleep(Math.min(backoff, 30_000), run.signal);
+        attempt += 1;
+        if (recovery.shouldNewChat) {
+          opts = { ...opts, sessionId: undefined };
+        }
       }
     }
+  } finally {
+    run.finish();
   }
-  throw lastError;
 }

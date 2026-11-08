@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.17.0 - Cancel any run, and a difficulty model fitted to real usage
+
+**Added**
+- **Cancel a run.** Dashboard: a Stop button beside Send while a chat is working. Telegram: `/stop` (also clears messages queued behind the running one). API: `GET /api/runs` and `POST /api/runs/cancel` by `id`, `chatId` or `all` (no criteria cancels nothing). Every `runAgent` call registers in `src/run-control.ts` and gets an abort signal, which reaches the Claude SDK (`abortController`), provider CLIs, agent harnesses and HTTP providers.
+- A cancel is final and distinct (`RunCancelled`): it is never retried (also not during a retry backoff, which now wakes at once), never falls through to the next provider, is not recorded as a provider failure, and a cancelled scheduled task goes back to `active` for its next run instead of `failed`.
+- **The whole process tree is ended**, not just the top process. Verified live: the Claude SDK kills only its own CLI on abort, which left a command the agent had started (a long `ping`) running with nobody listening; the same was true of Codex/harness runs (`cmd.exe` wrapper) and of the War Room's Cancel and timeout. New `killTree` (synchronous `taskkill /T`, because the SDK's own `kill()` can reach the parent first and orphan the children) and `spawnClaudeCli` for the SDK; `kill_tree` for the War Room bridge.
+- `npm run difficulty:calibrate` (`--write` saves, `--show` lists the worst misses, `--dir` reads another projects folder).
+
+**Changed**
+- **Free-form difficulty is now fitted to evidence, not guessed.** `scripts/difficulty-calibrate.mjs` pairs 167 real prompts from your Claude transcripts with the work they caused (model turns + tool calls), fits a small ridge regression on `ln(1 + effort)`, validates it with repeated five-fold cross-validation and writes `src/difficulty-model.ts`. Held-out rank correlation is 0.46 over all prompts and 0.62 on the free-form ones it serves. Word lists ("refactor", "architecture") and step counts were tested and removed: they added no held-out accuracy. What survived: prompt length, and whether the request names code or files. Weights cannot be negative, and the 0-1 level comes from percentile anchors, so the ladder is used by observed effort rather than arbitrary score cutoffs. Stage and explicit difficulty still win over it.
+- Honest finding: of your free-form prompts, 65% are quick (median 1 turn, 0 tools), 29% are real work (median 11 turns, 15 tool calls) and 6% are heavy; none of the 40 that would run `light` used an MCP tool. (An earlier report said most prompts were high; that was the council prompts, which never use this model.)
+- Telegram runs now carry their chat id, so their token usage is recorded (it never was) and `/stop` can find them. Telegram handlers no longer block the update loop for the length of a run, which is what lets `/stop` arrive at all (messages in one chat still run in order).
+- `scripts/ui-check.mjs`: the tiers check no longer assumes tiers are off, since that is the owner's saved choice.
+
+**Tests:** 215 Node, 82 Python, 93 browser checks. New: registry/cancel semantics, no-fallback and no-retry on cancel, queue clearing, and real process-tree kills (grandchild must die) for `killTree`, `spawnClaudeCli`, a plain `kill()`, and the War Room bridge.
+
 ## 2.16.0 - Adaptive per-provider model ladders, agent harness providers, polish pass
 
 **Added**

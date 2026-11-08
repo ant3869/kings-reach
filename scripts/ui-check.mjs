@@ -321,15 +321,16 @@ try {
   const tierState = () => js(`JSON.stringify({ on: document.getElementById('tiers-on').checked, ladder: (window.state.tiers && window.state.tiers.providers.claude) || null })`).then(JSON.parse);
   const setSel = async (cls, value) => { await js(`(function () { var s = document.querySelector('.tprow[data-provider="claude"] .${cls}'); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`); await sleep(150); };
   const claudeRanked = JSON.parse(await js(`JSON.stringify(window.ranked.claude || [])`));
-  const tiersBox = JSON.parse(await js(`JSON.stringify({ off: document.getElementById('tiers').classList.contains('off'), rows: document.querySelectorAll('.tprow').length,
+  const tiersBox = JSON.parse(await js(`JSON.stringify({ off: document.getElementById('tiers').classList.contains('off'), checked: document.getElementById('tiers-on').checked, rows: document.querySelectorAll('.tprow').length,
     textInputs: [...document.querySelectorAll('#tiers input')].filter((i) => i.type !== 'checkbox').length })`));
-  check('tiers: panel starts switched off, one row per rankable provider, and no free-text inputs', tiersBox.off && tiersBox.rows > 0 && tiersBox.textInputs === 0, JSON.stringify(tiersBox));
+  // Whether tiers are on is the owner's saved choice, not the test's: assert the panel agrees with its own switch.
+  check('tiers: panel mirrors its on/off switch, one row per rankable provider, and no free-text inputs', tiersBox.off === !tiersBox.checked && tiersBox.rows > 0 && tiersBox.textInputs === 0, JSON.stringify(tiersBox));
   if (claudeRanked.length >= 3) {
     const [lo, hi] = [claudeRanked[0], claudeRanked[claudeRanked.length - 1]];
     const inner = claudeRanked.slice(1, -1);
     await js(`(function () { var c = document.getElementById('tiers-on'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); })()`);
     await sleep(200);
-    check('tiers: switching on pre-fills a Claude ladder', (await tierState()).on === true && Array.isArray((await tierState()).ladder), JSON.stringify(await tierState()));
+    check('tiers: switched on (by the owner earlier, or just now) there is a Claude ladder', (await tierState()).on === true && Array.isArray((await tierState()).ladder), JSON.stringify(await tierState()));
     await setSel('tlow', lo); await setSel('thigh', hi);
     check('tiers: picking Low and High allows every model between them, in weakest-to-strongest order', JSON.stringify((await tierState()).ladder) === JSON.stringify(claudeRanked), JSON.stringify(await tierState()));
     const chips = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('.tprow[data-provider="claude"] .tchip')].map((c) => [c.value, c.checked]))`));
@@ -348,6 +349,33 @@ try {
   } else {
     check('tiers: needs 3+ rankable Claude models to exercise the range editor (skipped)', true);
   }
+
+  // --- Stop button: visible only while a run is pending, cancels the dashboard chat, then the console recovers -----------
+  const stubFetch = `(function () {
+    var real = window.fetch.bind(window), release = null;
+    window.__cancels = [];
+    window.fetch = function (url, init) {
+      var u = String(url);
+      if (u.indexOf('api/chat') >= 0) return new Promise(function (resolve) { release = function () { resolve(new Response(JSON.stringify({ cancelled: true, text: 'Stopped.', agentId: 'main' }), { headers: { 'Content-Type': 'application/json' } })); }; });
+      if (u.indexOf('api/runs/cancel') >= 0) { window.__cancels.push(JSON.parse(init.body)); if (release) release(); return Promise.resolve(new Response('{"cancelled":1}', { headers: { 'Content-Type': 'application/json' } })); }
+      return real(url, init);
+    };
+  })();`;
+  await open('/', { pre: stubFetch });
+  const stopState = async () => JSON.parse(await js(`JSON.stringify({ hidden: document.getElementById('stopbtn').hidden, sendDisabled: document.getElementById('sendbtn').disabled,
+    shown: document.getElementById('stopbtn').offsetParent !== null, cancels: window.__cancels, last: [...document.querySelectorAll('#chatlog .msg')].pop().textContent, lastClass: [...document.querySelectorAll('#chatlog .msg')].pop().className })`));
+  const idle = await stopState();
+  check('stop: the Stop button is hidden when nothing is running', idle.hidden === true && idle.shown === false, JSON.stringify(idle));
+  await js(`(function () { var i = document.getElementById('chatmsg'); i.value = 'a long job'; document.getElementById('sendbtn').click(); })()`);
+  await sleep(250);
+  const busy = await stopState();
+  check('stop: Stop appears (and Send is disabled) while the run is pending', busy.hidden === false && busy.shown === true && busy.sendDisabled === true, JSON.stringify(busy));
+  check('stop: Stop sits beside Send in the composer, same row', await js(`(function () { var s = document.getElementById('stopbtn').getBoundingClientRect(), n = document.getElementById('sendbtn').getBoundingClientRect(); return s.right <= n.left + 1 && Math.abs(s.top - n.top) < 2; })()`));
+  await js(`document.getElementById('stopbtn').click()`);
+  await sleep(400);
+  const after = await stopState();
+  check('stop: clicking Stop cancels the dashboard chat by chat id', JSON.stringify(after.cancels) === JSON.stringify([{ chatId: 'dashboard' }]), JSON.stringify(after.cancels));
+  check('stop: the log shows the run as stopped, and the console is ready again', after.last.includes('Stopped.') && after.lastClass.includes('stopped') && after.hidden === true && after.sendDisabled === false, JSON.stringify(after));
 } catch (err) {
   check('ui-check ran to completion', false, String(err));
 } finally {

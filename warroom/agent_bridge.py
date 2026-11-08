@@ -20,6 +20,32 @@ DEFAULT_TIMEOUT_S = 900
 STREAM_LIMIT = 64 * 1024 * 1024  # one reply line can be a whole verdict; the 64 KiB default would raise mid-read
 
 
+NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
+
+
+async def kill_tree(proc):
+    """Kill the bridge process AND everything under it (the claude CLI, and any tool that CLI started).
+
+    On Windows proc.kill() ends only that one process, so a cancelled or timed-out council used to leave the agent running.
+    taskkill /T walks the tree; if it cannot, fall back to killing just the bridge.
+    """
+    if proc.returncode is not None:
+        return
+    if os.name == "nt":
+        try:
+            killer = await asyncio.create_subprocess_exec(
+                "taskkill", "/PID", str(proc.pid), "/T", "/F",
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL, creationflags=NO_WINDOW)
+            await asyncio.wait_for(killer.wait(), 15)
+            return
+        except (OSError, asyncio.TimeoutError):
+            pass
+    try:
+        proc.kill()
+    except ProcessLookupError:
+        pass
+
+
 def _safe_env():
     return {k: v for k, v in os.environ.items() if not any(h in k.upper() for h in SENSITIVE_HINTS)}
 
@@ -82,7 +108,7 @@ async def bridge(payload, timeout_s=DEFAULT_TIMEOUT_S, on_event=None):
     try:
         await asyncio.wait_for(feed_and_wait(), timeout_s)
     except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
-        proc.kill()
+        await kill_tree(proc)
         await proc.wait()
         if isinstance(exc, asyncio.CancelledError):
             raise

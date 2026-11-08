@@ -14,15 +14,20 @@ import { codexActivity } from './activity.js';
 import { claudeAuth } from './claude-auth.js';
 import { harnessHealth, isHarness, runHarness } from './harness-runner.js';
 import { loadProviderState, type ProviderId, type RouteTarget } from './provider-config.js';
+import { RunCancelled, killTree } from './run-control.js';
 
 interface CommandResult { code: number | null; stdout: string; stderr: string; }
 const TIMEOUT_MS = 15 * 60_000;
 
-function command(exe: string, args: string[], input = '', timeoutMs = TIMEOUT_MS, onLine?: (line: string) => void): Promise<CommandResult> {
+function command(exe: string, args: string[], input = '', timeoutMs = TIMEOUT_MS, onLine?: (line: string) => void, signal?: AbortSignal): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new RunCancelled());
     const child = spawn(exe, args, { cwd: process.cwd(), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '', stderr = '', pending = '';
-    const timer = setTimeout(() => { child.kill(); reject(new Error(`${exe} timed out`)); }, timeoutMs);
+    // killTree, not child.kill(): on Windows that only ends the cmd.exe wrapper and leaves the real worker running.
+    const timer = setTimeout(() => { killTree(child.pid); reject(new Error(`${exe} timed out`)); }, timeoutMs);
+    const onAbort = (): void => { clearTimeout(timer); killTree(child.pid); reject(new RunCancelled()); };
+    signal?.addEventListener('abort', onAbort, { once: true });
     child.stdout.on('data', (b: Buffer) => {
       const chunk = b.toString();
       stdout += chunk;
@@ -32,8 +37,8 @@ function command(exe: string, args: string[], input = '', timeoutMs = TIMEOUT_MS
       for (const line of lines) onLine(line);
     });
     child.stderr.on('data', (b: Buffer) => { stderr += b.toString(); });
-    child.on('error', (err) => { clearTimeout(timer); reject(err); });
-    child.on('close', (code) => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
+    child.on('error', (err) => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); reject(err); });
+    child.on('close', (code) => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); resolve({ code, stdout, stderr }); });
     child.stdin.end(input);
   });
 }
@@ -94,7 +99,7 @@ async function runCodex(target: RouteTarget, opts: AgentOptions): Promise<AgentR
         const act = codexActivity(JSON.parse(line) as Record<string, unknown>);
         if (act) opts.onActivity(act);
       } catch { /* non-JSON diagnostic line */ }
-    });
+    }, opts.signal);
     const text = (() => { try { return readFileSync(output, 'utf8').trim(); } catch { return r.stdout.trim(); } })();
     if (r.code !== 0) throw new Error((r.stderr || r.stdout || `Codex exited ${r.code}`).slice(-1000));
     let inputTokens = 0, outputTokens = 0;
@@ -116,15 +121,20 @@ async function runCodex(target: RouteTarget, opts: AgentOptions): Promise<AgentR
   }
 }
 
-async function post(url: string, init: RequestInit, timeoutMs = 180_000): Promise<any> {
+async function post(url: string, init: RequestInit, timeoutMs = 180_000, signal?: AbortSignal): Promise<any> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const relay = (): void => controller.abort();
+  if (signal?.aborted) controller.abort(); else signal?.addEventListener('abort', relay, { once: true });
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
     const body = await res.text();
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${body.slice(0, 700)}`);
     return JSON.parse(body);
-  } finally { clearTimeout(timer); }
+  } catch (err) {
+    if (signal?.aborted) throw new RunCancelled(); // the caller stopped it; not a provider failure
+    throw err;
+  } finally { clearTimeout(timer); signal?.removeEventListener('abort', relay); }
 }
 
 async function runGemini(target: RouteTarget, opts: AgentOptions): Promise<AgentResult> {
@@ -134,7 +144,7 @@ async function runGemini(target: RouteTarget, opts: AgentOptions): Promise<Agent
   const body: Record<string, unknown> = { contents: [{ parts: [{ text: opts.message }] }], generationConfig };
   if (opts.systemPrompt) body.systemInstruction = { parts: [{ text: opts.systemPrompt }] };
   const data = await post(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(target.model)}:generateContent?key=${GOOGLE_API_KEY}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, undefined, opts.signal);
   if (data.error) throw new Error(data.error.message ?? 'Gemini error');
   const text = (data.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? '').join('').trim();
   const usage = data.usageMetadata ?? {};
@@ -154,7 +164,7 @@ async function runOpenAICompatible(target: RouteTarget, opts: AgentOptions, open
   const data = await post(`${base.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: {
     'Content-Type': 'application/json', Authorization: `Bearer ${key}`,
     ...(openrouter ? { 'HTTP-Referer': 'http://localhost/kings-reach', 'X-Title': 'Kings Reach' } : {}),
-  }, body: JSON.stringify(body) });
+  }, body: JSON.stringify(body) }, undefined, opts.signal);
   const text = data.choices?.[0]?.message?.content ?? '';
   return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: target.provider,
     inputTokens: Number(data.usage?.prompt_tokens ?? 0) || undefined,
@@ -183,7 +193,7 @@ async function run9Router(target: RouteTarget, opts: AgentOptions): Promise<Agen
     schema: normalizeSchema(opts.schema, 'openai') } };
   const data = await post(`${NINE_ROUTER_BASE_URL.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: {
     'Content-Type': 'application/json', Authorization: `Bearer ${key}`,
-  }, body: JSON.stringify(body) }, 10 * 60_000);
+  }, body: JSON.stringify(body) }, 10 * 60_000, opts.signal);
   const raw = data.choices?.[0]?.message?.content ?? '';
   const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
   return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: target.provider,
@@ -195,7 +205,7 @@ async function runOllama(target: RouteTarget, opts: AgentOptions): Promise<Agent
   const data = await post(`${OLLAMA_BASE_URL.replace(/\/$/, '')}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: target.model, stream: false, messages: [
       ...(opts.systemPrompt ? [{ role: 'system', content: opts.systemPrompt }] : []), { role: 'user', content: opts.message },
-    ], ...(opts.schema ? { format: opts.schema } : {}) }) }, 10 * 60_000);
+    ], ...(opts.schema ? { format: opts.schema } : {}) }) }, 10 * 60_000, opts.signal);
   const text = data.message?.content ?? '';
   return { text, model: target.model, structured: parseStructured(text, opts.schema), provider: 'ollama',
     inputTokens: Number(data.prompt_eval_count ?? 0) || undefined,
@@ -206,7 +216,7 @@ async function runHarnessRoute(target: RouteTarget, opts: AgentOptions): Promise
   if (!isHarness(target.provider)) throw new Error(`not a harness: ${target.provider}`);
   const started = Date.now();
   const reply = await runHarness(target.provider, { prompt: fullPrompt(opts), model: target.model, readOnly: opts.readOnly },
-    (exe, args, input, timeoutMs) => command(exe, args, input, timeoutMs), join(STORE_DIR, 'provider-tmp'));
+    (exe, args, input, timeoutMs) => command(exe, args, input, timeoutMs, undefined, opts.signal), join(STORE_DIR, 'provider-tmp'));
   return { text: reply.text, model: reply.model ?? target.model, provider: target.provider, newSessionId: reply.sessionId,
     inputTokens: reply.inputTokens, outputTokens: reply.outputTokens, durationMs: Date.now() - started,
     structured: parseStructured(reply.text, opts.schema) };
