@@ -59,10 +59,14 @@ class SummitTests(unittest.IsolatedAsyncioTestCase):
                     return {"ok": False, "text": "boom", "provider": "claude", "hasTools": True}
             return {"ok": True, "data": data, "provider": "claude" if tools else "chatgpt", "hasTools": tools, "costUsd": 0.01}
 
+        self.recalled, self.recorded = [], []
+
         async def record(**kw):
+            self.recorded.append(kw)
             return {"memories": 1, "hive": 2}
 
         async def recall(q):
+            self.recalled.append(q)
             return "(nothing)"
 
         council.ab.ask, council.ab.record, council.ab.recall = ask, record, recall
@@ -77,6 +81,18 @@ class SummitTests(unittest.IsolatedAsyncioTestCase):
         room = Room()
         data = await council.Council(room).deliberate("should we keep the cli wrapper?")
         return room, data
+
+    async def test_attached_files_reach_every_agent_but_not_the_ledger_or_the_memory(self):
+        block = "\n\n[Attached files: the user attached these.]\n- shot.png: C:\\up\\x_shot.png\n[end of attached files]"
+        room = Room()
+        data = await council.Council(room).deliberate("should we keep the cli wrapper?", "", block)
+        self.assertIn("- shot.png: C:\\up\\x_shot.png", self.prompts["verdict"], "the verdict seat is told where the files are")
+        self.assertEqual(self.recalled, ["should we keep the cli wrapper?"], "paths must not skew the memory search")
+        self.assertEqual(self.recorded[0]["question"], "Council question: should we keep the cli wrapper?")
+        row = json.loads(council.RUNS_FILE.read_text().splitlines()[-1])
+        self.assertEqual(row["question"], "should we keep the cli wrapper?", "the history title is what the user typed")
+        self.assertNotIn("Attached", json.loads(council.VERDICT_JSON.read_text())["question"])
+        self.assertEqual(data["outcome"], "verdict")
 
     async def test_a_toolless_debate_cannot_talk_a_verified_position_down(self):
         _, data = await self.convene()

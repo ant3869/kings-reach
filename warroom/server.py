@@ -44,7 +44,7 @@ except ImportError:  # run as a script: python warroom/server.py
     from voice import Voice
 
 PROTOCOL = "council-v7"  # bump only when the wire protocol changes (v4: activity + meter; v5: cancel_ack; v6: build_result, build_followup; v7: text/summit carry `attachments`)
-SERVER_VERSION = 20  # bump on every server.py deploy; shown in the client via pong
+SERVER_VERSION = 21  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
@@ -189,7 +189,7 @@ class Session:
             question = rest if target == COUNCIL else text
             self.history.append(("you", question))
             log("council convened, chars:", len(question))
-            self.spawn(self.exclusive("summit", Council(self).deliberate(question + attached, self.convo())), "Council")
+            self.spawn(self.exclusive("summit", Council(self).deliberate(question, self.convo(), attached)), "Council")
         else:
             log(f"text -> {target}, chars:", len(rest))
             self.spawn(self.answer(target, rest, attached), "Reply")

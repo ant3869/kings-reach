@@ -193,16 +193,17 @@ class Council(BuildFlow):
         finally:  # cancel, crash or adjourn: the meter must never be left looking busy
             await self.live.finish(state, note)
 
-    async def deliberate(self, question, convo=""):
+    async def deliberate(self, question, convo="", attached=""):
+        """`attached` names the files the user attached. Every agent's context carries it; the ledger, history title, memory recall and the saved memory only see the question."""
         self.live = Live(self.room, COUNCIL_PHASES)
-        return await self._tracked(self._deliberate(question, convo), lambda d: "complete" if d.get("outcome") == "verdict" else "failed")
+        return await self._tracked(self._deliberate(question, convo, attached), lambda d: "complete" if d.get("outcome") == "verdict" else "failed")
 
-    async def _deliberate(self, question, convo):
+    async def _deliberate(self, question, convo, attached=""):
         run = Run("summit", question)
         brief = await self._stage(run, "recall", ab.recall(question))
         memory_lines = max(0, len(brief.splitlines()) - 1)
         await self.room.status(f"recalled {memory_lines} memory/hive lines" if memory_lines else "no prior memory on this")
-        context = f"[Council question]\n{question}\n\n[Shared memory + hive mind]\n{brief or '(nothing on file)'}"
+        context = f"[Council question]\n{question}{attached}\n\n[Shared memory + hive mind]\n{brief or '(nothing on file)'}"
         if convo:
             context += f"\n\n[Recent war room conversation]\n{convo}"
 

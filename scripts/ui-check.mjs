@@ -456,6 +456,7 @@ try {
   // --- Attaching files to a message (War Room + dashboard). Real uploads to the real server; the socket / chat call is faked: no agent runs. ---
   const UP_DIR = join(dirname(dirname(fileURLToPath(import.meta.url))), 'workspace', 'uploads');
   const onDisk = (id) => existsSync(join(UP_DIR, id));
+  const before = new Set(readdirSync(UP_DIR)); // the owner's own uploads (a pasted screenshot is also called image.png) are never this suite's to judge or delete
   const attachFile = (name, content, type = 'text/plain', size = 0) => js(`(() => { const dt = new DataTransfer(); dt.items.add(new File([${size} ? new Uint8Array(${size}) : ${JSON.stringify(content)}], ${JSON.stringify(name)}, { type: ${JSON.stringify(type)} })); const i = document.querySelector('input[type=file]'); i.files = dt.files; i.dispatchEvent(new Event('change')); })()`);
   const chips = `[...document.querySelectorAll('#attachtray .kchip')]`;
   const keep = [];
@@ -499,7 +500,7 @@ try {
   check('attach: at most five files per message, and it says so', await js(`${chips}.length === 5 && /At most 5 files/.test(document.getElementById('log').textContent)`));
   for (let i = 0; i < 5; i++) await js(`(document.querySelector('#attachtray .kx') || {click() {}}).click()`);
   await sleep(600);
-  check('attach: removing every chip leaves nothing behind on the server', readdirSync(UP_DIR).every((f) => !/_f[1-6]\.txt$|_dropped\.txt$|_image\.png$/.test(f)));
+  check('attach: removing every chip leaves nothing behind on the server', readdirSync(UP_DIR).every((f) => before.has(f) || keep.includes(f)), JSON.stringify(readdirSync(UP_DIR).filter((f) => !before.has(f) && !keep.includes(f))));
   check('attach: the hidden file picker is not a tab stop or announced', await js(`(() => { const i = document.querySelector('input[type=file]'); return i.hidden && i.tabIndex === -1 && i.getAttribute('aria-hidden') === 'true'; })()`));
 
   const stubChat = `(function () { var real = window.fetch.bind(window); window.__chats = []; window.fetch = function (u, i) { if (String(u).indexOf('api/chat') >= 0) { window.__chats.push(JSON.parse(i.body)); return Promise.resolve(new Response(JSON.stringify({ text: 'It says rhubarb.', agentId: 'main' }), { status: 200, headers: { 'Content-Type': 'application/json' } })); } return real(u, i); }; })();`;
@@ -517,7 +518,7 @@ try {
   check('attach: a failed file blocks the dashboard send too, with a visible notice', (await js(`window.__chats.length`)) === 1 && await js(`!document.getElementById('notice').hidden && /failed to upload/.test(document.getElementById('notice').textContent)`));
   await js(`document.querySelector('#attachtray .kx').click()`);
   for (const id of keep) await fetch(`${BASE}/api/upload/${id}`, { method: 'DELETE', headers: { Origin: BASE } }).catch(() => {});
-  check('attach: the test left no uploads behind', readdirSync(UP_DIR).every((f) => !keep.includes(f)));
+  check('attach: the test left no uploads behind', readdirSync(UP_DIR).every((f) => before.has(f)), JSON.stringify(readdirSync(UP_DIR).filter((f) => !before.has(f))));
 } catch (err) {
   check('ui-check ran to completion', false, String(err));
 } finally {

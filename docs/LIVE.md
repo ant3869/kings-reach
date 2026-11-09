@@ -20,7 +20,7 @@ warroom/server.py Session           activity/meter go to the browser; narration 
 public/warroom-live.js   pure state machine + DOM panel; public/warroom-app.js wires it into stage/thinking/poses
 ```
 
-Wire protocol `council-v4` adds two message types: `activity` (`kind`: `turn`, `tool`, `route`, `narration`,
+Wire protocol `council-v4` (see the table at the end of this page for every version) adds two message types: `activity` (`kind`: `turn`, `tool`, `route`, `narration`,
 `done`) and `meter` (`pct`, `phase`, `label`, and on the last one `final: true` with `state`
 `complete|attention|failed|cancelled`). A page on an older protocol shows the existing "hard-refresh" notice.
 
@@ -76,3 +76,15 @@ failure handling), `tests/test_summit.py` (summit wiring), `tests/minds.test.mjs
 Chrome against the replays). Proven on a real paid summit (`9a7edfa0`): the SDK event stream feeding the panel; that run
 also exposed the turn-count and mind-change bugs fixed in 2.14.2. Still unproven: `salvage()` against a real turn-capped
 session and the failed-route handoff (no seat hit its cap; force it with `COUNCIL_INVESTIGATE_TURNS=4`).
+
+## Wire protocol versions
+
+`PROTOCOL` in `warroom/server.py` and `WARROOM_PROTOCOL` in `src/warroom-html.ts` must match; a page on another version shows
+the hard-refresh notice instead of silently misbehaving. A test pins the two together.
+
+| Protocol | First server | Added |
+|---|---|---|
+| `council-v4` | 13 | `activity` and `meter` messages (this page) |
+| `council-v5` | 18 | `cancel_ack`: the server confirms a cancel and says how many tasks it stopped |
+| `council-v6` | 19 | `build_result` (the result card), `build_followup` (re-check / fix / keep) |
+| `council-v7` | 20 | `text` and `summit` messages may carry `attachments` (see [`ATTACHMENTS.md`](ATTACHMENTS.md)) |

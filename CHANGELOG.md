@@ -1,5 +1,40 @@
 # Changelog
 
+## 2.19.1 - A false "Claude is logged out" no longer sends a council to fallbacks, and attached files stay out of the history
+
+Found by reading the logs of the first real council that used attachments (run `efadb592`, two pasted screenshots). The
+screenshots reached the agents and were described correctly (the verdict quotes the voice panel's 116px button and the
+rectangular `.go` buttons), so attachments work. Two problems showed up around them.
+
+**Fixed**
+- **One bad reading of the Claude login sent every agent to a fallback.** Between 12:28:41 and 12:29:06 four agents of that
+  council (and an Ops message at 12:19:35) each got *"Claude is logged out"* and skipped Claude, while `claude auth status`
+  run by hand said *logged in* every time (12 checks, serial and parallel, plus one under the bridge's own filtered
+  environment). Claude's credentials file was rewritten at 12:29:06, the end of that window, which is consistent with a token
+  refresh being read half-done, though that was not proven. The result: Main and Ops fell back to Codex, Research to Codex,
+  and **Content had no usable route at all** (the plain-chat providers are skipped when tools are required), so it never
+  answered and the verdict says its brand wording is unreviewed. A "logged out" reading is now checked **2 more times, 1.5 s
+  apart (3 s at most)** before it is believed, and the check still fails open. A normal logged-in check still costs exactly one
+  probe, concurrent agents still share one check, and every flap is logged (`claude auth: a logged-out reading did not repeat`
+  with the readings) so you can see how often it happens; a login that is really gone is still reported, now 3 s later.
+- **The attached-files block was glued onto the council question.** For a council the paths were appended to the question
+  itself, so they became the history title (`/history` showed `...for send, convene, build, etc ....[Attached files`), the
+  memory search text, the text saved to memory after the run, and the "Question" in the saved verdict. The council now takes
+  the files separately: every agent's context still lists them, but the ledger, history title, memory recall and the saved
+  memory see only what you typed. Direct messages already behaved this way.
+
+**Tests:** 238 Node (4 new: one flap is not believed, a real logout is still reported after exactly the extra readings and a
+short wait, an unreadable re-check fails open, five concurrent agents share one re-check), 114 Python (1 new: files reach the
+verdict seat but not the ledger, recall query, recorded memory or verdict file). Each rule was broken on purpose (no re-check; re-checking a good
+reading; the files back in the question) and a test failed every time.
+
+**Needs a restart** of the core and the War Room (War Room server v21; the page and the protocol, `council-v7`, are unchanged).
+
+**Known, not changed here:** closing or reloading the War Room tab cancels whatever the council or build is doing (by design,
+`Session.close()`), and a cancelled Build is not recorded. This happened to a real Build at 12:37 (Ops had already edited a
+file). Options, smallest first: warn before leaving while a run is active; let a run outlive its tab and replay its live events
+to the next tab that connects (the proper fix); at least record a cancelled Build so the files it touched are listed.
+
 ## 2.19.0 - Attach files, screenshots and documents to a message (dashboard and War Room)
 
 **Why:** you could only send words. Telegram could already take a photo or a document, but the dashboard console and the War Room could not, so showing an agent a screenshot, a log or a PDF meant pasting a path by hand.
