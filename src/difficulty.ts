@@ -7,6 +7,7 @@
 //   1. an explicit request (`difficulty`),  2. the pipeline stage it belongs to,  3. a cheap text heuristic.
 // The model call itself is never made here; this only decides which model each of the role's routes should try.
 
+import { hasAttachments, withoutAttachments } from './attach-format.js';
 import { MODEL } from './difficulty-model.js';
 import type { RouteTarget } from './provider-config.js';
 
@@ -56,7 +57,7 @@ const NEEDS_TOOLS = /\b(github|issues?|pull requests?|prs?|repos?|repository|com
 /** The user's own words: dashboard/Telegram prepend a memory block ending in "[user]", which would inflate the length score. */
 export function userText(message: string): string {
   const at = message.lastIndexOf('\n[user]\n');
-  return at >= 0 ? message.slice(at + 8) : message;
+  return withoutAttachments(at >= 0 ? message.slice(at + 8) : message);
 }
 
 /**
@@ -113,7 +114,7 @@ export function assessDifficulty(message: string, hint: { stage?: string; diffic
     if (Math.abs(part) >= 0.15) reasons.push(`${part > 0 ? '+' : ''}${part.toFixed(2)} ${FEATURE_LABEL[k]}`);
   }
   // Easy AND clearly not about repos/files/the web: safe to run without tool servers. Anything that smells of tools keeps them.
-  return { tier, level, score: Math.max(0, Math.round(Math.expm1(effort))), reasons, light: tier === 'low' && !NEEDS_TOOLS.test(text) };
+  return { tier, level, score: Math.max(0, Math.round(Math.expm1(effort))), reasons, light: tier === 'low' && !NEEDS_TOOLS.test(text) && !hasAttachments(message) };
 }
 
 export const tierApplies = (cfg: TierConfig | null | undefined, agentId: string): cfg is TierConfig =>

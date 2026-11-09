@@ -40,6 +40,7 @@ const live = WarLive.mount(document, Object.fromEntries(WR.council.map((c) => [c
 // Voice dropdown under each card (warroom-casting.js): the server lists real voices and validates every change.
 const casting = WarCasting.mount(document, (m) => send(m));
 const buildResult = WarResult.mount(document, (m) => send(m)); // the Build result card + its re-check / fix / keep buttons
+const attach = KRAttach.mount(document, { button: $('attachbtn'), tray: $('attachtray'), input: $('msg'), zone: $('chatzone'), endpoint: '/api/upload', note: (t, bad) => bubble('war room', esc(t), bad ? 'err' : 'sys') });
 
 // Cancel run (in the live header) is separate from Hush voices. A cancel is pending until the server acks it, and
 // the run itself only ends when the CANCELLED meter arrives; if neither comes, say so and let the owner retry.
@@ -476,10 +477,11 @@ function submit(kind) {
     if (!send({ type: 'build' })) $('buildbtn').disabled = false;
     return;
   }
-  if (!text) return input.focus();
-  if (!send({ type: kind, text })) return;
-  bubble(kind === 'summit' ? 'you \u2192 council' : 'you', text.length > 500 ? disclosure(text, 'Read full request') : esc(text), 'you');
-  input.value = '';
+  const out = attach.outgoing(text); // {text, attachments}; null = nothing to send, or a file is still uploading
+  if (!out) return input.focus();
+  if (!send({ type: kind, ...out })) return;
+  bubble(kind === 'summit' ? 'you \u2192 council' : 'you', out.text.length > 500 ? disclosure(out.text, 'Read full request') : esc(out.text + attach.summary()), 'you');
+  input.value = ''; attach.clear();
 }
 
 function bindTalk() {

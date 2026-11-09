@@ -3,6 +3,7 @@
 
 import type { Server } from 'node:http';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { serve } from '@hono/node-server';
 import { DASHBOARD_HOST, DASHBOARD_PORT, DASHBOARD_TOKEN, PROJECT_ROOT } from './config.js';
 import { getDb, getRecentHiveMind, createScheduledTask } from './db.js';
@@ -25,6 +26,8 @@ import { rankModels } from './model-rank.js';
 import { claudeLogin } from './claude-login.js';
 import { collectHealth } from './health.js';
 import { logger } from './logger.js';
+import { attachmentBlock } from './attach-format.js';
+import { MAX_FILE_BYTES, removeUpload, resolveAttachments, storeUpload, sweepOften, UploadError } from './attachments.js';
 import { startWarroom, stopWarroom, warroomStatus } from './warroom-supervisor.js';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
@@ -122,25 +125,29 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
   });
 
   app.post('/api/chat', async (c) => {
-    const body = (await c.req.json()) as { message?: string; agentId?: string; chatId?: string };
+    const body = (await c.req.json()) as { message?: string; agentId?: string; chatId?: string; attachments?: unknown };
     if (!body.message?.trim()) return c.json({ error: 'message required' }, 400);
     const chatId = body.chatId?.trim() || 'dashboard';
+    const files = resolveAttachments(body.attachments);
+    if ('error' in files) return c.json({ error: files.error }, 400);
+    const block = attachmentBlock(files.items); // after the memory block: the agent sees the user's words, then where their files are
+    const said = files.items.length ? `${body.message}\n(attached: ${files.items.map((a) => a.name).join(', ')})` : body.message;
     const { parseDelegation, delegateToAgent } = await import('./orchestrator.js');
     const { runAgent, signInPrompt } = await import('./agent.js');
     const { getSession, setSession } = await import('./db.js');
     const { buildMemoryContext, saveConversationTurn } = await import('./memory.js');
     // buildMemoryContext already emits its own [Memory context] header.
     const memCtx = await buildMemoryContext(chatId, body.message).catch(() => '');
-    const withMemory = memCtx ? `${memCtx}\n\n[user]\n${body.message}` : body.message;
+    const withMemory = (memCtx ? `${memCtx}\n\n[user]\n${body.message}` : body.message) + block;
     const remember = (text: string, sessionId: string | undefined, agentId: string): void => {
-      saveConversationTurn(chatId, body.message as string, text, sessionId, agentId).catch((err) =>
+      saveConversationTurn(chatId, said, text, sessionId, agentId).catch((err) =>
         logger.warn({ err }, 'dashboard saveConversationTurn failed'),
       );
     };
     try {
       const routed = parseDelegation(body.message);
       if (routed) {
-        const r = await delegateToAgent(routed.agentId, routed.prompt, chatId);
+        const r = await delegateToAgent(routed.agentId, routed.prompt + block, chatId);
         if (r.text) remember(r.text, r.sessionId, r.agentId);
         return c.json({ text: r.text, agentId: r.agentId });
       }
@@ -156,6 +163,25 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
       return c.json({ error: signInPrompt(err) ?? String(err).slice(0, 500) }, 500);
     }
   });
+
+  // Files for a chat message (dashboard and War Room). Raw bytes in the body, the name in a header: no multipart parser needed.
+  app.post('/api/upload', bodyLimit({ maxSize: MAX_FILE_BYTES, onError: (c) => c.json({ error: 'file too large (max 20 MB)' }, 413) }), async (c) => {
+    let name = c.req.header('x-filename') ?? 'file';
+    try {
+      name = decodeURIComponent(name);
+    } catch {
+      // keep the raw header: the name is sanitised anyway
+    }
+    try {
+      sweepOften();
+      return c.json(storeUpload(new Uint8Array(await c.req.arrayBuffer()), name));
+    } catch (err) {
+      if (err instanceof UploadError) return c.json({ error: err.message }, 400);
+      logger.warn({ err }, 'upload failed');
+      return c.json({ error: 'the upload could not be saved' }, 500);
+    }
+  });
+  app.delete('/api/upload/:id', (c) => c.json({ removed: removeUpload(c.req.param('id')) }));
 
   // What is running right now (dashboard chats, Telegram, scheduled tasks) and a way to stop it. The War Room has its own Cancel.
   app.get('/api/runs', (c) => c.json({ runs: activeRuns().map((r) => ({ ...r, seconds: Math.round((Date.now() - r.startedAt) / 1000) })) }));

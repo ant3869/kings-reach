@@ -59,6 +59,7 @@ VERDICT_JSON = STORE_DIR / "summit-verdict.json"  # machine-readable plan the Bu
 BUILD_STATE_JSON = STORE_DIR / "build-state.json"  # where the latest build stopped: what a follow-up (re-check, fix, keep) continues from
 VERDICT_ARCHIVE_DIR = STORE_DIR / "verdicts"  # every locked verdict, kept per run id (the plan library)
 RUNS_FILE = STORE_DIR / "council-runs.jsonl"  # one metrics line per summit/build: the scoreboard
+UPLOADS_DIR = PROJECT_ROOT / "workspace" / "uploads"  # files attached to a message (the dashboard stores them; same folder as Telegram's)
 COUNCIL_DIR = PROJECT_ROOT / "workspace" / "council"  # non-code deliverables land here
 
 # --- local voice (free, offline). Models live off C: by default. ---

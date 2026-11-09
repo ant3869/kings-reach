@@ -4,7 +4,7 @@
 // The War Room's WebSocket is replaced by a recording fake before the page loads, so we can assert exactly what
 // a click WOULD have sent (e.g. a Build) without spending money or touching the real council.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -453,6 +453,71 @@ try {
   check('runs: empty state renders', (await js(`document.getElementById('runs').textContent`)).includes('Nothing is running'));
   await open('/', { pre: `(function () { var real = window.fetch.bind(window); window.fetch = function (u, i) { return String(u).indexOf('api/runs') >= 0 && String(u).indexOf('cancel') < 0 ? Promise.resolve(new Response('{}', { status: 500 })) : real(u, i); }; })();` });
   check('runs: a failing endpoint shows an error state, not a stale list', (await js(`document.getElementById('runs').textContent`)).includes('Could not read'));
+  // --- Attaching files to a message (War Room + dashboard). Real uploads to the real server; the socket / chat call is faked: no agent runs. ---
+  const UP_DIR = join(dirname(dirname(fileURLToPath(import.meta.url))), 'workspace', 'uploads');
+  const onDisk = (id) => existsSync(join(UP_DIR, id));
+  const attachFile = (name, content, type = 'text/plain', size = 0) => js(`(() => { const dt = new DataTransfer(); dt.items.add(new File([${size} ? new Uint8Array(${size}) : ${JSON.stringify(content)}], ${JSON.stringify(name)}, { type: ${JSON.stringify(type)} })); const i = document.querySelector('input[type=file]'); i.files = dt.files; i.dispatchEvent(new Event('change')); })()`);
+  const chips = `[...document.querySelectorAll('#attachtray .kchip')]`;
+  const keep = [];
+  await open('/warroom', { fake: true });
+  check('attach: the War Room has an Attach button with an accessible name, and no tray until a file is chosen', await js(`document.getElementById('attachbtn').getAttribute('aria-label') === 'Attach files' && document.getElementById('attachtray').hidden === true`));
+  await attachFile('notes.txt', 'the secret word is rhubarb');
+  check('attach: a chosen file uploads at once and shows its name and size', await waitFor(`${chips}.length === 1 && ${chips}[0].classList.contains('ready') && /notes\\.txt/.test(${chips}[0].textContent) && /\\d+ B/.test(${chips}[0].textContent)`, 8000));
+  await js(`document.getElementById('msg').value = 'what is the secret word?'; document.getElementById('send').click()`);
+  const m1 = (await sent()).find((m) => m && m.type === 'text');
+  check('attach: the message goes out with its file id (never a path), exactly once', !!m1 && m1.text === 'what is the secret word?' && m1.attachments.length === 1 && /^\d{10,}-[0-9a-f]{6}_notes\.txt$/.test(m1.attachments[0]) && !JSON.stringify(m1).includes('workspace'), JSON.stringify(m1));
+  if (m1) keep.push(...m1.attachments);
+  check('attach: the file really is on the server', !!m1 && onDisk(m1.attachments[0]));
+  check('attach: the transcript shows which file went with it, and the tray empties', await js(`/what is the secret word\\?\\s+\u{1F4CE} notes\\.txt/u.test(document.getElementById('log').textContent) && document.getElementById('attachtray').hidden === true`));
+  await attachFile('plan.pdf', 'x');
+  await waitFor(`${chips}.length === 1 && ${chips}[0].classList.contains('ready')`, 8000);
+  await js(`document.getElementById('msg').value = ''; document.getElementById('send').click()`);
+  const m2 = (await sent()).filter((m) => m && m.type === 'text')[1];
+  check('attach: a file with no words still sends, with a sensible default question', !!m2 && m2.text === 'Please look at the attached file.' && m2.attachments.length === 1, JSON.stringify(m2));
+  if (m2) keep.push(...m2.attachments);
+  await js(`document.getElementById('msg').value = ''; document.getElementById('send').click()`);
+  check('attach: nothing typed and nothing attached sends nothing', (await sent()).filter((m) => m && m.type === 'text').length === 2);
+  await attachFile('draft.md', 'abc');
+  await waitFor(`${chips}.length === 1 && ${chips}[0].classList.contains('ready')`, 8000);
+  const draft = await js(`(() => { document.querySelector('#attachtray .kx').click(); return true; })()`);
+  await sleep(500);
+  check('attach: removing a chip empties the tray and deletes the file from the server', await js(`document.getElementById('attachtray').hidden === true`) && readdirSync(UP_DIR).every((f) => !f.endsWith('_draft.md')));
+  await attachFile('big.bin', '', 'application/octet-stream', 21 * 1024 * 1024);
+  check('attach: a file over 20 MB is refused at once, with the reason, and never uploaded', await waitFor(`${chips}.length === 1 && ${chips}[0].classList.contains('failed') && /larger than 20\\.0 MB/.test(${chips}[0].textContent)`, 3000) && readdirSync(UP_DIR).every((f) => !f.endsWith('_big.bin')));
+  await js(`document.getElementById('msg').value = 'try anyway'; document.getElementById('send').click()`);
+  check('attach: a failed file blocks the send and says what to do', (await sent()).filter((m) => m && m.type === 'text').length === 2 && await js(`/failed to upload.*Remove it/.test(document.getElementById('log').textContent)`));
+  await js(`document.querySelector('#attachtray .kx').click()`);
+  await js(`(() => { const dt = new DataTransfer(); dt.items.add(new File(['dropped'], 'dropped.txt', { type: 'text/plain' })); const z = document.getElementById('chatzone'); const over = new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }); z.dispatchEvent(over); window.__overPrevented = over.defaultPrevented; window.__outlined = z.classList.contains('dropping'); z.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })); })()`);
+  check('attach: dropping a file on the chat attaches it (and the zone lights up while dragging)', await js(`window.__overPrevented === true && window.__outlined === true`) && await waitFor(`${chips}.length === 1 && /dropped\\.txt/.test(${chips}[0].textContent)`, 8000));
+  await js(`document.querySelector('#attachtray .kx').click()`);
+  await js(`(() => { const dt = new DataTransfer(); dt.items.add(new File(['PNGDATA'], 'image.png', { type: 'image/png' })); const p = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }); document.getElementById('msg').dispatchEvent(p); window.__pasteTaken = p.defaultPrevented; })()`);
+  check('attach: pasting a screenshot attaches it, with a thumbnail', await js(`window.__pasteTaken === true`) && await waitFor(`${chips}.length === 1 && !!${chips}[0].querySelector('img')`, 8000));
+  await js(`document.querySelector('#attachtray .kx').click()`);
+  await js(`(() => { const dt = new DataTransfer(); dt.setData('text/plain', 'just words'); const p = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }); document.getElementById('msg').dispatchEvent(p); window.__textPaste = p.defaultPrevented; })()`);
+  check('attach: pasting plain text is left alone', await js(`window.__textPaste === false && document.getElementById('attachtray').hidden === true`));
+  await js(`(() => { const dt = new DataTransfer(); for (let i = 1; i <= 6; i++) dt.items.add(new File(['x'], 'f' + i + '.txt', { type: 'text/plain' })); const i = document.querySelector('input[type=file]'); i.files = dt.files; i.dispatchEvent(new Event('change')); })()`);
+  check('attach: at most five files per message, and it says so', await js(`${chips}.length === 5 && /At most 5 files/.test(document.getElementById('log').textContent)`));
+  for (let i = 0; i < 5; i++) await js(`(document.querySelector('#attachtray .kx') || {click() {}}).click()`);
+  await sleep(600);
+  check('attach: removing every chip leaves nothing behind on the server', readdirSync(UP_DIR).every((f) => !/_f[1-6]\.txt$|_dropped\.txt$|_image\.png$/.test(f)));
+  check('attach: the hidden file picker is not a tab stop or announced', await js(`(() => { const i = document.querySelector('input[type=file]'); return i.hidden && i.tabIndex === -1 && i.getAttribute('aria-hidden') === 'true'; })()`));
+
+  const stubChat = `(function () { var real = window.fetch.bind(window); window.__chats = []; window.fetch = function (u, i) { if (String(u).indexOf('api/chat') >= 0) { window.__chats.push(JSON.parse(i.body)); return Promise.resolve(new Response(JSON.stringify({ text: 'It says rhubarb.', agentId: 'main' }), { status: 200, headers: { 'Content-Type': 'application/json' } })); } return real(u, i); }; })();`;
+  await open('/', { pre: stubChat });
+  check('attach: the dashboard console has the same Attach button', await js(`document.getElementById('attachbtn').getAttribute('aria-label') === 'Attach files' && document.getElementById('attachtray').hidden === true`));
+  await attachFile('report.txt', 'rhubarb');
+  await waitFor(`${chips}.length === 1 && ${chips}[0].classList.contains('ready')`, 8000);
+  await js(`document.getElementById('chatmsg').value = 'what does it say?'; document.querySelector('[data-action=send-chat]').click()`);
+  const chat = JSON.parse(await js(`JSON.stringify(window.__chats)`));
+  check('attach: the dashboard sends the message with the file id to /api/chat', chat.length === 1 && chat[0].message === 'what does it say?' && chat[0].attachments.length === 1 && /_report\.txt$/.test(chat[0].attachments[0]) && chat[0].agentId === 'main', JSON.stringify(chat));
+  if (chat[0]) keep.push(...chat[0].attachments);
+  check('attach: the dashboard log shows the file name under the message, and the reply arrives', await waitFor(`/report\\.txt/.test(document.querySelector('#chatlog .sentfiles').textContent) && /It says rhubarb/.test(document.getElementById('chatlog').textContent)`, 4000));
+  await attachFile('big.bin', '', 'application/octet-stream', 21 * 1024 * 1024);
+  await js(`document.getElementById('chatmsg').value = 'again'; document.querySelector('[data-action=send-chat]').click()`);
+  check('attach: a failed file blocks the dashboard send too, with a visible notice', (await js(`window.__chats.length`)) === 1 && await js(`!document.getElementById('notice').hidden && /failed to upload/.test(document.getElementById('notice').textContent)`));
+  await js(`document.querySelector('#attachtray .kx').click()`);
+  for (const id of keep) await fetch(`${BASE}/api/upload/${id}`, { method: 'DELETE', headers: { Origin: BASE } }).catch(() => {});
+  check('attach: the test left no uploads behind', readdirSync(UP_DIR).every((f) => !keep.includes(f)));
 } catch (err) {
   check('ui-check ran to completion', false, String(err));
 } finally {

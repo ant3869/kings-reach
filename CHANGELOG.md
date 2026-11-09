@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.19.0 - Attach files, screenshots and documents to a message (dashboard and War Room)
+
+**Why:** you could only send words. Telegram could already take a photo or a document, but the dashboard console and the War Room could not, so showing an agent a screenshot, a log or a PDF meant pasting a path by hand.
+
+**Added**
+- **A paperclip button, drag-and-drop and paste on both pages.** Choose files, drop them on the chat, or paste a screenshot straight into the message box. Each file uploads as soon as it is chosen and shows as a chip (name, size, a thumbnail for images, a remove button), so Send is instant. Up to 5 files of up to 20 MB per message. A file with no words still sends ("Please look at the attached file."). Sending is held back, with a plain reason, while a file is still uploading or has failed; removing a chip deletes the file from the server, even if it was still uploading.
+- **Agents open the files themselves.** The message carries only upload ids; the server finds the files and appends a short "[Attached files]" block with each file's path to what the agent reads (the same approach Telegram uses, so Claude's file tools open images and PDFs). Proven with real agents: Main described an uploaded screenshot correctly, and Ops read a codeword out of an uploaded text file over the War Room socket.
+- **Works for a single agent, a routed `@agent:` message, and a council.** The War Room transcript shows which files went with a message; the memory search and the saved history see only what you typed.
+
+**Safety and cost**
+- A client can only name a file this system saved: an upload id (`<time>-<6 hex>_<clean name>`), validated on both servers. Paths, `..`, drive letters and other people's ids are refused (tested), so the chat cannot be used to point an agent at the `.env` or a system file. File names are cleaned and cannot leave `workspace/uploads`.
+- **The file list does not make the question look harder.** The difficulty scorer ignores the path block, so the same question picks the same model with or without files (checked in a live run: tier low, difficulty 0.14, a Sonnet route, no Opus). It also never runs a question with an attachment tool-less ("light"), or the agent could not open its file.
+- Uploads are swept after 24 hours, hourly while the core runs (before, only when Telegram started, and Telegram is not always running). The upload route sits behind the same host / same-origin / token guard as every other write.
+
+**Internals:** `src/attachments.ts` (store, resolve, remove), `src/attach-format.ts` (the block, pure), `warroom/attachments.py` (the same rules for the War Room; wording pinned by a test on each side), `public/kr-attach.js` (one client module for both pages), `src/attach-css.ts`. New routes `POST /api/upload` and `DELETE /api/upload/:id`; `/api/chat` accepts `attachments`. Wire protocol `council-v7` (text and summit messages carry `attachments`: a stale page now gets the hard-refresh notice instead of silently dropping files), War Room server v20, War Room client v38, dashboard client v9.
+
+**Not included:** voice and the Build button carry no attachments; a council stage that happens to run on a route without file tools cannot open a file (the question still tells it where the file is); files are not previewed in the transcript beyond their names.
+
+**Needs a restart** of the core and the War Room.
+
+**Tests:** 234 Node (8 new), 113 Python (9 new), 146 browser checks (21 new: attach, drop, paste, thumbnail, remove, oversize, six files, failed-file send block, dashboard send). Five rules were broken on purpose to confirm a test catches each: accepting any id on either server, path text inflating difficulty, running an attachment tool-less, paths polluting the memory search. The browser run also caught a real bug (a chip removed mid-upload left its file behind), now fixed.
+
 ## 2.18.1 - A build that is not approved can be continued, and the screen says what happened
 
 **Why:** a Build whose reviewer was not satisfied ended in a red **FAILED** badge and a one-line message. It did not say whether the files were still changed (they were), that the checks had passed, or what to do next; the only way forward was to press Build again, which ran the whole plan from the start on top of files it had already edited.

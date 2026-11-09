@@ -7,7 +7,7 @@
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.18.1.
+and a dashboard. Version 2.19.0.
 
 ## The five roles
 
@@ -35,6 +35,9 @@ builds are browsable at `/history`.
 The War Room shows a live status panel for every council and build: a badge (working, quiet, stalled, done, failed,
 cancelled, or needs review), an estimated progress bar, what each agent is doing right now, and spoken plus captioned commentary. Try it
 for free with `/warroom?demo=build`, `build-fail`, `build-review`, `stall` or `summit`. See [`docs/LIVE.md`](docs/LIVE.md).
+
+Attach files, screenshots or documents to any message (paperclip, drag-and-drop, or paste a screenshot) in the dashboard
+console and the War Room; the agent opens them itself. Up to 5 files of 20 MB per message.
 
 When a build finishes, a result card says what happened and whether your files are still changed. If the reviewer was not
 satisfied you can re-check, fix only what was flagged, or keep the files as they are, without running the whole plan again.

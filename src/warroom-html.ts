@@ -6,12 +6,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROJECT_ROOT, WARROOM_PORT } from './config.js';
+import { ATTACH_CSS } from './attach-css.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const WARROOM_CLIENT_VERSION = 37;
-export const WARROOM_PROTOCOL = 'council-v6'; // must match PROTOCOL in warroom/server.py
+export const WARROOM_CLIENT_VERSION = 38;
+export const WARROOM_PROTOCOL = 'council-v7'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
 const CARD_ASSETS = CARD_STATES.flatMap((state) =>
@@ -30,7 +31,7 @@ function manifestAssets(): string[] {
     return []; // no manifest: the client falls back to the original four-state art
   }
 }
-export const WARROOM_STATIC: readonly string[] = ['warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-result.js', 'warroom-demo.js',
+export const WARROOM_STATIC: readonly string[] = ['kr-attach.js', 'warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-result.js', 'warroom-demo.js',
   'warroom-casting.js', 'card-director.js', 'mic-worklet.js',
   'warroom-council-cards.png', 'warroom-chamber-bg.png', ...CARD_ASSETS, ...manifestAssets()];
 
@@ -253,7 +254,7 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>War Room v${WARROOM_CLIENT_VERSION} - King's Reach Council</title>
-<style>${SHELL_CSS}${CSS}</style></head><body>
+<style>${SHELL_CSS}${CSS}${ATTACH_CSS}</style></head><body>
 ${wrapInShell('warroom', '', `<div class="wrap">
 <h1>THE WAR ROOM</h1>
 <p class="sub">Plan. Investigate. Cross-examine. Decide. Build. client v${WARROOM_CLIENT_VERSION} &middot; <span id="sver">server ?</span></p>
@@ -272,9 +273,10 @@ ${wrapInShell('warroom', '', `<div class="wrap">
 <div id="buildlive" class="buildlive" role="status" aria-live="polite" hidden></div>
 <section id="buildresult" class="buildresult" aria-label="Build result" aria-live="polite" hidden></section>
 <div class="main">
-<section>
+<section id="chatzone">
 <div id="log" role="log" aria-live="polite" aria-label="Council transcript" tabindex="0"></div>
-<div class="composer"><input id="msg" placeholder="Speak to one agent (Enter), or convene the council (Ctrl+Enter)..." autocomplete="off">
+<div id="attachtray" class="attachtray" aria-label="Files attached to your next message" hidden></div>
+<div class="composer"><button type="button" class="go alt attachbtn" id="attachbtn" aria-label="Attach files" title="Attach files (or drop them here, or paste a screenshot)">&#128206;</button><input id="msg" placeholder="Speak to one agent (Enter), or convene the council (Ctrl+Enter)..." autocomplete="off">
 <button class="go" id="send">Send</button><button class="go alt" id="summitbtn">Convene council</button></div>
 <div class="composer"><button class="go alt" id="buildbtn">Build the verdict</button><button class="go stop" id="cancelbtn">Hush voices</button></div>
 <div id="planbox">${planLine(plan)}</div>
@@ -300,6 +302,7 @@ ${CLIENT_MD_JS}
 <script src="/warroom/warroom-live.js${v}"></script>
 <script src="/warroom/warroom-result.js${v}"></script>
 <script src="/warroom/warroom-casting.js${v}"></script>
+<script src="/warroom/kr-attach.js${v}"></script>
 <script src="/warroom/warroom-demo.js${v}"></script>
 <script src="/warroom/warroom-app.js${v}"></script>
 </body></html>`;

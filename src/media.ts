@@ -9,7 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = path.resolve(here, '..');
 export const UPLOADS_DIR = path.join(PROJECT_ROOT, 'workspace', 'uploads');
 
-function sanitizeFilename(name: string): string {
+export function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 100) || 'file';
 }
 

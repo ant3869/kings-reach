@@ -1,10 +1,11 @@
 // src/dashboard-html.ts - Mission Control: chat, missions, memory, hive, war room.
 // Bump DASHBOARD_CLIENT_VERSION on every client change (shown in footer + /api/health).
 
+import { ATTACH_CSS } from './attach-css.js';
 import { CLIENT_MD_JS } from './client-md.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const DASHBOARD_CLIENT_VERSION = 8;
+export const DASHBOARD_CLIENT_VERSION = 9;
 const REFRESH_MS = 15_000;
 const STALE_MS = 45_000;
 
@@ -102,14 +103,16 @@ function paintStatus(){
   stamp.className='stamp'+(msg?' bad':'');
 }
 
+var attach=KRAttach.mount(document,{button:byId('attachbtn'),tray:byId('attachtray'),input:byId('chatmsg'),zone:byId('chatzone'),endpoint:'api/upload',headers:hdrs,note:notify});
 async function sendChat(){
-  var inp=byId('chatmsg'),msg=inp.value.trim();if(!msg)return;
+  var inp=byId('chatmsg'),out=attach.outgoing(inp.value.trim());if(!out)return;
+  var msg=out.text,files=attach.summary();attach.clear();
   inp.value='';byId('sendbtn').disabled=true;byId('stopbtn').hidden=false;
   var log=byId('chatlog');
-  log.insertAdjacentHTML('beforeend','<div class="msg you"><span class="who">You</span>'+md(msg)+'</div>');
+  log.insertAdjacentHTML('beforeend','<div class="msg you"><span class="who">You</span>'+md(msg)+(files?'<div class="sentfiles">'+esc(files.trim())+'</div>':'')+'</div>');
   var typing=document.createElement('div');typing.className='msg agent thinking';typing.innerHTML='<span class="who">'+esc(selName)+'</span>thinking...';log.appendChild(typing);log.scrollTop=log.scrollHeight;
   try{
-    var r=await send('POST','api/chat',{message:msg,agentId:selAgent,chatId:'dashboard'});
+    var r=await send('POST','api/chat',{message:msg,agentId:selAgent,chatId:'dashboard',attachments:out.attachments});
     typing.className='msg agent'+(r.cancelled?' stopped':'');typing.innerHTML='<span class="who">'+esc(r.agentId||selName)+'</span>'+md(r.text||r.error||'(no reply)');
   }catch(e){typing.className='msg agent';typing.innerHTML='<span class="who">error</span>'+esc(String(e));}
   byId('stopbtn').hidden=true;byId('stopbtn').disabled=false;byId('stopbtn').textContent='Stop';byId('sendbtn').disabled=false;log.scrollTop=log.scrollHeight;refresh();
@@ -168,9 +171,10 @@ export function renderDashboard(data: DashboardData = {}): string {
 <div class="banner" id="banner" role="alert" hidden></div>
 <main class="dashboard">
 <div class="primary">
-<section class="s-chat" aria-labelledby="chat-title"><div class="sectionhead"><h2 id="chat-title">Command console</h2><span>Enter to send</span></div>
+<section class="s-chat" id="chatzone" aria-labelledby="chat-title"><div class="sectionhead"><h2 id="chat-title">Command console</h2><span>Enter to send</span></div>
 <div id="chatlog" aria-live="polite"><div class="msg agent"><span class="who">Main</span>The Hand of the King is at your service. Issue an order or ask for counsel.</div></div>
-<div class="composer"><label class="sr" for="chatmsg">Message selected agent</label><input id="chatmsg" placeholder="Message Main..."><button id="stopbtn" class="stop" data-action="stop-chat" hidden>Stop</button><button id="sendbtn" data-action="send-chat">Send</button></div>
+<div id="attachtray" class="attachtray" aria-label="Files attached to your next message" hidden></div>
+<div class="composer"><button type="button" id="attachbtn" class="attachbtn ghost" aria-label="Attach files" title="Attach files (or drop them here, or paste a screenshot)">&#128206;</button><label class="sr" for="chatmsg">Message selected agent</label><input id="chatmsg" placeholder="Message Main..."><button id="stopbtn" class="stop" data-action="stop-chat" hidden>Stop</button><button id="sendbtn" data-action="send-chat">Send</button></div>
 <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 <p class="hint">Route explicitly with <code>@comms:</code>, <code>@research:</code>, or another agent name.</p><div class="consolemeta"><span>Selected route</span><span id="consoleroute">Main</span></div></section>
 <section class="s-runs" aria-labelledby="runs-title"><div class="sectionhead"><h2 id="runs-title">Running now</h2><span id="runscount">loading</span></div><div id="runs"><p class="empty">Loading runs...</p></div></section>
@@ -288,12 +292,13 @@ button,.buttonlink{background:var(--acc);color:#14110a;border:1px solid var(--ac
 @media(max-width:1100px){.workspace{padding:22px}}
 @media(max-width:980px){.dashboard{grid-template-columns:1fr}.intel{display:flex}.s-mem #mem{max-height:280px}}
 @media(max-width:760px){.workspace{padding:16px}.commandhead{display:block}.headmeta{text-align:left;margin-top:10px}.headlinks{justify-content:flex-start}.dashboard{display:flex;flex-direction:column}.primary,.intel{display:contents}.s-system{order:1}.s-chat,.s-runs{order:2}.s-missions{order:3}.s-agents{order:4}.s-mem{order:5}.s-hive{order:6}.formgrid .row{grid-template-columns:1fr}.missionprompt{padding-right:0}.textbtn.danger{position:static;margin-top:4px}.composer{grid-template-columns:1fr}.composer button{width:100%}}
-</style></head><body>
+${ATTACH_CSS}</style></head><body>
 ${wrapInShell('command', token, body, {
   sub: [['#command', 'Overview'], ['#missions', 'Missions'], ['#memory', 'Memory']],
   footer: '<button class="ghost privacy" data-action="blur">Privacy blur</button>',
   version: `Client v${DASHBOARD_CLIENT_VERSION}`,
 })}
+<script src="/warroom/kr-attach.js?v=${DASHBOARD_CLIENT_VERSION}"></script>
 <script>
 var TOKEN=${JSON.stringify(token).replace(/</g, '\\u003c')};
 ${CLIENT_MD_JS}

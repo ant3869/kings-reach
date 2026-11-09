@@ -25,7 +25,7 @@ import websockets
 
 try:
     from . import agent_bridge as ab
-    from . import casting
+    from . import attachments, casting
     from .config import ALLOWED_ORIGINS, PID_FILE, WARROOM_PORT
     from .council import STAGES, Council, latest_build_card
     from .live import Live
@@ -34,6 +34,7 @@ try:
     from .voice import Voice
 except ImportError:  # run as a script: python warroom/server.py
     import agent_bridge as ab
+    import attachments
     import casting
     from config import ALLOWED_ORIGINS, PID_FILE, WARROOM_PORT
     from council import STAGES, Council, latest_build_card
@@ -42,8 +43,8 @@ except ImportError:  # run as a script: python warroom/server.py
     from router import COUNCIL, read_pin, route, write_pin
     from voice import Voice
 
-PROTOCOL = "council-v6"  # bump only when the wire protocol changes (v4: activity + meter; v5: cancel_ack; v6: build_result, build_followup)
-SERVER_VERSION = 19  # bump on every server.py deploy; shown in the client via pong
+PROTOCOL = "council-v7"  # bump only when the wire protocol changes (v4: activity + meter; v5: cancel_ack; v6: build_result, build_followup; v7: text/summit carry `attachments`)
+SERVER_VERSION = 20  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
@@ -147,13 +148,13 @@ class Session:
     def convo(self):
         return "\n".join(f"{who}: {what[:400]}" for who, what in self.history[-HISTORY_TURNS:])
 
-    async def answer(self, agent_id, text):
+    async def answer(self, agent_id, text, attached=""):
         live = Live(self)  # without the activity stream a working agent looks stalled: the page hears nothing from it
         await self.thinking(agent_id, True)
         try:
             async with live.following(agent_id) as on_event:
                 reply = await ab.ask(agent_id, (
-                    f"[War Room conversation so far]\n{self.convo()}\n\nUser said: {text}\n\n"
+                    f"[War Room conversation so far]\n{self.convo()}\n\nUser said: {text}{attached}\n\n"
                     "Answer in under 80 words of plain speech (it is read aloud). Use your tools if the answer "
                     "needs facts you can check."), system=persona_prompt(agent_id), memory_query=text, max_turns=12,
                     on_event=on_event)
@@ -177,7 +178,8 @@ class Session:
         async with WORK_LOCK:
             await coro
 
-    async def handle_text(self, text, kind="text"):
+    async def handle_text(self, text, kind="text", attached=""):
+        """`attached` is the block naming the files the user attached. It goes to the agent, not into the transcript or the memory query."""
         if BUILD_RE.match(text):
             kind = "build"
         target, rest = route(text)
@@ -187,10 +189,10 @@ class Session:
             question = rest if target == COUNCIL else text
             self.history.append(("you", question))
             log("council convened, chars:", len(question))
-            self.spawn(self.exclusive("summit", Council(self).deliberate(question, self.convo())), "Council")
+            self.spawn(self.exclusive("summit", Council(self).deliberate(question + attached, self.convo())), "Council")
         else:
             log(f"text -> {target}, chars:", len(rest))
-            self.spawn(self.answer(target, rest), "Reply")
+            self.spawn(self.answer(target, rest, attached), "Reply")
 
     async def handle_audio(self, pcm):
         text = await VOICE.transcribe(pcm)
@@ -224,7 +226,11 @@ class Session:
                 task.cancel()
             await self.send({"type": "cancel_ack", "stopped": len(running)})
         elif kind in ("text", "summit") and text:
-            await self.handle_text(text, kind)
+            files, problem = attachments.resolve(payload.get("attachments"))
+            if problem:
+                await self.status(f"Not sent: {problem}.")
+            else:
+                await self.handle_text(text, kind, attachments.block(files))
         elif kind == "build":
             await self.handle_text("build it", "build")
         elif kind == "build_followup":  # continue the latest build (re-check, fix what was flagged, keep it) without redoing it
