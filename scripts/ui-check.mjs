@@ -453,6 +453,30 @@ try {
   check('resume: a second replay (another blip) shows each line once', count(afterTwo, 'hey Ops, what is 17 times 23?') === 1 && count(afterTwo, 'Reconnected: the work') === 1, `question x${count(afterTwo, 'hey Ops, what is 17 times 23?')}`);
   await deliver({ agent_id: 'ops', text: '391.', kind: 'reply' });
   check('resume: the answer that arrives afterwards lands exactly once, after the question', count(await logText(), '391.') === 1 && (await logText()).indexOf('391.') > (await logText()).indexOf('hey Ops'));
+
+  // --- War Room icons: they render, controls keep their meaning, the message box still fits, recording swaps its caption ----
+  await open('/warroom', { fake: true });
+  const drawnHidden = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('[hidden]')].filter((e) => getComputedStyle(e).display !== 'none').map((e) => e.id || e.className || e.tagName))`));
+  check('icons: nothing marked hidden is actually drawn (a display rule on a button once re-showed Cancel run while idle)', drawnHidden.length === 0, JSON.stringify(drawnHidden));
+  const iconFacts = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('svg.ic')].map((s) => { const r = s.getBoundingClientRect(); const id = s.querySelector('use').getAttribute('href'); return { id, w: Math.round(r.width), h: Math.round(r.height), defined: !!document.querySelector(id) }; }))`));
+  check('icons: every icon renders at a visible size and points at a real symbol', iconFacts.length >= 6 && iconFacts.every((i) => i.w >= 18 && i.h >= 18 && i.defined), JSON.stringify(iconFacts));
+  const bar = JSON.parse(await js(`JSON.stringify(Object.fromEntries(['attachbtn', 'msg', 'send', 'summitbtn'].map((id) => [id, Math.round(document.getElementById(id).getBoundingClientRect().top)])))`));
+  check('icons: attach, message box, Send and Convene stay on one row', new Set(Object.values(bar)).size === 1, JSON.stringify(bar));
+  check('icons: Send still reads "Send" (the icon is decoration, not the label)', (await js(`document.getElementById('send').textContent.trim()`)) === 'Send' && (await js(`document.getElementById('buildbtn').textContent.trim()`)) === 'Build the verdict');
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false }); // a laptop-sized window, where the row is tightest
+  await sleep(200);
+  const fit = JSON.parse(await js(`(() => { const i = document.getElementById('msg'), cs = getComputedStyle(i); const c = document.createElement('canvas').getContext('2d'); c.font = cs.font;
+    return JSON.stringify({ text: Math.ceil(c.measureText(i.placeholder).width), room: Math.floor(i.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) }); })()`));
+  check('icons: the message box placeholder is not cut off beside the wider buttons (at 1100px wide)', fit.text <= fit.room, JSON.stringify(fit));
+  await cdp('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  const micBox = JSON.parse(await js(`JSON.stringify((() => { const r = document.getElementById('mic').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })())`));
+  check('icons: hold-to-talk is a big, round target (at least 96px, far over the 44px touch minimum)', micBox.w >= 96 && micBox.h >= 96 && micBox.w === micBox.h, JSON.stringify(micBox));
+  const micText = (cls) => js(`(() => { const e = document.querySelector('#mic .${cls}'); return e ? getComputedStyle(e).display : 'missing'; })()`);
+  const micIdle = { cap: await micText('miccap'), rec: await micText('micrec') };
+  await js(`document.getElementById('mic').classList.add('hot')`);
+  const held = { cap: await micText('miccap'), rec: await micText('micrec') };
+  await js(`document.getElementById('mic').classList.remove('hot')`);
+  check('icons: holding the mic swaps "Hold to talk" for the recording caption, and releasing swaps it back', micIdle.cap !== 'none' && micIdle.rec === 'none' && held.cap === 'none' && held.rec !== 'none' && (await micText('micrec')) === 'none', JSON.stringify({ micIdle, held }));
   await open('/warroom', { fake: true, pre: `window.__fastRetry = true; var __st = window.setTimeout; window.setTimeout = function (f, ms) { return __st(f, ms === 8000 ? 300 : ms); };` });
   await deliver({ type: 'meter', pct: 10, phase: 'plan', label: 'plan', failed: false });
   await js(`document.getElementById('nowcancel').click()`);

@@ -7,11 +7,13 @@ and is replayed what it missed. Agent calls are stubbed: nothing here starts a m
 import asyncio
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "warroom"))
 
+import council  # noqa: E402
 import server  # noqa: E402
 
 
@@ -60,6 +62,18 @@ class DetachTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.saved = (server.ab.ask, server.ab.record, server.VOICE.info, server.casting.casting_message,
                       server.latest_build_card, list(server.DETACHED), set(server.SESSIONS))
+        # A cancelled council or build now writes a ledger row: that must land in a temp folder, never in the real store/.
+        self.tmp = tempfile.TemporaryDirectory()
+        tmp = Path(self.tmp.name)
+        self.paths = {k: getattr(council, k) for k in ("RUNS_FILE", "VERDICT_FILE", "VERDICT_JSON", "VERDICT_ARCHIVE_DIR", "BUILD_STATE_JSON", "COUNCIL_DIR")}
+        council.RUNS_FILE, council.VERDICT_FILE, council.VERDICT_JSON = tmp / "runs.jsonl", tmp / "v.md", tmp / "v.json"
+        council.VERDICT_ARCHIVE_DIR, council.BUILD_STATE_JSON, council.COUNCIL_DIR = tmp / "verdicts", tmp / "build-state.json", tmp / "council"
+        self.saved_recall = council.ab.recall
+
+        async def recall(question):
+            return ""  # the real one asks the live core
+
+        council.ab.recall = recall
         self.release, self.started, self.cancelled = asyncio.Event(), asyncio.Event(), asyncio.Event()
         server.DETACHED.clear()
         server.SESSIONS.clear()
@@ -89,7 +103,15 @@ class DetachTests(unittest.IsolatedAsyncioTestCase):
             handler.cancel()
         for session in list(server.DETACHED):
             session.close()
+        # Cancelled work writes its ledger row while it unwinds. Wait for that BEFORE the real paths come back, or the
+        # row lands in the user's real history.
+        await asyncio.gather(*self.handlers, *(t for s in list(server.SESSIONS) + list(server.DETACHED) for t in s.tasks), return_exceptions=True)
+        await asyncio.sleep(0.1)
         (server.ab.ask, server.ab.record, server.VOICE.info, server.casting.casting_message, server.latest_build_card) = self.saved[:5]
+        council.ab.recall = self.saved_recall
+        for key, value in self.paths.items():
+            setattr(council, key, value)
+        self.tmp.cleanup()
         server.DETACHED[:] = self.saved[5]
         server.SESSIONS.clear()
         server.SESSIONS.update(self.saved[6])

@@ -11,7 +11,7 @@ import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const WARROOM_CLIENT_VERSION = 39;
+export const WARROOM_CLIENT_VERSION = 40;
 export const WARROOM_PROTOCOL = 'council-v8'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
@@ -33,7 +33,7 @@ function manifestAssets(): string[] {
 }
 export const WARROOM_STATIC: readonly string[] = ['kr-attach.js', 'warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-cancel.js', 'warroom-result.js', 'warroom-demo.js',
   'warroom-casting.js', 'card-director.js', 'mic-worklet.js',
-  'warroom-council-cards.png', 'warroom-chamber-bg.png', ...CARD_ASSETS, ...manifestAssets()];
+  'warroom-council-cards.png', 'warroom-chamber-bg.png', 'warroom-chamber-bg.webp', ...CARD_ROLES.map((role) => `card-states/individual/idle-${role}.webp`), ...CARD_ASSETS, ...manifestAssets()];
 
 const COLORS: Record<string, string> = {
   main: '#d4a017', research: '#79c0ff', comms: '#a371f7', content: '#3fb950', ops: '#f85149',
@@ -77,7 +77,7 @@ const CSS = `
 :root{--gold:#d4a017;--bg:#07070d;--panel:#11111b;--line:#3a3020}
 *{box-sizing:border-box}
 body{background:#05070b;color:#eadfbe;font-family:Georgia,'Times New Roman',serif;margin:0;padding:0;min-height:100vh;position:relative}
-body:before{content:'';position:fixed;inset:0;background:linear-gradient(#02050aaa,#03050bdd),url('/warroom/warroom-chamber-bg.png?v=1') center top/cover no-repeat;z-index:-2}
+body:before{content:'';position:fixed;inset:0;background:linear-gradient(#02050aaa,#03050bdd),url('/warroom/warroom-chamber-bg.webp?v=1') center top/cover no-repeat;z-index:-2}
 body:after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at center top,transparent 15%,#02040a88 72%);z-index:-1;pointer-events:none}
 .kr-main{padding:14px}.kr-main>.kr-auth{margin:-14px -14px 12px}.wrap{max-width:1400px;margin:0 auto}
 h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;text-shadow:0 1px #000,0 0 18px #d4a01766}
@@ -141,13 +141,30 @@ body:has(#stages .stage) #council{zoom:.62;margin:10px 0 4px}
 .panel h3{margin:0 0 8px;font:600 13px system-ui;color:var(--gold);letter-spacing:.5px}.panel h3 small{color:#6e7681;font-weight:400}
 .panel table{width:100%;border-collapse:collapse}.panel td{padding:3px 0;border-bottom:1px solid #1e1e2a}.panel td+td{text-align:right;color:#e8dcc0}
 .stagetimes{margin-top:8px;color:#9aa3ad;font-size:11px}
-#mic{display:block;width:116px;height:116px;margin:8px auto 14px;padding:20px;border-radius:50%;border:3px double #ffd26c;background:radial-gradient(circle,#3b280d 0 38%,#0b0b0d 42% 58%,#b37a20 60% 62%,#08090c 65%);color:#ffe7a2;font:600 12px Georgia;cursor:pointer;user-select:none;touch-action:none;box-shadow:0 0 22px #d79b35,inset 0 0 18px #000;text-shadow:0 1px #000}
-#mic.hot{background:#b62324;border-color:#f85149;color:#fff;box-shadow:0 0 22px #f85149}
-#mic:disabled{opacity:.4;cursor:not-allowed}
+#mic{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:132px;height:132px;min-width:64px;min-height:64px;margin:8px auto 14px;padding:10px;border-radius:50%;border:4px solid #c99a42;background:radial-gradient(circle at 50% 38%,#1b1810 0,#0b0b0d 70%);color:#f6dd9a;font:600 13px Georgia;line-height:1.15;text-align:center;cursor:pointer;user-select:none;touch-action:none;box-shadow:0 0 0 3px #0b0b0d,0 0 0 5px #8e6a2c,0 0 18px #d79b3566,inset 0 0 18px #000;transition:box-shadow .15s,border-color .15s}
+#mic .ic{width:36px;height:36px;color:#e2bf62}
+#mic .michint{font:11px system-ui;color:#d8c58f}#mic .micrec{display:none;font:600 12px system-ui}
+#mic:hover:not(:disabled):not(.hot){border-color:#ffd26c;box-shadow:0 0 0 3px #0b0b0d,0 0 0 5px #c99a42,0 0 26px #d79b35aa,inset 0 0 18px #000}
+#mic.hot{background:radial-gradient(circle at 50% 38%,#4a0f12,#220708 75%);border-color:#ff7b72;color:#fff;box-shadow:0 0 0 3px #0b0b0d,0 0 0 5px #b62324,0 0 28px #f85149;animation:micpulse 1.2s ease-in-out infinite}
+#mic.hot .ic{color:#fff}#mic.hot .miccap,#mic.hot .michint{display:none}#mic.hot .micrec{display:block}
+@keyframes micpulse{50%{box-shadow:0 0 0 3px #0b0b0d,0 0 0 8px #b6232499,0 0 38px #f85149}}
+@media(prefers-reduced-motion:reduce){#mic.hot{animation:none;box-shadow:0 0 0 3px #0b0b0d,0 0 0 8px #b62324,0 0 28px #f85149}#mic{transition:none}}
+#mic:disabled{opacity:.45;cursor:not-allowed;border-color:#6b5a38;box-shadow:0 0 0 3px #0b0b0d,inset 0 0 18px #000}
+button.go{display:inline-flex;align-items:center;justify-content:center;gap:8px}
+button.go[hidden]{display:none} /* an author display value beats the browser's own [hidden] rule: without this a hidden Cancel run is drawn */
+.composer .actions{display:flex;gap:8px;flex:0 0 auto} /* Send and Convene wrap together, never one alone */
+button.go .ic,.ic{width:20px;height:20px;flex:none;vertical-align:middle}
+button.go.send{background:linear-gradient(#6f5421,#3d2d12);border-color:#e2bf62}
+button.go.send:hover{background:linear-gradient(#7a5c25,#47341a)}
+button.go.convene:hover,button.go.build:hover,button.go.attach:hover{background:#2a2110}
+button.go.danger:hover{background:#2a0f10}
+button.go.convene,button.go.build{background:#090b10dd;border:1px solid #c99a42;color:#f0d88e}
+button.go.attach{padding:10px 12px;background:#090b10dd;border:1px solid #c99a42;color:#f0d88e}
+button.go.danger{background:transparent;border:1px solid #ff7b72;color:#ff9a93}
 #micstate,#heard{font:12px system-ui;color:#8b949e;min-height:16px;margin-top:6px}
 .panel label{display:block;margin-top:7px;color:#c9d1d9;cursor:pointer}
-.composer{display:flex;gap:8px;margin-top:12px}
-input#msg{flex:1;background:#161b22;color:#e8dcc0;border:1px solid var(--line);border-radius:8px;padding:11px 14px;font-size:14px}
+.composer{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+input#msg{flex:1 1 280px;min-width:0;background:#161b22;color:#e8dcc0;border:1px solid var(--line);border-radius:8px;padding:11px 14px;font-size:14px}
 button.go{background:linear-gradient(#755724,#3d2d12);color:#fff0bd;border:1px solid #c99a42;border-radius:8px;padding:10px 16px;cursor:pointer;font:14px Georgia;box-shadow:inset 0 0 8px #000}
 button.go:hover{background:linear-gradient(#977335,#4e3815)}button.alt{background:#090b10dd;border:1px solid var(--gold);color:#e9c96e}
 button.stop{background:transparent;border:1px solid #f85149;color:#f85149}
@@ -217,6 +234,16 @@ button.go,input#msg{min-height:44px}
 `;
 
 /** Which plan the Build button will execute (the archive lives on the Plan Library page). */
+// Original icon sprite (hand-drawn paths, currentColor). Use: <svg class="ic"><use href="#ic-horn"/></svg>
+const ICON_SPRITE = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+<symbol id="ic-horn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14.5c0-2.6 1.6-4 4.5-4.2L17 5c2.4-1.2 4 .1 4 2.4v9.2c0 2.3-1.6 3.6-4 2.4l-9.5-5.3C4.6 13.5 3 16 3 14.5z" fill="currentColor" fill-opacity=".18"/><path d="M8 10.4v7.2M13 7.8v9.4"/><circle cx="4.6" cy="15.6" r="1.3" fill="currentColor"/></symbol>
+<symbol id="ic-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14.5c0-2.6 1.6-4 4.5-4.2L17 5c2.4-1.2 4 .1 4 2.4v9.2c0 2.3-1.6 3.6-4 2.4l-9.5-5.3C4.6 13.5 3 16 3 14.5z" fill="currentColor" fill-opacity=".18"/><path d="M8 10.4v7.2M13 7.8v9.4"/><path d="M3 3l18 18" stroke-width="2.2"/></symbol>
+<symbol id="ic-quill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 3.5C12 3.5 6.5 8.5 5.5 16l-1 4.5 4.5-1c7.5-1 12-6.5 11.5-16z" fill="currentColor" fill-opacity=".18"/><path d="M4.5 20.5L15 10M9.5 13.5h5M12 10.5h4"/></symbol>
+<symbol id="ic-crowns" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 13V5.5L10.3 8 12 4.5 13.7 8l1.8-2.5V13z" fill="currentColor" fill-opacity=".25"/><path d="M1.5 19v-6l1.6 2 1.4-3 1.4 3 1.6-2v6zM16.5 19v-6l1.6 2 1.4-3 1.4 3 1.6-2v6z"/><path d="M1.5 21h6M16.5 21h6M8.5 15h7"/></symbol>
+<symbol id="ic-hammer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2.5" width="9" height="4.5" rx="1" transform="rotate(35 8.5 4.75)" fill="currentColor" fill-opacity=".25"/><path d="M9 8.5L3 16.5"/><path d="M13 12h6.5a1.5 1.5 0 0 1 1.5 1.5v6.5a1.5 1.5 0 0 1-1.5 1.5H10.5M13 12v7.5a1.5 1.5 0 0 1-1.5 1.5M16 15.5h3.5M16 18h3.5"/></symbol>
+<symbol id="ic-clasp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7.5v9.5a5 5 0 0 1-10 0V6.5a3.2 3.2 0 0 1 6.4 0v10a1.3 1.3 0 0 1-2.6 0V8.5"/></symbol>
+</svg>`;
+
 function planLine(plan: PlanSummary | null): string {
   if (!plan) return `<div class="planline none">No plan on file: convene the council first. <a href="/history">Plan Library</a></div>`;
   const objective = plan.objective.length > 150 ? `${plan.objective.slice(0, 150)}...` : plan.objective;
@@ -236,7 +263,7 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
     .map(
       (c) =>
         `<div class="seat" id="seat-${esc(c.id)}" style="--ac:${c.color}" data-state="idle">` +
-        `<img class="strip-a" src="/warroom/card-states/individual/idle-${esc(c.id)}.png?v=${WARROOM_CLIENT_VERSION}" alt="">` +
+        `<img class="strip-a" src="/warroom/card-states/individual/idle-${esc(c.id)}.webp?v=${WARROOM_CLIENT_VERSION}" alt="" loading="lazy" decoding="async">` +
         `<img class="strip-b" alt="">` +
         `<span class="badge" id="badge-${esc(c.id)}"></span>` +
         // Title big, role name small beneath: both live text on the blank plate. The font shrinks for long titles.
@@ -255,6 +282,7 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>War Room v${WARROOM_CLIENT_VERSION} - King's Reach Council</title>
 <style>${SHELL_CSS}${CSS}${ATTACH_CSS}</style></head><body>
+${ICON_SPRITE}
 ${wrapInShell('warroom', '', `<div class="wrap">
 <h1>THE WAR ROOM</h1>
 <p class="sub">Plan. Investigate. Cross-examine. Decide. Build. client v${WARROOM_CLIENT_VERSION} &middot; <span id="sver">server ?</span></p>
@@ -276,16 +304,16 @@ ${wrapInShell('warroom', '', `<div class="wrap">
 <section id="chatzone">
 <div id="log" role="log" aria-live="polite" aria-label="Council transcript" tabindex="0"></div>
 <div id="attachtray" class="attachtray" aria-label="Files attached to your next message" hidden></div>
-<div class="composer"><button type="button" class="go alt attachbtn" id="attachbtn" aria-label="Attach files" title="Attach files (or drop them here, or paste a screenshot)">&#128206;</button><input id="msg" placeholder="Speak to one agent (Enter), or convene the council (Ctrl+Enter)..." autocomplete="off">
-<button class="go" id="send">Send</button><button class="go alt" id="summitbtn">Convene council</button></div>
-<div class="composer"><button class="go alt" id="buildbtn">Build the verdict</button><button class="go stop" id="cancelbtn">Hush voices</button></div>
+<div class="composer"><button type="button" class="go alt attach attachbtn" id="attachbtn" aria-label="Attach files" title="Attach files (or drop them here, or paste a screenshot)"><svg class="ic" aria-hidden="true"><use href="#ic-clasp"/></svg></button><input id="msg" placeholder="Ask an agent, or convene the council" aria-label="Message: Enter asks one agent, Ctrl+Enter convenes the council" title="Enter asks one agent. Ctrl+Enter convenes the council." autocomplete="off">
+<span class="actions"><button class="go send" id="send"><svg class="ic" aria-hidden="true"><use href="#ic-quill"/></svg>Send</button><button class="go alt convene" id="summitbtn"><svg class="ic" aria-hidden="true"><use href="#ic-crowns"/></svg>Convene council</button></span></div>
+<div class="composer"><button class="go alt build" id="buildbtn"><svg class="ic" aria-hidden="true"><use href="#ic-hammer"/></svg>Build the verdict</button><button class="go stop danger" id="cancelbtn"><svg class="ic" aria-hidden="true"><use href="#ic-muted"/></svg>Hush voices</button></div>
 <div id="planbox">${planLine(plan)}</div>
 <div class="hint">Voice tips: say "council, ..." for a full deliberation, "hey Ops, ..." for one agent, "build it" to execute the plan.</div>
 </section>
 <aside>
 <div class="panel"><h3>Voice</h3>
-<button id="mic" disabled>Hold to talk (or hold Space)</button>
-<div id="micstate"></div><div id="heard"></div>
+<button id="mic" disabled aria-label="Hold to talk (or hold Space)"><svg class="ic" aria-hidden="true"><use href="#ic-horn"/></svg><span class="miccap">Hold to talk</span><span class="michint">or hold Space</span><span class="micrec">Recording. Release to send.</span></button>
+<div id="micstate" role="status" aria-live="polite"></div><div id="heard"></div>
 <label><input type="checkbox" id="handsfree" disabled> Hands-free (auto-detect speech)</label>
 <label><input type="checkbox" id="speak" checked> Agents speak aloud</label>
 </div>
@@ -300,6 +328,7 @@ ${CLIENT_MD_JS}
 <script src="/warroom/card-director.js${v}"></script>
 <script src="/warroom/warroom-voice.js${v}"></script>
 <script src="/warroom/warroom-live.js${v}"></script>
+<script src="/warroom/warroom-cancel.js${v}"></script>
 <script src="/warroom/warroom-result.js${v}"></script>
 <script src="/warroom/warroom-casting.js${v}"></script>
 <script src="/warroom/kr-attach.js${v}"></script>
@@ -307,4 +336,3 @@ ${CLIENT_MD_JS}
 <script src="/warroom/warroom-app.js${v}"></script>
 </body></html>`;
 }
-<script src="/warroom/warroom-cancel.js${v}"></script>

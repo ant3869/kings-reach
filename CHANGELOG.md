@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.21.0 - War Room icons and a bigger hold-to-talk button, and the Python tests stop writing to your real history
+
+**Added**
+- **An original icon set for the War Room** (hand-drawn paths in one hidden sprite, drawn in the current text colour so they follow
+  the royal palette): a clasp on Attach, a quill on Send, crowns on Convene council, a hammer on Build the verdict and a muted horn
+  on Hush voices. They decorate the words rather than replace them, and are hidden from screen readers.
+- **Hold to talk is now a 132px round gold-ringed button** with a horn, the caption *Hold to talk / or hold Space*, a pulsing red ring
+  and a *Recording. Release to send* caption while held (no pulse with reduced motion). Its full name stays available to assistive
+  tech, and the mic status line is now a polite live region.
+
+**Fixed**
+- **The message box placeholder was cut off** beside the wider buttons (*...or convene the council (Ctrl+En*). It is now
+  *Ask an agent, or convene the council*; the Enter / Ctrl+Enter shortcuts moved into the box's accessible name and tooltip. The
+  composer wraps on narrow windows, and Send and Convene wrap together instead of one stranding alone.
+- **A hidden Cancel run button was drawn while idle.** The new button styles set `display`, which beats the browser's own `[hidden]`
+  rule; `button.go[hidden]` now wins, and a browser check fails if anything marked hidden is ever drawn.
+- **The Python tests wrote two junk rows into your real History.** Found while checking a real council's run: two cancelled
+  *"should we ship?"* rows (0 s, $0) appeared in `store/council-runs.jsonl`. They came from `tests/test_detach.py` in 2.20.0: since
+  2.20.0 a cancelled council writes a ledger row, and those tests never redirected it. They now use a temp folder (and a stubbed
+  memory recall, which used to ask the live core), and wait for cancelled work to finish writing before the real paths come back.
+  The two rows were removed by id from the ledger (backed up first; the other 44 rows are unchanged). **`npm run test:py` now
+  fingerprints `store/council-runs.jsonl`, `summit-verdict.json` and `build-state.json` and fails if the suite changed any of them.**
+- Client 40, so browsers drop the cached page.
+
+**Tests:** 247 Node (+8, `tests/warroom-icons.test.mjs`: every icon points at a real symbol and none is unused or announced, every
+button has a name, the placeholder fits, the mic keeps its label), 134 Python (unchanged count, now isolated and guarded), 160
+browser checks (+7: icons render at 20px, the composer row stays on one line, the placeholder fits at 1100px, the mic is a 132px
+round target and swaps its caption, nothing hidden is drawn). Each new rule was broken on purpose and a test failed, including the
+store guard (it tripped on the first polluted run).
+
 ## 2.20.0 - A run survives its tab, and a stopped Build is written down
 
 Reloading or closing the War Room page used to cancel whatever it was running. This was found when a real Build was cut off
