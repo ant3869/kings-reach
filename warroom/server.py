@@ -15,6 +15,7 @@ Single instance is structural: SO_EXCLUSIVEADDRUSE bind before anything else; pi
 """
 
 import asyncio
+import http
 import json
 import os
 import re
@@ -46,7 +47,7 @@ except ImportError:  # run as a script: python warroom/server.py
     from voice import Voice
 
 PROTOCOL = "council-v8"  # bump only when the wire protocol changes (v4: activity + meter; v5: cancel_ack; v6: build_result, build_followup; v7: text/summit carry `attachments`; v8: resume + you, the replay a returning page gets)
-SERVER_VERSION = 22  # bump on every server.py deploy; shown in the client via pong
+SERVER_VERSION = 23  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
@@ -62,6 +63,16 @@ JOURNAL_TYPES = frozenset({"stage", "thinking", "activity", "meter", "metrics", 
 def busy_tasks():
     """How many council / build / reply tasks are running across every tab, including sessions whose tab has left."""
     return sum(len(s.tasks) for s in (*SESSIONS, *DETACHED))
+
+
+def answer_probe(path, request_headers):
+    """GET /busy: the core asks before it stops this server. Plain HTTP, answered before any session exists, so asking can
+    never take over (or hide from the next tab) a run that kept going after its page left. Anything else is the websocket.
+    (websockets.serve is the legacy API here: process_request gets (path, headers) and returns (status, headers, body).)"""
+    if path != "/busy":
+        return None
+    body = (json.dumps({"busy": busy_tasks(), "server": SERVER_VERSION}) + "\n").encode()
+    return http.HTTPStatus.OK, [("Content-Type", "application/json")], body
 
 
 def keep_for_replay(obj):
@@ -409,7 +420,8 @@ async def main():
     PID_FILE.parent.mkdir(parents=True, exist_ok=True)
     PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
     try:
-        async with websockets.serve(handle_client, sock=sock, origins=ALLOWED_ORIGINS, max_size=16 * 2 ** 20):
+        async with websockets.serve(handle_client, sock=sock, origins=ALLOWED_ORIGINS, max_size=16 * 2 ** 20,
+                                    process_request=answer_probe):
             log(f"listening on ws://127.0.0.1:{WARROOM_PORT} pid={os.getpid()} "
                 f"server v{SERVER_VERSION} python={sys.executable}")
             warmer = asyncio.create_task(warm_voice())  # noqa: F841 - keep a reference, runs in background

@@ -55,13 +55,20 @@ page clears its transcript on `resume` instead of appending a second copy.
 
 ## Before you restart the War Room
 
-`ping` now answers `busy`: the number of tasks running across all tabs, including ones whose tab has left.
+The War Room reports `busy`: the number of tasks running across every tab, **including tabs that have left**.
 
-```
-{"ok": true, "pong": "council-v8", "server": 22, "busy": 0, ...}
-```
+- **`GET http://127.0.0.1:7860/busy`** (server v23+) answers `{"busy": 0, "server": 23}` as plain HTTP. It is answered before any session
+  exists, so asking can never take over a run that is waiting for its page to come back.
+- `ping` over the websocket answers the same `busy` (server v22+), but a websocket connection **does** take over a detached run, so
+  nothing polls it. The core only uses it as a fallback when it must ask a v22 server, and only when a stop was requested.
 
-A restart script should wait for `busy` to be `0`, or tell you what it is about to stop.
+**Stop War Room (dashboard button, `POST /api/warroom/stop`) refuses while `busy` is above zero.** The API answers `409` with
+`{"ok": false, "busy": N, "error": ...}`; the dashboard asks *"Stop it anyway? The running work will be lost."* and only a yes
+resends the request as `{"force": true}`. Saying no leaves it running. If the War Room cannot be asked at all (down, or wedged),
+the stop goes ahead, so a stuck server is always stoppable.
+
+Not covered: restarting the **core** (`/api/admin/shutdown`, and the Build's own reboot step) is not guarded. A Build ends by
+rebooting the core, and refusing there would only push it to a hard kill.
 
 ## Tests
 

@@ -234,8 +234,9 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
   });
 
   app.post('/api/warroom/stop', async (c) => {
-    const r = await stopWarroom();
-    return c.json(r, r.ok ? 200 : 500);
+    const body = (await c.req.json().catch(() => ({}))) as { force?: unknown };
+    const r = await stopWarroom({ force: body?.force === true });
+    return c.json(r, r.ok ? 200 : r.busy ? 409 : 500); // 409: refused because work is running, not a failure
   });
 
   app.get('/api/warroom/status', async (c) => c.json(await warroomStatus()));

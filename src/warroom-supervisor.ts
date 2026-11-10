@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PROJECT_ROOT, STORE_DIR, WARROOM_PORT, WARROOM_PYTHON } from './config.js';
 import { isPidAlive, isPortOpen, readPid, sleep, waitForPort } from './process-util.js';
+import { warroomBusy } from './warroom-busy.js';
 
 export const WARROOM_PID_FILE = path.join(STORE_DIR, 'warroom.pid');
 export const WARROOM_LOG_FILE = path.join(STORE_DIR, 'logs', 'warroom.log');
@@ -17,6 +18,8 @@ export interface WarroomResult {
   already?: boolean;
   pid?: number | null;
   error?: string;
+  /** Set when a stop was refused: how many tasks are still running. */
+  busy?: number;
 }
 
 export interface WarroomStatus {
@@ -79,9 +82,22 @@ async function doStart(): Promise<WarroomResult> {
   return { ok: false, error: `war room did not open :${WARROOM_PORT} within 20s; see store/logs/warroom.log` };
 }
 
-/** Stop the server that holds the port (by its own pid file, which it writes after binding). */
-export async function stopWarroom(): Promise<WarroomResult> {
+/** A refused stop (with the reason), or null when stopping is fine. `busy` null = it could not be asked, which never blocks. */
+export function stopRefusal(busy: number | null): WarroomResult | null {
+  if (!busy) return null;
+  const what = busy === 1 ? '1 task is' : `${busy} tasks are`;
+  return { ok: false, busy, error: `The War Room is busy: ${what} still running (a council, build or reply, even with no page open). Cancel it first, or stop anyway.` };
+}
+
+/**
+ * Stop the server that holds the port (by its own pid file, which it writes after binding).
+ * Refuses while it is running work, because a council or Build outlives its page and stopping the server ends it for good;
+ * `force` is the explicit "stop anyway". If the War Room cannot be asked, the stop goes ahead (a wedged server must stay stoppable).
+ */
+export async function stopWarroom(opts: { force?: boolean } = {}): Promise<WarroomResult> {
   if (!(await isPortOpen(WARROOM_PORT))) return { ok: true, already: true };
+  const refusal = stopRefusal(opts.force ? 0 : await warroomBusy());
+  if (refusal) return refusal;
   const pid = livePid();
   if (!pid) return { ok: false, error: `:${WARROOM_PORT} is held by a process with no live pid file; stop it by hand` };
   process.kill(pid);

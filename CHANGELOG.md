@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.22.0 - Stopping the War Room asks first when work is running, and the last two releases are repaired
+
+Found while checking a real Build (`1199410e`, 12 minutes, $2.29) that was running as these changes were made. Details of what the
+restart guard does and does not cover: [`docs/RUN-LIFECYCLE.md`](docs/RUN-LIFECYCLE.md).
+
+**Added**
+- **Stop War Room refuses while work is running.** A council, Build or reply now outlives its page, so "nobody is looking" no
+  longer means "nothing is running", and stopping the server ends that work for good. The dashboard button (and
+  `POST /api/warroom/stop`) now answers `409` with how many tasks are running; the dashboard asks *"Stop it anyway? The running
+  work will be lost."* and only a yes sends `{"force": true}`. If the War Room cannot be asked (down, wedged) the stop goes ahead.
+- **`GET /busy` on the War Room port** (server v23): plain HTTP, `{"busy": N, "server": 23}`, answered before any session exists.
+  The older websocket `ping` also reports `busy`, but a websocket connection takes over a run that is waiting for its page, so
+  the core uses it only as a fallback against a v22 server and never to poll.
+
+**Fixed**
+- **The published `v2.20.0` does not compile on a clean checkout** (`TS1005` at `src/warroom-html.ts:310`). Staging that release
+  by line-number hunks left one `<script>` line in the wrong place in the committed file; the working folder was fine, so every
+  test passed. `v2.21.0` already carried the corrected placement. Found by exporting exactly what is staged into an empty folder
+  and building it there, which is now how a release is checked.
+- **The published `v2.21.0` contained three hunks of an unfinished Build.** A Build was editing `src/warroom-html.ts` while that
+  release was committed, and the whole file went in: the five agent card images were switched from `.png` to `.webp` (with lazy
+  loading), the page background to `warroom-chamber-bg.webp`, and the static-asset list to both. None of those webp files is in the
+  repository, so a fresh clone showed five broken portraits and no background, and one Node test failed. Those three hunks are
+  taken back out; the Build's files and its edits stay in the working folder, uncommitted.
+
+**Tests:** 257 Node on the clean export (+10: `warroom-busy.test.mjs` 7, `page-scripts.test.mjs` 3), 139 Python (+5, `test_probe.py`),
+164 browser checks (+4: the stop button asks, declining sends nothing more, only yes sends `force`). `page-scripts.test.mjs` parses
+every inline script of the dashboard, War Room and History pages; it was written after a `\n` inside a TypeScript template literal
+broke the whole dashboard script while `tsc` and all 247 other tests stayed green. Each new rule was broken on purpose and a test
+failed, including a hang that now fails fast. The first Python run also caught a deploy-breaking mistake: `websockets.serve` here is
+the *legacy* API, whose `process_request` takes `(path, headers)`, not the newer `(connection, request)`.
+The browser suite ran against the working folder (it needs the live core), not the clean export.
+
+**Not deployed yet.** The running War Room is still server v22 and has work in progress, so it was not restarted. Until it is,
+`/busy` returns 426 and the core asks by `ping`; the guard works either way (confirmed live: a stop request was refused with 409 and
+the server kept running). Restarting the core, including a Build's own reboot step, is not guarded.
+
 ## 2.21.0 - War Room icons and a bigger hold-to-talk button, and the Python tests stop writing to your real history
 
 **Added**

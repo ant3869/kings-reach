@@ -5,7 +5,7 @@ import { ATTACH_CSS } from './attach-css.js';
 import { CLIENT_MD_JS } from './client-md.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const DASHBOARD_CLIENT_VERSION = 9;
+export const DASHBOARD_CLIENT_VERSION = 10;
 const REFRESH_MS = 15_000;
 const STALE_MS = 45_000;
 
@@ -23,7 +23,7 @@ function hdrs(extra){var h=extra||{};if(TOKEN)h['x-kings-reach-token']=TOKEN;ret
 async function j(p){var r=await fetch(p,{headers:hdrs()});if(!r.ok)throw new Error(p+' (HTTP '+r.status+')');return r.json();}
 async function send(method,p,b){var r=await fetch(p,{method:method,headers:hdrs({'Content-Type':'application/json'}),body:b?JSON.stringify(b):undefined});
   var d=null;try{d=await r.json();}catch(e){}
-  if(!r.ok)throw new Error((d&&d.error)||('request failed (HTTP '+r.status+')'));
+  if(!r.ok){var er=new Error((d&&d.error)||('request failed (HTTP '+r.status+')'));er.status=r.status;throw er;}
   return d||{};}
 var noticeTimer=0;
 function notify(msg,bad){var n=byId('notice');n.textContent=msg;n.className='notice'+(bad?' bad':'');n.hidden=!msg;clearTimeout(noticeTimer);if(msg)noticeTimer=setTimeout(function(){n.hidden=true;},8000);}
@@ -138,7 +138,13 @@ var ACTIONS={
     try{await send('POST','api/warroom/start');notify('War Room started.');}catch(e){notify('War Room start failed: '+e.message,true);}
     el.disabled=false;refresh();},
   'war-stop':async function(el){el.disabled=true;
-    try{await send('POST','api/warroom/stop');notify('War Room stopped.');}catch(e){notify('War Room stop failed: '+e.message,true);}
+    try{await send('POST','api/warroom/stop');notify('War Room stopped.');}
+    catch(e){
+      if(e.status===409&&confirm(e.message+'\\n\\nStop it anyway? The running work will be lost.')){
+        try{await send('POST','api/warroom/stop',{force:true});notify('War Room stopped. The running work was ended.');}catch(e2){notify('War Room stop failed: '+e2.message,true);}
+      }else if(e.status!==409){notify('War Room stop failed: '+e.message,true);}
+      else{notify('War Room left running: its work continues.');}
+    }
     el.disabled=false;refresh();},
   'send-chat':sendChat,
   'stop-chat':async function(el){el.disabled=true;el.textContent='Stopping...';notify('');
