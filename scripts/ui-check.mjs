@@ -110,12 +110,15 @@ try {
   // --- Card art on the live page: right art, loaded, aligned ------------------------------------
   const seats = async (query) => {
     await open(`/warroom?previewCards=${query}&still=1`, { fake: true });
-    return JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('.seat')].map((s) => {
+    const read = async () => JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('.seat')].map((s) => {
       const r = s.getBoundingClientRect();
       const img = [...s.querySelectorAll('img')].find((i) => i.style.opacity === '1') || s.querySelector('.strip-a');
       return { id: s.id.slice(5), state: s.dataset.state, top: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height),
         src: img.getAttribute('src'), loaded: img.complete && img.naturalWidth > 0 };
     }))`));
+    let cards = await read();
+    for (let i = 0; i < 25 && !cards.every((c) => c.loaded); i++) { await sleep(200); cards = await read(); } // the art arrives after the page does; a cold cache after a restart made this check flaky
+    return cards;
   };
   // The art a seat may show is whatever the manifest pools say for its state; assert membership, not one filename.
   const manifest = await (await fetch(`${BASE}/warroom/card-states/manifest.json`)).json();

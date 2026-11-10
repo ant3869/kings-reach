@@ -1,5 +1,33 @@
 # Changelog
 
+## 2.24.0 - The action buttons are icons with tooltips
+
+**Changed**
+- **Attach, Send, Convene, Build, Hush and the five Pin buttons now show only an icon.** Paperclip, paper plane, a group of people,
+  a hammer, a muted speaker, and a pushpin. Each keeps its name for screen readers (`aria-label`, so they still hear "Send" and "Build the
+  verdict") and shows a tooltip when you point at it **or tab to it**, drawn by CSS from `data-tip`. A `title` attribute was not used: it
+  is slow and never appears on keyboard focus. The tooltips say what the button really does, e.g. Hush: "stop the spoken replies (a running
+  task keeps going)", Pin: "plain messages go to them instead of Main". Targets are 48px wide (the Pin buttons 44).
+- **Cancel run keeps its words.** Its text becomes "Cancelling..." and "Retry cancel" as the cancel progresses, and it ends a real run;
+  an icon cannot say that.
+- **Build and Hush moved up into the message-box row.** Narrow buttons no longer need a row of their own, so the dock is one row shorter
+  and the transcript gets the height back. Send, Convene, Build and Hush wrap together on narrow windows.
+- **Pin buttons report their state.** `aria-pressed` follows the pinned agent and the tooltip switches to "Unpin ...". Client 43.
+
+**Fixed**
+- A browser check ("building shows every card in its building art") failed once after a core restart because it read the card images the
+  instant the page opened, before a cold cache had delivered them. It now waits up to 5 seconds for them (and still fails if they never load).
+
+**Removed:** the quill and three-crowns icons (replaced by the plane and the people), so the sprite has no unused symbols.
+
+**Tests:** `tests/warroom-iconbuttons.test.mjs` (8) and 7 browser checks that use a real mouse and the real Tab key: nothing shows until you
+point or tab, every tooltip shows, and the pin state and wording round-trip. All eight rules (name removed, tooltip not starting with the name,
+a duplicate `title`, Hush claiming to stop a run, no keyboard-focus tooltip, no pressed state, a 36px target, words creeping back onto a button)
+were broken on purpose and caught. 274 Node and 139 Python on a clean export of what is staged; 186 browser checks on the working folder.
+The first versions of two icons did not read at full size and were replaced after cropping a screenshot at native resolution: a ring of five
+dots for Convene looked like a molecule, and a hammer next to a small box for Build looked like an edit-note icon. Tooltips on a touch screen
+appear on tap-focus; that was not tried on a real phone.
+
 ## 2.23.0 - New hold-to-talk button, and the message box stays on screen
 
 **Added**

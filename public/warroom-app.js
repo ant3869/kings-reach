@@ -428,7 +428,14 @@ function connect() {
 
 // --- actions --------------------------------------------------------------------------
 function markPin(id) {
-  for (const c of WR.council) seat(c.id).classList.toggle('pinned', c.id === id);
+  for (const c of WR.council) {
+    const on = c.id === id, b = seat(c.id).querySelector('.pin');
+    seat(c.id).classList.toggle('pinned', on);
+    if (!b) continue;
+    b.dataset.tipOff ??= b.dataset.tip; // remember the "Pin X" wording the page was drawn with
+    b.setAttribute('aria-pressed', String(on));
+    b.dataset.tip = on ? b.dataset.tipOn : b.dataset.tipOff;
+  }
 }
 
 // The Plan Library's "Build this plan" button (after its confirm dialog) leaves a fresh, single-use

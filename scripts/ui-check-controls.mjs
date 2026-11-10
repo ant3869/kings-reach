@@ -31,9 +31,41 @@ export async function controlChecks({ open, js, check, sleep, cdp }) {
   check('icons: nothing marked hidden is actually drawn (a display rule on a button once re-showed Cancel run while idle)', drawnHidden.length === 0, JSON.stringify(drawnHidden));
   const iconFacts = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('svg.ic')].map((s) => { const r = s.getBoundingClientRect(); const id = s.querySelector('use').getAttribute('href'); return { id, w: Math.round(r.width), h: Math.round(r.height), defined: !!document.querySelector(id) }; }))`));
   check('icons: every icon renders at a visible size and points at a real symbol', iconFacts.length >= 5 && iconFacts.every((i) => i.w >= 18 && i.h >= 18 && i.defined), JSON.stringify(iconFacts));
-  const bar = JSON.parse(await js(`JSON.stringify(Object.fromEntries(['attachbtn', 'msg', 'send', 'summitbtn'].map((id) => [id, Math.round(document.getElementById(id).getBoundingClientRect().top)])))`));
-  check('icons: attach, message box, Send and Convene stay on one row', new Set(Object.values(bar)).size === 1, JSON.stringify(bar));
-  check('icons: Send still reads "Send" (the icon is decoration, not the label)', (await js(`document.getElementById('send').textContent.trim()`)) === 'Send' && (await js(`document.getElementById('buildbtn').textContent.trim()`)) === 'Build the verdict');
+  const bar = JSON.parse(await js(`JSON.stringify(Object.fromEntries(['attachbtn', 'msg', 'send', 'summitbtn', 'buildbtn', 'cancelbtn'].map((id) => [id, Math.round(document.getElementById(id).getBoundingClientRect().top)])))`));
+  check('icons: attach, message box, Send, Convene, Build and Hush all stay on one row', new Set(Object.values(bar)).size === 1, JSON.stringify(bar));
+  // --- Icon-only buttons: no words on them, a name for assistive tech, a tooltip on hover and on keyboard focus ------------------
+  const iconIds = ['attachbtn', 'send', 'summitbtn', 'buildbtn', 'cancelbtn'];
+  const facts = JSON.parse(await js(`JSON.stringify(${JSON.stringify(iconIds)}.map((id) => { const b = document.getElementById(id), r = b.getBoundingClientRect(); return { id, text: b.textContent.trim(), name: b.getAttribute('aria-label'), tip: b.dataset.tip, w: Math.round(r.width), h: Math.round(r.height) }; }))`));
+  check('icon buttons: Attach, Send, Convene, Build and Hush show no words, keep a name and a tooltip, and are at least 44px', facts.every((f) => f.text === '' && f.name && f.tip && f.tip.startsWith(f.name) && f.w >= 44 && f.h >= 44), JSON.stringify(facts));
+  const tipOf = (sel) => js(`(() => { const c = getComputedStyle(document.querySelector('${sel}'), '::after').content; return c === 'none' || c === 'normal' ? '' : c.slice(1, -1); })()`);
+  const mouseTo = async (x, y) => { await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }); await sleep(120); };
+  await mouseTo(1, 1);
+  const atRest = [];
+  for (const id of iconIds) atRest.push(await tipOf('#' + id));
+  check('icon buttons: no tooltip is showing until you point at or tab to a button', atRest.every((t) => t === ''), JSON.stringify(atRest));
+  const shown = {};
+  for (const f of facts) {
+    const p = JSON.parse(await js(`JSON.stringify((() => { const r = document.getElementById('${f.id}').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })())`));
+    await mouseTo(p.x, p.y);
+    shown[f.id] = await tipOf('#' + f.id);
+  }
+  check('icon buttons: pointing at each one shows its tooltip', facts.every((f) => shown[f.id] === f.tip), JSON.stringify(shown));
+  await mouseTo(1, 1);
+  await js(`document.getElementById('msg').focus()`);
+  await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  await sleep(120);
+  const tabbed = JSON.parse(await js(`JSON.stringify({ id: document.activeElement.id, focusVisible: document.activeElement.matches(':focus-visible') })`));
+  check('icon buttons: tabbing to Send shows its tooltip with no mouse at all', tabbed.id === 'send' && tabbed.focusVisible && (await tipOf('#send')) === 'Send (Enter)', JSON.stringify({ ...tabbed, tip: await tipOf('#send') }));
+  const pinState = async () => JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('.pin')].map((b) => ({ id: b.dataset.pin, pressed: b.getAttribute('aria-pressed'), tip: b.dataset.tip, name: b.getAttribute('aria-label'), text: b.textContent.trim() })))`));
+  const rest = await pinState();
+  check('pin: five icon-only buttons, each named for its agent, none pressed', rest.length === 5 && rest.every((p) => p.pressed === 'false' && p.text === '' && p.name.startsWith('Pin ') && p.tip.startsWith(p.name)), JSON.stringify(rest));
+  await js(`onMessage({ pinned: 'research' })`);
+  const on = await pinState();
+  check('pin: pinning one agent presses only that button and its tooltip becomes "Unpin ..."', on.length === 5 && on.every((p) => (p.id === 'research') === (p.pressed === 'true') && p.tip.startsWith(p.id === 'research' ? 'Unpin ' : 'Pin ')), JSON.stringify(on));
+  await js(`onMessage({ pinned: null })`);
+  const off = await pinState();
+  check('pin: unpinning puts every tooltip back to "Pin ..."', off.every((p) => p.pressed === 'false' && p.tip === rest.find((r) => r.id === p.id).tip), JSON.stringify(off));
   await cdp('Emulation.setDeviceMetricsOverride', { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false }); // a laptop-sized window, where the row is tightest
   await sleep(200);
   const fit = JSON.parse(await js(`(() => { const i = document.getElementById('msg'), cs = getComputedStyle(i); const c = document.createElement('canvas').getContext('2d'); c.font = cs.font;

@@ -11,7 +11,7 @@ import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const WARROOM_CLIENT_VERSION = 42;
+export const WARROOM_CLIENT_VERSION = 43;
 export const WARROOM_PROTOCOL = 'council-v8'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
@@ -105,6 +105,7 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 .seat .voice:hover select,.seat .voice select:focus{border-color:#b78a33;background-color:#0b0905e6;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0h8L4 5z' fill='%23b78a33'/%3E%3C/svg%3E");color:#f4e3a8}
 .seat .voice select:disabled{cursor:default;opacity:.8}
 .seat .pin{position:absolute;z-index:3;top:calc(var(--ch) + 6px);left:50%;transform:translateX(-50%);width:62px;height:25px;font:11px Georgia;background:#090806bb;border:1px solid #b78a33;color:#f0d88e;border-radius:9px;cursor:pointer;box-shadow:inset 0 0 7px #d4a01722}
+.seat .pin{width:44px;height:30px;padding:0;display:flex;align-items:center;justify-content:center}.seat .pin .ic{width:18px;height:18px}
 .seat.pinned .pin{background:#7b5819;color:#fff2bc;box-shadow:0 0 13px var(--ac)}
 @media(max-width:1050px){.seat{--ch:241px;width:164px;height:284px}.strip-a,.strip-b{width:164px;height:241px}.seat .plate{left:9px;right:9px}.seat .voice select{max-width:104px}}
 #stages{display:flex;justify-content:center;gap:6px;flex-wrap:wrap;margin:8px 0}
@@ -170,6 +171,10 @@ button.go.danger:hover{background:#2a0f10}
 button.go.convene,button.go.build{background:#090b10dd;border:1px solid #c99a42;color:#f0d88e}
 button.go.attach{padding:10px 12px;background:#090b10dd;border:1px solid #c99a42;color:#f0d88e}
 button.go.danger{background:transparent;border:1px solid #ff7b72;color:#ff9a93}
+/* icon-only buttons: a square 48px target. The name is the aria-label; the explanation is a tooltip drawn from data-tip, on hover AND on keyboard focus (a title attribute does neither quickly) */
+button.go.icon{position:relative;width:48px;padding:0}button.go.icon .ic{width:24px;height:24px}
+[data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 9px);left:50%;transform:translateX(-50%);z-index:30;width:max-content;max-width:min(260px,70vw);padding:7px 11px;border:1px solid #c99a42;border-radius:8px;background:#0b0a07f5;color:#f6e9c0;font:12px/1.35 system-ui;text-align:center;box-shadow:0 8px 22px #000;pointer-events:none}
+.seat .pin[data-tip]:hover::after,.seat .pin[data-tip]:focus-visible::after{bottom:auto;top:calc(100% + 8px);max-width:190px}
 .dock{position:sticky;bottom:0;z-index:5;padding:12px 0 8px;background:linear-gradient(#05070b00,#05070bf0 14px)} /* the message box stays reachable however tall the page is */
 #micstate,#heard{font:12px system-ui;color:#8b949e;min-height:16px;margin-top:6px}
 .panel label{display:block;margin-top:7px;color:#c9d1d9;cursor:pointer}
@@ -244,12 +249,13 @@ button.go,input#msg{min-height:44px}
 `;
 
 /** Which plan the Build button will execute (the archive lives on the Plan Library page). */
-// Original icon sprite (hand-drawn paths, currentColor). Use: <svg class="ic"><use href="#ic-quill"/></svg>
+// Original icon sprite (hand-drawn paths, currentColor). Use: <svg class="ic"><use href="#ic-plane"/></svg>
 const ICON_SPRITE = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
 <symbol id="ic-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14.5c0-2.6 1.6-4 4.5-4.2L17 5c2.4-1.2 4 .1 4 2.4v9.2c0 2.3-1.6 3.6-4 2.4l-9.5-5.3C4.6 13.5 3 16 3 14.5z" fill="currentColor" fill-opacity=".18"/><path d="M8 10.4v7.2M13 7.8v9.4"/><path d="M3 3l18 18" stroke-width="2.2"/></symbol>
-<symbol id="ic-quill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 3.5C12 3.5 6.5 8.5 5.5 16l-1 4.5 4.5-1c7.5-1 12-6.5 11.5-16z" fill="currentColor" fill-opacity=".18"/><path d="M4.5 20.5L15 10M9.5 13.5h5M12 10.5h4"/></symbol>
-<symbol id="ic-crowns" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 13V5.5L10.3 8 12 4.5 13.7 8l1.8-2.5V13z" fill="currentColor" fill-opacity=".25"/><path d="M1.5 19v-6l1.6 2 1.4-3 1.4 3 1.6-2v6zM16.5 19v-6l1.6 2 1.4-3 1.4 3 1.6-2v6z"/><path d="M1.5 21h6M16.5 21h6M8.5 15h7"/></symbol>
-<symbol id="ic-hammer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2.5" width="9" height="4.5" rx="1" transform="rotate(35 8.5 4.75)" fill="currentColor" fill-opacity=".25"/><path d="M9 8.5L3 16.5"/><path d="M13 12h6.5a1.5 1.5 0 0 1 1.5 1.5v6.5a1.5 1.5 0 0 1-1.5 1.5H10.5M13 12v7.5a1.5 1.5 0 0 1-1.5 1.5M16 15.5h3.5M16 18h3.5"/></symbol>
+<symbol id="ic-plane" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3.5L3 10.8l6.6 2.6L12 20.5z" fill="currentColor" fill-opacity=".18"/><path d="M21 3.5L3 10.8l6.6 2.6L12 20.5zM9.6 13.4L21 3.5"/></symbol>
+<symbol id="ic-people" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3" fill="currentColor" fill-opacity=".25"/><path d="M6.5 20c0-3.6 2.4-5.8 5.5-5.8s5.5 2.2 5.5 5.8z" fill="currentColor" fill-opacity=".25"/><circle cx="4.8" cy="10" r="2.1"/><path d="M1.2 19c0-2.6 1.4-4.4 3.6-4.4"/><circle cx="19.2" cy="10" r="2.1"/><path d="M22.8 19c0-2.6-1.4-4.4-3.6-4.4"/></symbol>
+<symbol id="ic-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5h6l-1 5.2 3.2 3.3v1.5H6.8V12l3.2-3.3z" fill="currentColor" fill-opacity=".18"/><path d="M9 3.5h6l-1 5.2 3.2 3.3v1.5H6.8V12l3.2-3.3zM12 13.5V21"/></symbol>
+<symbol id="ic-hammer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><g transform="rotate(40 12 12)"><rect x="6" y="3.5" width="12" height="5.5" rx="1.2" fill="currentColor" fill-opacity=".25"/><rect x="10.5" y="9" width="3" height="12" rx="1.2"/></g></symbol>
 <symbol id="ic-clasp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7.5v9.5a5 5 0 0 1-10 0V6.5a3.2 3.2 0 0 1 6.4 0v10a1.3 1.3 0 0 1-2.6 0V8.5"/></symbol>
 </svg>`;
 
@@ -266,6 +272,13 @@ export function renderPlanLine(plan: PlanSummary | null = activePlan()): string 
 }
 
 /** Full-page War Room: council seats, stage tracker, log, voice + scoreboard panels. */
+/** Icon-only buttons name themselves (aria-label) and explain themselves (data-tip, drawn by CSS on hover and keyboard focus). */
+function pinButton(id: string, who: string): string {
+  const name = esc(who);
+  return `<button class="pin" data-pin="${esc(id)}" aria-label="Pin ${name}" aria-pressed="false" data-tip="Pin ${name}: plain messages go to them instead of Main" data-tip-on="Unpin ${name}: plain messages go to Main again">${ICON_PIN}</button>`;
+}
+const ICON_PIN = '<svg class="ic" aria-hidden="true"><use href="#ic-pin"/></svg>';
+
 export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
   const council = loadCouncil();
   const seats = council
@@ -281,7 +294,7 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
         `<small class="route" id="model-${esc(c.id)}">waiting</small>` +
         // Shows the saved voice until the server's list arrives (warroom-casting.js then fills in every choice).
         `<label class="voice"><select data-voice-for="${esc(c.id)}" aria-label="Voice for ${esc(c.name)}"><option value="${esc(c.voice)}" selected>${esc(voiceName(c.voice))}</option></select></label>` +
-        `<button class="pin" data-pin="${esc(c.id)}">Pin</button></div>`,
+        `${pinButton(c.id, c.title || c.name)}</div>`,
     )
     .join('');
   const config = JSON.stringify({ port: WARROOM_PORT, protocol: WARROOM_PROTOCOL, version: WARROOM_CLIENT_VERSION, council });
@@ -314,9 +327,8 @@ ${wrapInShell('warroom', '', `<div class="wrap">
 <div id="log" role="log" aria-live="polite" aria-label="Council transcript" tabindex="0"></div>
 <div class="dock">
 <div id="attachtray" class="attachtray" aria-label="Files attached to your next message" hidden></div>
-<div class="composer"><button type="button" class="go alt attach attachbtn" id="attachbtn" aria-label="Attach files" title="Attach files (or drop them here, or paste a screenshot)"><svg class="ic" aria-hidden="true"><use href="#ic-clasp"/></svg></button><input id="msg" placeholder="Ask an agent, or convene the council" aria-label="Message: Enter asks one agent, Ctrl+Enter convenes the council" title="Enter asks one agent. Ctrl+Enter convenes the council." autocomplete="off">
-<span class="actions"><button class="go send" id="send"><svg class="ic" aria-hidden="true"><use href="#ic-quill"/></svg>Send</button><button class="go alt convene" id="summitbtn"><svg class="ic" aria-hidden="true"><use href="#ic-crowns"/></svg>Convene council</button></span></div>
-<div class="composer"><button class="go alt build" id="buildbtn"><svg class="ic" aria-hidden="true"><use href="#ic-hammer"/></svg>Build the verdict</button><button class="go stop danger" id="cancelbtn"><svg class="ic" aria-hidden="true"><use href="#ic-muted"/></svg>Hush voices</button></div>
+<div class="composer"><button type="button" class="go alt attach attachbtn icon" id="attachbtn" aria-label="Attach files" data-tip="Attach files (or drop them here, or paste a screenshot)"><svg class="ic" aria-hidden="true"><use href="#ic-clasp"/></svg></button><input id="msg" placeholder="Ask an agent, or convene the council" aria-label="Message: Enter asks one agent, Ctrl+Enter convenes the council" title="Enter asks one agent. Ctrl+Enter convenes the council." autocomplete="off">
+<span class="actions"><button class="go send icon" id="send" aria-label="Send" data-tip="Send (Enter)"><svg class="ic" aria-hidden="true"><use href="#ic-plane"/></svg></button><button class="go alt convene icon" id="summitbtn" aria-label="Convene council" data-tip="Convene council (Ctrl+Enter): the council debates and reaches a verdict"><svg class="ic" aria-hidden="true"><use href="#ic-people"/></svg></button><button class="go alt build icon" id="buildbtn" aria-label="Build the verdict" data-tip="Build the verdict: carry out the council&#39;s plan"><svg class="ic" aria-hidden="true"><use href="#ic-hammer"/></svg></button><button class="go stop danger icon" id="cancelbtn" aria-label="Hush voices" data-tip="Hush voices: stop the spoken replies (a running task keeps going)"><svg class="ic" aria-hidden="true"><use href="#ic-muted"/></svg></button></span></div>
 </div>
 <div id="planbox">${planLine(plan)}</div>
 <div class="hint">Voice tips: say "council, ..." for a full deliberation, "hey Ops, ..." for one agent, "build it" to execute the plan.</div>
