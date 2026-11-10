@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.22.1 - The War Room cards are full size when idle, and bigger on a big screen
+
+Reported with a screenshot: the five agent cards were small and a Build that was asked to enlarge them changed nothing.
+
+**Fixed**
+- **The cards were shrunk all the time, not only during a run.** The compact size (x0.62) was meant for "once a run has started", but
+  it keyed on the stage chips (`recall`, `plan`, ...), and the page draws those the moment it loads. So the cards were permanently
+  0.62 of their designed 184px, about 114px, on every screen. The page now marks a run itself (`body.ran`, set when the first stage
+  arrives, also for a replay after a reload, and cleared before one), and only that shrinks the cards. Idle: full 184px.
+  A finished run still leaves them compact so the log and verdict stay above the fold, as before.
+
+**Added**
+- **Cards scale up on big screens.** The row zooms x1.15 from 1500px wide, x1.3 from 1800px and x1.45 from 2200px (each also needs
+  760 / 900 / 1100px of height), cards about 212 / 239 / 267px wide, text and Pin buttons with them. The in-run compact size scales the
+  same way. Every step keeps the five cards on one row inside the 1400px page. Client 41.
+
+**Also**
+- `scripts/ui-check.mjs` uses the installed Google Chrome (`--headless=new`) when the Playwright headless shell is missing, which it
+  was on this machine.
+
+**Tests:** `tests/warroom-cards.test.mjs` (4: no shrink on the chips, the page marks and clears a run, every step is a valid media query,
+every zoom fits the page width) and 6 browser checks (idle width at 1440 / 1600 / 1920 / 2560px, one row, the compact size at 1440 and
+1920px). Each rule was broken on purpose and a test failed, including `and(` without spaces, which is a function token and made the
+whole big-screen rule silently never apply (the browser check caught that during development).
+Trade-off: at 1080p the message box is below the fold while idle (it already was; the log is 45% of the window).
+
 ## 2.22.0 - Stopping the War Room asks first when work is running, and the last two releases are repaired
 
 Found while checking a real Build (`1199410e`, 12 minutes, $2.29) that was running as these changes were made. Details of what the

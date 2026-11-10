@@ -10,15 +10,18 @@ import { fileURLToPath } from 'node:url';
 import { controlChecks } from './ui-check-controls.mjs';
 
 const BASE = process.env.UI_CHECK_BASE ?? 'http://127.0.0.1:3141';
-const CHROME = process.env.CHROME_PATH ?? join(process.env.LOCALAPPDATA ?? '',
+const HEADLESS_SHELL = join(process.env.LOCALAPPDATA ?? '',
   'ms-playwright', 'chromium_headless_shell-1248', 'chrome-headless-shell-win64', 'chrome-headless-shell.exe');
+const INSTALLED_CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'; // fallback when the playwright shell is gone
+const CHROME = process.env.CHROME_PATH ?? (existsSync(HEADLESS_SHELL) || !existsSync(INSTALLED_CHROME) ? HEADLESS_SHELL : INSTALLED_CHROME);
+const HEADLESS_FLAG = /headless/i.test(CHROME) ? [] : ['--headless=new']; // the shell is headless by itself; full Chrome must be told
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Project drive only (never C:): the throwaway Chrome profile lives under the gitignored store/.
 const PROFILES = join(dirname(dirname(fileURLToPath(import.meta.url))), 'store', 'ui-check');
 mkdirSync(PROFILES, { recursive: true });
 const profile = mkdtempSync(join(PROFILES, 'profile-'));
-const chrome = spawn(CHROME, ['--no-sandbox', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+const chrome = spawn(CHROME, [...HEADLESS_FLAG, '--no-sandbox', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
 let chromeErr = '';
 chrome.stderr.on('data', (d) => { chromeErr += d; });
 

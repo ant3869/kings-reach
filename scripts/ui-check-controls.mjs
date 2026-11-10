@@ -48,4 +48,24 @@ export async function controlChecks({ open, js, check, sleep, cdp }) {
   const held = { cap: await micText('miccap'), rec: await micText('micrec') };
   await js(`document.getElementById('mic').classList.remove('hot')`);
   check('icons: holding the mic swaps "Hold to talk" for the recording caption, and releasing swaps it back', micIdle.cap !== 'none' && micIdle.rec === 'none' && held.cap === 'none' && held.rec !== 'none' && (await micText('micrec')) === 'none', JSON.stringify({ micIdle, held }));
+
+  // --- Cards grow with the screen: a fixed 184px card was tiny on a wide monitor ------------------------------------------------
+  const seatFacts = async () => JSON.parse(await js(`JSON.stringify({ zoom: Number(getComputedStyle(document.getElementById('council')).zoom), width: Math.round(document.querySelector('.seat').getBoundingClientRect().width), rows: new Set([...document.querySelectorAll('.seat')].map((s) => Math.round(s.getBoundingClientRect().top))).size, seats: document.querySelectorAll('.seat').length, ran: document.body.classList.contains('ran'), chips: document.querySelectorAll('#stages .stage').length })`));
+  const screen = (width, height) => cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+  await open('/warroom', { fake: true });
+  for (const [w, h, zoom] of [[1440, 900, 1], [1600, 900, 1.15], [1920, 1080, 1.3], [2560, 1440, 1.45]]) {
+    await screen(w, h);
+    await sleep(250);
+    const s = await seatFacts();
+    check(`cards: IDLE at ${w}x${h} the row is zoomed x${zoom}, cards are about ${Math.round(184 * zoom)}px wide, and all five stay on one row (the idle page draws stage chips; they must not shrink the cards)`, s.zoom === zoom && Math.abs(s.width - Math.round(184 * zoom)) <= 2 && s.rows === 1 && s.seats === 5 && !s.ran && s.chips > 0, JSON.stringify(s));
+  }
+  await open('/warroom?demo=build&speed=30&still=1', { fake: true });
+  await screen(1920, 1080); // after open(): open() always resets the viewport to 1440x900
+  await sleep(600);
+  const running = await seatFacts();
+  check('cards: while a run is going the compact size scales with the screen too (x0.8 at 1920px, still one row)', running.ran && running.zoom === 0.8 && running.rows === 1, JSON.stringify(running));
+  await screen(1440, 900);
+  await sleep(250);
+  const runningSmall = await seatFacts();
+  check('cards: while a run is going at 1440px they are the compact x0.62', runningSmall.ran && runningSmall.zoom === 0.62, JSON.stringify(runningSmall));
 }

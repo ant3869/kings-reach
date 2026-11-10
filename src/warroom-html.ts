@@ -11,7 +11,7 @@ import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const WARROOM_CLIENT_VERSION = 40;
+export const WARROOM_CLIENT_VERSION = 41;
 export const WARROOM_PROTOCOL = 'council-v8'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
@@ -116,8 +116,14 @@ h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;te
 #prog{text-align:center;font:12px system-ui;color:var(--gold);min-height:18px}
 .main{display:grid;grid-template-columns:1fr 300px;gap:14px;margin-top:8px}
 @media(max-width:900px){.main{grid-template-columns:1fr}}
-/* once a run starts (first stage chip exists) shrink the seats so the log and verdict sit above the fold; layout-affecting zoom */
-body:has(#stages .stage) #council{zoom:.62;margin:10px 0 4px}
+/* once a run starts (the page sets body.ran when the first stage arrives) shrink the seats so the log and verdict sit above the fold; layout-affecting zoom.
+   This used to key on the stage chips, but the idle page already draws those, so the cards were shrunk permanently. */
+body.ran #council{zoom:.62;margin:10px 0 4px}
+/* big screens: the cards were a fixed 184px, which is small on a wide monitor. Zoom the whole row (text, pins and the voice picker
+   too), and the compact in-run size by the same factor. The row is 956px at 1x (5x184 + 4x9), so even x1.45 stays inside the 1400px .wrap */
+@media(min-width:1500px) and (min-height:760px){#council{zoom:1.15}body.ran #council{zoom:.71}}
+@media(min-width:1800px) and (min-height:900px){#council{zoom:1.3}body.ran #council{zoom:.8}}
+@media(min-width:2200px) and (min-height:1100px){#council{zoom:1.45}body.ran #council{zoom:.9}}
 
 #log{height:45vh;min-height:310px;overflow-y:auto;border:2px solid #8e6a2c;border-radius:4px;padding:18px;background:linear-gradient(#060a11ed,#080b12f5);font:14px/1.55 system-ui;display:flex;flex-direction:column;gap:12px;box-shadow:inset 0 0 0 3px #05060a,inset 0 0 30px #000,0 8px 24px #000}
 .bubble{--ac:var(--gold);border-left:3px solid var(--ac);padding:2px 0 2px 12px;max-width:96%}

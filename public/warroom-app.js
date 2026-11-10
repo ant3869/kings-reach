@@ -217,6 +217,7 @@ function resetStages(names) {
 }
 
 function setStage(name, state, detail) {
+  document.body.classList.add('ran'); // a run exists on this page (live or replayed): the CSS now shrinks the cards so the log sits above the fold
   if (state === 'active') currentStage = name; else if (currentStage === name) currentStage = '';
   WR.council.forEach((c) => applyCardState(c.id)); // thinking turns into researching during 'investigate'
   if (state === 'failed' && BUILD_STAGES.includes(name)) defeatAll();
@@ -359,7 +360,7 @@ function onMessage(m) {
     return;
   }
   if (m.pinned !== undefined) return markPin(m.pinned);
-  if (m.type === 'resume') { $('log').innerHTML = ''; live.reset(); buildResult.clear(); return; } // the server is about to replay everything this page missed: start from a clean page
+  if (m.type === 'resume') { $('log').innerHTML = ''; live.reset(); buildResult.clear(); document.body.classList.remove('ran'); return; } // the server is about to replay everything this page missed: start from a clean page
   if (m.type === 'you') return youBubble(m.kind, m.text, m.files);
   if (m.type === 'cancel_ack') {
     cancelNote(m.stopped ? 'War Room confirmed: stopping ' + m.stopped + ' task' + (m.stopped === 1 ? '' : 's') + '.' : 'War Room confirmed: nothing was running in this tab.');
