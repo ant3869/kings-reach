@@ -5,7 +5,6 @@ import { decayStep } from '../dist/memory.js';
 import {
   cosineSimilarity,
   embeddingToBuffer,
-  embeddingToHex,
   storedToEmbedding,
 } from '../dist/embeddings.js';
 
@@ -47,7 +46,7 @@ test('embeddings: Float32Array round trip survives an unaligned Buffer view', ()
   const padded = Buffer.concat([Buffer.from([7]), embeddingToBuffer(v)]);
   const view = padded.subarray(1); // byteOffset 1: would throw if we aliased it as Float32Array
   assert.deepEqual([...storedToEmbedding(view)], v);
-  assert.deepEqual([...storedToEmbedding(embeddingToHex(v))], v);
+  assert.deepEqual([...storedToEmbedding(embeddingToBuffer(v).toString('hex'))], v); // a hex string, as older rows stored it
   assert.equal(storedToEmbedding(null), null);
 });
 

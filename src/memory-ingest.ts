@@ -77,41 +77,31 @@ export async function ingestConversationTurn(
 
     const embedding = await getEmbedding(extracted.summary);
     const dupes = await findSimilarMemories(chatId, embedding, 1, DUPLICATE_THRESHOLD);
+    const save = () =>
+      saveStructuredMemoryAtomic({
+        chat_id: chatId,
+        agent_id: agentId,
+        session_id: sessionId,
+        raw_text: truncated,
+        summary: extracted.summary,
+        entities: extracted.entities,
+        topics: extracted.topics,
+        importance: extracted.importance,
+        salience: extracted.salience,
+        embedding: embeddingToBuffer(embedding),
+      });
     const dupe = dupes[0];
     if (dupe && dupe.similarity > DUPLICATE_THRESHOLD) {
       const existing = getMemoryById(dupe.id);
       if (existing && isContradiction(existing.summary, extracted.summary)) {
-        const newId = saveStructuredMemoryAtomic({
-          chat_id: chatId,
-          agent_id: agentId,
-          session_id: sessionId,
-          raw_text: truncated,
-          summary: extracted.summary,
-          entities: extracted.entities,
-          topics: extracted.topics,
-          importance: extracted.importance,
-          salience: extracted.salience,
-          embedding: embeddingToBuffer(embedding),
-        });
-        supersedeMemory(dupe.id, newId);
+        supersedeMemory(dupe.id, save());
       } else {
         touchMemory(dupe.id);
       }
       return;
     }
 
-    saveStructuredMemoryAtomic({
-      chat_id: chatId,
-      agent_id: agentId,
-      session_id: sessionId,
-      raw_text: truncated,
-      summary: extracted.summary,
-      entities: extracted.entities,
-      topics: extracted.topics,
-      importance: extracted.importance,
-      salience: extracted.salience,
-      embedding: embeddingToBuffer(embedding),
-    });
+    save();
   } catch (err) {
     logger.warn({ err, chatId, role }, 'memory ingest failed (non-fatal)');
   }

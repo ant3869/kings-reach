@@ -1,24 +1,10 @@
 // src/schedule-cli.ts - manage scheduled tasks. Run as: node dist/schedule-cli.js <cmd>.
 
-import { randomUUID } from 'node:crypto';
-import { getDb, createScheduledTask, setTaskStatus, type ScheduledTask } from './db.js';
+import { getDb, setTaskStatus, type ScheduledTask } from './db.js';
 import { computeNextRun } from './scheduler.js';
+import { createTaskFromArgs, printTaskTable } from './task-cli-shared.js';
 
-export function printTaskTable(tasks: ScheduledTask[]): void {
-  if (tasks.length === 0) {
-    console.log('No tasks.');
-    return;
-  }
-  console.log('id | status | priority | agent | next_run | schedule | prompt');
-  for (const t of tasks) {
-    const next = new Date(t.next_run).toLocaleString();
-    console.log(
-      `${t.id} | ${t.status} | ${t.priority} | ${t.agent_id} | ${next} | ${t.schedule} | ${t.prompt.slice(0, 80)}`,
-    );
-  }
-}
-
-export function listAllTasks(): ScheduledTask[] {
+function listAllTasks(): ScheduledTask[] {
   return getDb()
     .prepare('SELECT * FROM scheduled_tasks ORDER BY status, priority ASC, next_run ASC')
     .all() as ScheduledTask[];
@@ -34,27 +20,7 @@ function usage(): never {
 async function main(): Promise<void> {
   const [, , cmd, ...rest] = process.argv;
   if (cmd === 'create') {
-    const [prompt, cron, chatId, agentId = 'main', priorityRaw = '3'] = rest;
-    if (!prompt || !cron || !chatId) usage();
-    let nextRun: number;
-    try {
-      nextRun = computeNextRun(cron);
-    } catch {
-      console.error(`Invalid cron expression: ${cron}`);
-      process.exit(1);
-    }
-    const priority = Math.min(5, Math.max(1, Number.parseInt(priorityRaw, 10) || 3));
-    const id = `tsch_${randomUUID().slice(0, 8)}`;
-    createScheduledTask({
-      id,
-      chat_id: chatId,
-      prompt,
-      schedule: cron,
-      next_run: nextRun,
-      priority,
-      agent_id: agentId,
-      status: 'active',
-    });
+    const { id, nextRun } = createTaskFromArgs(rest, 'tsch', usage);
     console.log(`Created ${id}, next run ${new Date(nextRun).toLocaleString()}`);
   } else if (cmd === 'list') {
     printTaskTable(listAllTasks());

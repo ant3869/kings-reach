@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.24.1 - An audit: one real bug fixed, and dead weight removed
+
+Found by a full-repo audit (a new scanner plus a read of what it flagged). Nothing here changes the War Room or the dashboard.
+
+**Fixed**
+- **`mission-cli` ran the schedule CLI as well.** It imported `printTaskTable` from `schedule-cli.ts`, and that file calls `main()` as soon as it is
+  imported, so every `mission-cli` command also ran `schedule-cli` on the same arguments. `create` stored **two** tasks (a `msn_` and a `tsch_` one)
+  and printed two replies, so a mission would have fired twice. The shared parts now live in `src/task-cli-shared.ts`, which has no side effects.
+  Checked against a throwaway database: the old code fails the new test, the new code passes. The real database holds no scheduled tasks, so
+  no duplicates were left behind.
+
+**Removed**
+- **`@google/genai`**: never imported anywhere (Gemini is called over plain `fetch`). 35 packages leave `node_modules`, 17 leave the lockfile.
+- Two old composite images, `public/card-states/warroom-cards-idle.png` and `-clean.png` (1.3 MB): named nowhere in the repo.
+- `modelRange()` and `embeddingToHex()`: no production code called them, only their own tests (those tests went with them; the hex-string reading
+  that older rows need is still tested).
+
+**Changed (same behavior, less code)**
+- `schedule-cli` and `mission-cli` share one `create` path (`createTaskFromArgs`) instead of two copies of the same 20 lines.
+- `memory-ingest.ts` builds its 10-field memory record once (`save()`), not twice.
+- `provider-config.ts` copies its defaults with `structuredClone` instead of a JSON round trip.
+
+**Tests:** `tests/task-cli.test.mjs` (5) runs both built CLIs against a throwaway database and pins ids, replies, the 1-5 priority clamp, bad-cron
+and missing-argument errors, and "one command stores one task".
+
+**Looked at and left alone, on purpose:** the sequential `await`s in loops (the scheduler runs due tasks one at a time deliberately; the rest are
+poll and retry loops); the 10 empty `catch` / `except OSError: pass` blocks (each narrow and commented: a process that is already gone, an optional file);
+the exports that only tests use but the file itself calls (test seams); the legacy `individual/*.png` card art (6.9 MB, the fallback when the
+manifest is missing: it overlaps the unfinished visual Build); `chars/` and `frames/` (intermediates of the card-art scripts).
+
 ## 2.24.0 - The action buttons are icons with tooltips
 
 **Changed**

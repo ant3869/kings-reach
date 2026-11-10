@@ -35,10 +35,3 @@ export function rankModels(ids: string[]): string[] {
     .filter((m): m is { id: string; rank: number } => m.rank !== null);
   return ranked.sort((a, b) => a.rank - b.rank || a.id.localeCompare(b.id)).map((m) => m.id);
 }
-
-/** Everything from `low` to `high` inclusive on a ranked list (either end may be passed first). Empty if either is unranked. */
-export function modelRange(ranked: string[], low: string, high: string): string[] {
-  const a = ranked.indexOf(low), b = ranked.indexOf(high);
-  if (a < 0 || b < 0) return [];
-  return ranked.slice(Math.min(a, b), Math.max(a, b) + 1);
-}

@@ -89,3 +89,6 @@ the hard-refresh notice instead of silently misbehaving. A test pins the two tog
 | `council-v6` | 19 | `build_result` (the result card), `build_followup` (re-check / fix / keep) |
 | `council-v7` | 20 | `text` and `summit` messages may carry `attachments` (see [`ATTACHMENTS.md`](ATTACHMENTS.md)) |
 | `council-v8` | 22 | `resume` (clear, a replay follows) and `you` (a line the user typed): a page that reconnects mid-run is caught up. See [`RUN-LIFECYCLE.md`](RUN-LIFECYCLE.md) |
+
+Server versions can also change without a protocol change. Server 23 added a plain-HTTP `GET /busy` on the same port (not a websocket
+message, so it needs no protocol bump); see [`RUN-LIFECYCLE.md`](RUN-LIFECYCLE.md).

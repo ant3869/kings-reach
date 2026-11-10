@@ -1,7 +1,7 @@
 // Model ordering from names alone: generation first, then size. The ladders in Settings are built from this.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { modelRange, modelRank, rankModels } from '../dist/model-rank.js';
+import { modelRank, rankModels } from '../dist/model-rank.js';
 
 test('claude: generation first, then family, so sonnet 4-6 < opus 4-6 < sonnet 5 < opus 5-5', () => {
   const shuffled = ['claude-opus-5-5', 'claude-sonnet-4-6', 'claude-sonnet-5', 'claude-opus-4-6', 'claude-haiku-4-5'];
@@ -33,12 +33,4 @@ test('image, speech and embedding models are never ranked, so they cannot land o
 
 test('equal ranks keep a stable alphabetical order and duplicates collapse', () => {
   assert.deepEqual(rankModels(['m-2b', 'a-2b', 'm-2b']), ['a-2b', 'm-2b']);
-});
-
-test('range: everything from low to high inclusive, either way round, empty when an end is unknown', () => {
-  const ranked = ['haiku-4', 'sonnet-4-6', 'opus-4-6', 'sonnet-5', 'opus-5-5'];
-  assert.deepEqual(modelRange(ranked, 'sonnet-4-6', 'opus-5-5'), ['sonnet-4-6', 'opus-4-6', 'sonnet-5', 'opus-5-5']);
-  assert.deepEqual(modelRange(ranked, 'opus-5-5', 'sonnet-4-6'), ['sonnet-4-6', 'opus-4-6', 'sonnet-5', 'opus-5-5']);
-  assert.deepEqual(modelRange(ranked, 'sonnet-5', 'sonnet-5'), ['sonnet-5']);
-  assert.deepEqual(modelRange(ranked, 'nope', 'opus-5-5'), []);
 });

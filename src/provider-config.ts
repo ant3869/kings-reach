@@ -131,7 +131,7 @@ export function loadTierConfig(): TierConfig | null {
   return loadProviderRouting().tiers ?? null;
 }
 export function defaultProviderRouting(): ProviderRouting {
-  return JSON.parse(JSON.stringify(DEFAULTS)) as ProviderRouting;
+  return structuredClone(DEFAULTS);
 }
 export function loadProviderRouting(): ProviderRouting {
   try {

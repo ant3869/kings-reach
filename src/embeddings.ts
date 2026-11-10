@@ -33,11 +33,7 @@ export function bufferToEmbedding(buffer: Uint8Array): Float32Array {
   return out;
 }
 
-/** Hex encoding satisfies the "embedding hex" requirement without JSON bloat. */
-export function embeddingToHex(embedding: number[]): string {
-  return embeddingToBuffer(embedding).toString('hex');
-}
-
+/** Older rows stored an embedding as a hex string; reading them still works (nothing writes that format any more). */
 export function hexToEmbedding(hex: string): Float32Array {
   return bufferToEmbedding(Buffer.from(hex, 'hex'));
 }

@@ -1,10 +1,8 @@
 // src/mission-cli.ts - Mission Control: schedule-cli plus agent assignment,
 // priority, and status/agent filters. Run as: node dist/mission-cli.js <cmd>.
 
-import { randomUUID } from 'node:crypto';
-import { getDb, createScheduledTask, setTaskStatus, type ScheduledTask } from './db.js';
-import { computeNextRun } from './scheduler.js';
-import { printTaskTable } from './schedule-cli.js';
+import { getDb, setTaskStatus, type ScheduledTask } from './db.js';
+import { createTaskFromArgs, printTaskTable } from './task-cli-shared.js';
 
 function usage(): never {
   console.log('Usage: mission-cli <create|list|delete|pause|resume> ...');
@@ -34,27 +32,7 @@ function filteredList(status?: string, agent?: string): ScheduledTask[] {
 async function main(): Promise<void> {
   const [, , cmd, ...rest] = process.argv;
   if (cmd === 'create') {
-    const [prompt, cron, chatId, agentId = 'main', priorityRaw = '3'] = rest;
-    if (!prompt || !cron || !chatId) usage();
-    let nextRun: number;
-    try {
-      nextRun = computeNextRun(cron);
-    } catch {
-      console.error(`Invalid cron expression: ${cron}`);
-      process.exit(1);
-    }
-    const priority = Math.min(5, Math.max(1, Number.parseInt(priorityRaw, 10) || 3));
-    const id = `msn_${randomUUID().slice(0, 8)}`;
-    createScheduledTask({
-      id,
-      chat_id: chatId,
-      prompt,
-      schedule: cron,
-      next_run: nextRun,
-      priority,
-      agent_id: agentId,
-      status: 'active',
-    });
+    const { id, agentId, priority, nextRun } = createTaskFromArgs(rest, 'msn', usage);
     console.log(`Mission ${id} -> ${agentId} (p${priority}), next ${new Date(nextRun).toLocaleString()}`);
   } else if (cmd === 'list') {
     const status = rest.find((a) => a.startsWith('--status='))?.slice(9);
