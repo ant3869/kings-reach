@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.23.0 - New hold-to-talk button, and the message box stays on screen
+
+**Added**
+- **The hold-to-talk button is now the gold-ringed microphone art you supplied.** The original was 87px, which goes soft at button
+  size, so one larger version was generated from it (same double gold ring, same lit capsule), its gold toned down about 15% to match
+  the page, and saved as `public/warroom-mic.webp` (320px, 28KB, transparent corners). "Hold to talk / or hold Space" stays as real text
+  under it, so the button still has its name. Holding it rings the picture in red and pulses; it stops pulsing for people who ask for less
+  motion; when the mic is unavailable it dims and loses its colour. Hover glows. The old horn icon is removed from the sprite.
+- **The message box can no longer fall off the bottom of the screen.** The attach, message, Send, Convene, Build and Hush rows now sit in
+  one dock that sticks to the bottom of the window while the page is taller than it (it was below the fold at 1080p once the cards grew).
+- **The transcript is shorter while idle on wide screens** (36% of the window height from 1500x760, was 45%), and gets its 45% back as soon
+  as a run starts and the cards shrink. Client 42.
+
+**Tests:** `tests/warroom-mic.test.mjs` (5: the file is a real transparent 320px WebP under 60KB, it is on the server's allowlist and carries
+the version query, the picture is hidden from assistive tech with the captions as the name, every state is styled, the dock holds both rows,
+the log rule comes after the base rule) and 10 browser checks (the picture is served as `image/webp` and decodes at 320px, the name is intact,
+the message box is on screen at 1440x900, 1600x900, 1920x1080 and 2560x1440, the log height at each). Five of the six rules were broken
+on purpose and caught by the right test. The browser run also caught that the first version of the log rule never applied: it sat above the
+base `#log` rule, and equal CSS specificity means the later rule wins; the unit test now checks the order. 266 Node and 139 Python on a clean
+export of what is staged; 180 browser checks against the working folder.
+Still true at 1080p: the page scrolls a little (the Voice panel's checkboxes are below the fold) and the idle status panel is taller than
+it needs to be; both are worth shrinking next.
+
 ## 2.22.1 - The War Room cards are full size when idle, and bigger on a big screen
 
 Reported with a screenshot: the five agent cards were small and a Build that was asked to enlarge them changed nothing.

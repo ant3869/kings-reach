@@ -11,7 +11,7 @@ import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const WARROOM_CLIENT_VERSION = 41;
+export const WARROOM_CLIENT_VERSION = 42;
 export const WARROOM_PROTOCOL = 'council-v8'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
@@ -31,7 +31,7 @@ function manifestAssets(): string[] {
     return []; // no manifest: the client falls back to the original four-state art
   }
 }
-export const WARROOM_STATIC: readonly string[] = ['kr-attach.js', 'warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-cancel.js', 'warroom-result.js', 'warroom-demo.js',
+export const WARROOM_STATIC: readonly string[] = ['kr-attach.js', 'warroom-mic.webp', 'warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-cancel.js', 'warroom-result.js', 'warroom-demo.js',
   'warroom-casting.js', 'card-director.js', 'mic-worklet.js',
   'warroom-council-cards.png', 'warroom-chamber-bg.png', ...CARD_ASSETS, ...manifestAssets()];
 
@@ -126,6 +126,8 @@ body.ran #council{zoom:.62;margin:10px 0 4px}
 @media(min-width:2200px) and (min-height:1100px){#council{zoom:1.45}body.ran #council{zoom:.9}}
 
 #log{height:45vh;min-height:310px;overflow-y:auto;border:2px solid #8e6a2c;border-radius:4px;padding:18px;background:linear-gradient(#060a11ed,#080b12f5);font:14px/1.55 system-ui;display:flex;flex-direction:column;gap:12px;box-shadow:inset 0 0 0 3px #05060a,inset 0 0 30px #000,0 8px 24px #000}
+/* wide screens have bigger cards, so the transcript gets less of the height while idle (a run shrinks the cards again, and the log grows back) */
+@media(min-width:1500px) and (min-height:760px){#log{height:36vh;min-height:240px}body.ran #log{height:45vh;min-height:310px}}
 .bubble{--ac:var(--gold);border-left:3px solid var(--ac);padding:2px 0 2px 12px;max-width:96%}
 .bubble .who{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--ac)}
 .bubble .tag{font-size:10px;margin-left:8px;padding:1px 7px;border-radius:999px;border:1px solid var(--ac);color:var(--ac)}
@@ -147,15 +149,16 @@ body.ran #council{zoom:.62;margin:10px 0 4px}
 .panel h3{margin:0 0 8px;font:600 13px system-ui;color:var(--gold);letter-spacing:.5px}.panel h3 small{color:#6e7681;font-weight:400}
 .panel table{width:100%;border-collapse:collapse}.panel td{padding:3px 0;border-bottom:1px solid #1e1e2a}.panel td+td{text-align:right;color:#e8dcc0}
 .stagetimes{margin-top:8px;color:#9aa3ad;font-size:11px}
-#mic{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:132px;height:132px;min-width:64px;min-height:64px;margin:8px auto 14px;padding:10px;border-radius:50%;border:4px solid #c99a42;background:radial-gradient(circle at 50% 38%,#1b1810 0,#0b0b0d 70%);color:#f6dd9a;font:600 13px Georgia;line-height:1.15;text-align:center;cursor:pointer;user-select:none;touch-action:none;box-shadow:0 0 0 3px #0b0b0d,0 0 0 5px #8e6a2c,0 0 18px #d79b3566,inset 0 0 18px #000;transition:box-shadow .15s,border-color .15s}
-#mic .ic{width:36px;height:36px;color:#e2bf62}
-#mic .michint{font:11px system-ui;color:#d8c58f}#mic .micrec{display:none;font:600 12px system-ui}
-#mic:hover:not(:disabled):not(.hot){border-color:#ffd26c;box-shadow:0 0 0 3px #0b0b0d,0 0 0 5px #c99a42,0 0 26px #d79b35aa,inset 0 0 18px #000}
-#mic.hot{background:radial-gradient(circle at 50% 38%,#4a0f12,#220708 75%);border-color:#ff7b72;color:#fff;box-shadow:0 0 0 3px #0b0b0d,0 0 0 5px #b62324,0 0 28px #f85149;animation:micpulse 1.2s ease-in-out infinite}
-#mic.hot .ic{color:#fff}#mic.hot .miccap,#mic.hot .michint{display:none}#mic.hot .micrec{display:block}
-@keyframes micpulse{50%{box-shadow:0 0 0 3px #0b0b0d,0 0 0 8px #b6232499,0 0 38px #f85149}}
-@media(prefers-reduced-motion:reduce){#mic.hot{animation:none;box-shadow:0 0 0 3px #0b0b0d,0 0 0 8px #b62324,0 0 28px #f85149}#mic{transition:none}}
-#mic:disabled{opacity:.45;cursor:not-allowed;border-color:#6b5a38;box-shadow:0 0 0 3px #0b0b0d,inset 0 0 18px #000}
+#mic{display:flex;flex-direction:column;align-items:center;gap:3px;width:176px;margin:4px auto 10px;padding:6px 6px 8px;border:0;border-radius:16px;background:none;color:#f6dd9a;font:600 13px Georgia;line-height:1.15;text-align:center;cursor:pointer;user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent}
+/* the button art (warroom-mic.webp, a gold-ringed disc with transparent corners) is the face; the captions stay real text underneath */
+#mic .micface{display:block;width:144px;height:144px;border-radius:50%;background:url('/warroom/warroom-mic.webp?v=${WARROOM_CLIENT_VERSION}') center/100% 100% no-repeat;filter:drop-shadow(0 5px 7px #000);transition:box-shadow 180ms ease,transform 180ms ease}
+#mic .michint{font:11px system-ui;color:#d8c58f}#mic .micrec{display:none;font:600 12px system-ui;color:#ffb3ad}
+#mic:hover:not(:disabled):not(.hot) .micface{box-shadow:0 0 26px #d79b35aa;transform:scale(1.03)}
+#mic.hot .micface{box-shadow:0 0 0 3px #0b0b0d,0 0 0 6px #b62324,0 0 30px #f85149;animation:micpulse 1.2s ease-in-out infinite}
+#mic.hot .miccap,#mic.hot .michint{display:none}#mic.hot .micrec{display:block}
+@keyframes micpulse{50%{box-shadow:0 0 0 3px #0b0b0d,0 0 0 9px #b6232499,0 0 40px #f85149}}
+@media(prefers-reduced-motion:reduce){#mic.hot .micface{animation:none;box-shadow:0 0 0 3px #0b0b0d,0 0 0 8px #b62324,0 0 28px #f85149}#mic .micface{transition:none}#mic:hover:not(:disabled):not(.hot) .micface{transform:none}}
+#mic:disabled{opacity:.45;cursor:not-allowed}#mic:disabled .micface{filter:grayscale(.7)}
 button.go{display:inline-flex;align-items:center;justify-content:center;gap:8px}
 button.go[hidden]{display:none} /* an author display value beats the browser's own [hidden] rule: without this a hidden Cancel run is drawn */
 .composer .actions{display:flex;gap:8px;flex:0 0 auto} /* Send and Convene wrap together, never one alone */
@@ -167,6 +170,7 @@ button.go.danger:hover{background:#2a0f10}
 button.go.convene,button.go.build{background:#090b10dd;border:1px solid #c99a42;color:#f0d88e}
 button.go.attach{padding:10px 12px;background:#090b10dd;border:1px solid #c99a42;color:#f0d88e}
 button.go.danger{background:transparent;border:1px solid #ff7b72;color:#ff9a93}
+.dock{position:sticky;bottom:0;z-index:5;padding:12px 0 8px;background:linear-gradient(#05070b00,#05070bf0 14px)} /* the message box stays reachable however tall the page is */
 #micstate,#heard{font:12px system-ui;color:#8b949e;min-height:16px;margin-top:6px}
 .panel label{display:block;margin-top:7px;color:#c9d1d9;cursor:pointer}
 .composer{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
@@ -240,9 +244,8 @@ button.go,input#msg{min-height:44px}
 `;
 
 /** Which plan the Build button will execute (the archive lives on the Plan Library page). */
-// Original icon sprite (hand-drawn paths, currentColor). Use: <svg class="ic"><use href="#ic-horn"/></svg>
+// Original icon sprite (hand-drawn paths, currentColor). Use: <svg class="ic"><use href="#ic-quill"/></svg>
 const ICON_SPRITE = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
-<symbol id="ic-horn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14.5c0-2.6 1.6-4 4.5-4.2L17 5c2.4-1.2 4 .1 4 2.4v9.2c0 2.3-1.6 3.6-4 2.4l-9.5-5.3C4.6 13.5 3 16 3 14.5z" fill="currentColor" fill-opacity=".18"/><path d="M8 10.4v7.2M13 7.8v9.4"/><circle cx="4.6" cy="15.6" r="1.3" fill="currentColor"/></symbol>
 <symbol id="ic-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14.5c0-2.6 1.6-4 4.5-4.2L17 5c2.4-1.2 4 .1 4 2.4v9.2c0 2.3-1.6 3.6-4 2.4l-9.5-5.3C4.6 13.5 3 16 3 14.5z" fill="currentColor" fill-opacity=".18"/><path d="M8 10.4v7.2M13 7.8v9.4"/><path d="M3 3l18 18" stroke-width="2.2"/></symbol>
 <symbol id="ic-quill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 3.5C12 3.5 6.5 8.5 5.5 16l-1 4.5 4.5-1c7.5-1 12-6.5 11.5-16z" fill="currentColor" fill-opacity=".18"/><path d="M4.5 20.5L15 10M9.5 13.5h5M12 10.5h4"/></symbol>
 <symbol id="ic-crowns" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 13V5.5L10.3 8 12 4.5 13.7 8l1.8-2.5V13z" fill="currentColor" fill-opacity=".25"/><path d="M1.5 19v-6l1.6 2 1.4-3 1.4 3 1.6-2v6zM16.5 19v-6l1.6 2 1.4-3 1.4 3 1.6-2v6z"/><path d="M1.5 21h6M16.5 21h6M8.5 15h7"/></symbol>
@@ -309,16 +312,18 @@ ${wrapInShell('warroom', '', `<div class="wrap">
 <div class="main">
 <section id="chatzone">
 <div id="log" role="log" aria-live="polite" aria-label="Council transcript" tabindex="0"></div>
+<div class="dock">
 <div id="attachtray" class="attachtray" aria-label="Files attached to your next message" hidden></div>
 <div class="composer"><button type="button" class="go alt attach attachbtn" id="attachbtn" aria-label="Attach files" title="Attach files (or drop them here, or paste a screenshot)"><svg class="ic" aria-hidden="true"><use href="#ic-clasp"/></svg></button><input id="msg" placeholder="Ask an agent, or convene the council" aria-label="Message: Enter asks one agent, Ctrl+Enter convenes the council" title="Enter asks one agent. Ctrl+Enter convenes the council." autocomplete="off">
 <span class="actions"><button class="go send" id="send"><svg class="ic" aria-hidden="true"><use href="#ic-quill"/></svg>Send</button><button class="go alt convene" id="summitbtn"><svg class="ic" aria-hidden="true"><use href="#ic-crowns"/></svg>Convene council</button></span></div>
 <div class="composer"><button class="go alt build" id="buildbtn"><svg class="ic" aria-hidden="true"><use href="#ic-hammer"/></svg>Build the verdict</button><button class="go stop danger" id="cancelbtn"><svg class="ic" aria-hidden="true"><use href="#ic-muted"/></svg>Hush voices</button></div>
+</div>
 <div id="planbox">${planLine(plan)}</div>
 <div class="hint">Voice tips: say "council, ..." for a full deliberation, "hey Ops, ..." for one agent, "build it" to execute the plan.</div>
 </section>
 <aside>
 <div class="panel"><h3>Voice</h3>
-<button id="mic" disabled aria-label="Hold to talk (or hold Space)"><svg class="ic" aria-hidden="true"><use href="#ic-horn"/></svg><span class="miccap">Hold to talk</span><span class="michint">or hold Space</span><span class="micrec">Recording. Release to send.</span></button>
+<button id="mic" disabled aria-label="Hold to talk (or hold Space)"><span class="micface" aria-hidden="true"></span><span class="miccap">Hold to talk</span><span class="michint">or hold Space</span><span class="micrec">Recording. Release to send.</span></button>
 <div id="micstate" role="status" aria-live="polite"></div><div id="heard"></div>
 <label><input type="checkbox" id="handsfree" disabled> Hands-free (auto-detect speech)</label>
 <label><input type="checkbox" id="speak" checked> Agents speak aloud</label>

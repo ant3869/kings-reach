@@ -15,7 +15,7 @@ test('icons: the sprite is defined exactly once and every symbol has a unique id
 });
 
 test('icons: every <use> points at a symbol that exists', () => {
-  assert.ok(uses.length >= 6, `expected the page to use its icons, found ${uses}`);
+  assert.ok(uses.length >= 5, `expected the page to use its icons, found ${uses}`);
   for (const id of uses) assert.ok(symbols.includes(id), `#${id} is used but not defined`);
 });
 
@@ -42,6 +42,7 @@ test('buttons: icon-only buttons say what they do, and the hold-to-talk button k
   const mic = buttons.find((b) => /id="mic"/.test(b.attrs));
   assert.match(mic.attrs, /aria-label="Hold to talk \(or hold Space\)"/);
   assert.match(mic.inner, /class="micrec"/, 'the recording caption exists to swap in while held');
+  assert.match(mic.inner, /<span class="micface" aria-hidden="true"><\/span>/, 'the picture is the face and is hidden from assistive tech; the captions are the name');
 });
 
 test('the message box fits its job: a short placeholder, with the shortcuts kept in its name and tooltip', () => {

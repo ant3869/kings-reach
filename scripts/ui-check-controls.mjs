@@ -30,7 +30,7 @@ export async function controlChecks({ open, js, check, sleep, cdp }) {
   const drawnHidden = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('[hidden]')].filter((e) => getComputedStyle(e).display !== 'none').map((e) => e.id || e.className || e.tagName))`));
   check('icons: nothing marked hidden is actually drawn (a display rule on a button once re-showed Cancel run while idle)', drawnHidden.length === 0, JSON.stringify(drawnHidden));
   const iconFacts = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('svg.ic')].map((s) => { const r = s.getBoundingClientRect(); const id = s.querySelector('use').getAttribute('href'); return { id, w: Math.round(r.width), h: Math.round(r.height), defined: !!document.querySelector(id) }; }))`));
-  check('icons: every icon renders at a visible size and points at a real symbol', iconFacts.length >= 6 && iconFacts.every((i) => i.w >= 18 && i.h >= 18 && i.defined), JSON.stringify(iconFacts));
+  check('icons: every icon renders at a visible size and points at a real symbol', iconFacts.length >= 5 && iconFacts.every((i) => i.w >= 18 && i.h >= 18 && i.defined), JSON.stringify(iconFacts));
   const bar = JSON.parse(await js(`JSON.stringify(Object.fromEntries(['attachbtn', 'msg', 'send', 'summitbtn'].map((id) => [id, Math.round(document.getElementById(id).getBoundingClientRect().top)])))`));
   check('icons: attach, message box, Send and Convene stay on one row', new Set(Object.values(bar)).size === 1, JSON.stringify(bar));
   check('icons: Send still reads "Send" (the icon is decoration, not the label)', (await js(`document.getElementById('send').textContent.trim()`)) === 'Send' && (await js(`document.getElementById('buildbtn').textContent.trim()`)) === 'Build the verdict');
@@ -40,8 +40,11 @@ export async function controlChecks({ open, js, check, sleep, cdp }) {
     return JSON.stringify({ text: Math.ceil(c.measureText(i.placeholder).width), room: Math.floor(i.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) }); })()`));
   check('icons: the message box placeholder is not cut off beside the wider buttons (at 1100px wide)', fit.text <= fit.room, JSON.stringify(fit));
   await cdp('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  const micBox = JSON.parse(await js(`JSON.stringify((() => { const r = document.getElementById('mic').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })())`));
+  const micBox = JSON.parse(await js(`JSON.stringify((() => { const r = document.querySelector('#mic .micface').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })())`));
   check('icons: hold-to-talk is a big, round target (at least 96px, far over the 44px touch minimum)', micBox.w >= 96 && micBox.h >= 96 && micBox.w === micBox.h, JSON.stringify(micBox));
+  const art = JSON.parse(await js(`(async () => { const res = await fetch('/warroom/warroom-mic.webp'); const bg = getComputedStyle(document.querySelector('#mic .micface')).backgroundImage; const img = new Image(); img.src = /url\\("?([^")]+)/.exec(bg)[1]; await img.decode(); return JSON.stringify({ status: res.status, type: res.headers.get('content-type'), bg: bg.includes('warroom-mic.webp'), natural: img.naturalWidth }); })()`));
+  check('mic art: the picture is served as image/webp, the button uses it, and it decodes at 320px', art.status === 200 && art.type === 'image/webp' && art.bg && art.natural === 320, JSON.stringify(art));
+  check('mic art: the button still reads as one control named "Hold to talk" (picture hidden from assistive tech)', (await js(`(() => { const m = document.getElementById('mic'); return m.getAttribute('aria-label') + '|' + m.querySelector('.micface').getAttribute('aria-hidden') + '|' + m.querySelector('.miccap').textContent; })()`)) === 'Hold to talk (or hold Space)|true|Hold to talk');
   const micText = (cls) => js(`(() => { const e = document.querySelector('#mic .${cls}'); return e ? getComputedStyle(e).display : 'missing'; })()`);
   const micIdle = { cap: await micText('miccap'), rec: await micText('micrec') };
   await js(`document.getElementById('mic').classList.add('hot')`);
@@ -58,12 +61,17 @@ export async function controlChecks({ open, js, check, sleep, cdp }) {
     await sleep(250);
     const s = await seatFacts();
     check(`cards: IDLE at ${w}x${h} the row is zoomed x${zoom}, cards are about ${Math.round(184 * zoom)}px wide, and all five stay on one row (the idle page draws stage chips; they must not shrink the cards)`, s.zoom === zoom && Math.abs(s.width - Math.round(184 * zoom)) <= 2 && s.rows === 1 && s.seats === 5 && !s.ran && s.chips > 0, JSON.stringify(s));
+    const dock = JSON.parse(await js(`JSON.stringify((() => { const m = document.getElementById('msg').getBoundingClientRect(), l = document.getElementById('log').getBoundingClientRect(); return { top: Math.round(m.top), bottom: Math.round(m.bottom), vh: innerHeight, logH: Math.round(l.height), scrolls: document.documentElement.scrollHeight > innerHeight }; })())`));
+    check(`message box: at ${w}x${h} the message box is on screen without scrolling (page ${dock.scrolls ? 'is taller than the window, so the dock holds it' : 'fits'})`, dock.top >= 0 && dock.bottom <= dock.vh, JSON.stringify(dock));
+    if (w >= 1500) check(`transcript: at ${w}x${h} the idle log is the shorter 36% of the height`, Math.abs(dock.logH - Math.round(h * 0.36)) <= 2 || dock.logH === 240, JSON.stringify(dock));
   }
   await open('/warroom?demo=build&speed=30&still=1', { fake: true });
   await screen(1920, 1080); // after open(): open() always resets the viewport to 1440x900
   await sleep(600);
   const running = await seatFacts();
   check('cards: while a run is going the compact size scales with the screen too (x0.8 at 1920px, still one row)', running.ran && running.zoom === 0.8 && running.rows === 1, JSON.stringify(running));
+  const runLog = Number(await js(`Math.round(document.getElementById('log').getBoundingClientRect().height)`));
+  check('transcript: while a run is going the log gets its height back (45% at 1080p)', Math.abs(runLog - Math.round(1080 * 0.45)) <= 2, String(runLog));
   await screen(1440, 900);
   await sleep(250);
   const runningSmall = await seatFacts();
