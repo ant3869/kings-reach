@@ -102,8 +102,9 @@
         if (!text && !ids.length) return null;
         return { text: text || (ids.length === 1 ? 'Please look at the attached file.' : 'Please look at the attached files.'), attachments: ids };
       },
-      /** For showing in the transcript, e.g. "  \u{1F4CE} shot.png, notes.pdf". Call before clear(). */
-      summary() { return entries.length ? '  \u{1F4CE} ' + entries.map((e) => e.name).join(', ') : ''; },
+      /** The names (names()) or the ready-made note (summary(), e.g. "  \u{1F4CE} shot.png") for the transcript. Call before clear(). */
+      names: () => entries.map((e) => e.name),
+      summary: () => describe(entries.map((e) => e.name)),
       /** The message went out: forget the chips (the files stay, the agent needs them). */
       clear() { entries.splice(0).forEach((e) => e.thumb && URL.revokeObjectURL(e.thumb)); render(); },
       count: () => entries.length,
@@ -111,5 +112,8 @@
     };
   }
 
-  return { mount, size, MAX_FILE_BYTES, MAX_FILES };
+  /** The transcript's note for a message's files, e.g. "  \u{1F4CE} shot.png, notes.pdf". Also used when the server replays a message. */
+  const describe = (names) => (names.length ? '  \u{1F4CE} ' + names.join(', ') : '');
+
+  return { mount, size, describe, MAX_FILE_BYTES, MAX_FILES };
 });

@@ -5,7 +5,8 @@ Browser -> server
         (set_voice: {"agent_id", "voice"}; casting asks for the voice list and who has which)
   bytes one utterance, 16 kHz mono int16 PCM -> local Whisper -> handled exactly like typed text
 Server -> browser
-  JSON  {"agent_id", "text", "kind"} chat line | {"type": "stage"|"thinking"|"transcript"|"metrics"|"voice"|"casting"
+  JSON  {"agent_id", "text", "kind"} chat line | {"type": "you", "kind", "text", "files"} (replay only: a line the user typed)
+         | {"type": "resume"} (the replay of everything this page missed follows: clear the transcript first) | {"type": "stage"|"thinking"|"transcript"|"metrics"|"voice"|"casting"
         |"activity" (what an agent is doing right now) |"meter" (overall progress estimate)}
         | {"ok": true, ...} | {"error": "..."}       (agent_id "war-room" = status line)
   bytes  <json header>\n<WAV>  one spoken clip: header {"agent_id", "seq"}
@@ -20,6 +21,7 @@ import re
 import socket
 import sys
 import time
+from collections import deque
 
 import websockets
 
@@ -43,14 +45,28 @@ except ImportError:  # run as a script: python warroom/server.py
     from router import COUNCIL, read_pin, route, write_pin
     from voice import Voice
 
-PROTOCOL = "council-v7"  # bump only when the wire protocol changes (v4: activity + meter; v5: cancel_ack; v6: build_result, build_followup; v7: text/summit carry `attachments`)
-SERVER_VERSION = 21  # bump on every server.py deploy; shown in the client via pong
+PROTOCOL = "council-v8"  # bump only when the wire protocol changes (v4: activity + meter; v5: cancel_ack; v6: build_result, build_followup; v7: text/summit carry `attachments`; v8: resume + you, the replay a returning page gets)
+SERVER_VERSION = 22  # bump on every server.py deploy; shown in the client via pong
 NARRATION_BACKLOG = 1  # commentary never queues behind more than this many pending clips
 HISTORY_TURNS = 8
 WORK_LOCK = asyncio.Lock()  # one council or build at a time, across all tabs
 BUILD_RE = re.compile(r"^\s*(build it|build|execute( the plan)?|make it so)[.!]*\s*$", re.IGNORECASE)
 VOICE = Voice()
 SESSIONS = set()
+DETACHED = []  # sessions whose tab left while work was running: the work goes on, and the next tab takes them over
+RETIRE_AFTER_S = 600  # a detached session whose work has finished waits this long for a tab to collect the result
+JOURNAL_LIMIT = 2000  # messages a session remembers so a returning tab can be caught up
+JOURNAL_TYPES = frozenset({"stage", "thinking", "activity", "meter", "metrics", "provider", "build_progress", "build_result", "transcript"})
+
+
+def busy_tasks():
+    """How many council / build / reply tasks are running across every tab, including sessions whose tab has left."""
+    return sum(len(s.tasks) for s in (*SESSIONS, *DETACHED))
+
+
+def keep_for_replay(obj):
+    """What a page needs to be redrawn after a reload: chat lines and the live state, never audio or one-off replies (pong, ack)."""
+    return isinstance(obj, dict) and (obj.get("type") in JOURNAL_TYPES or ("text" in obj and "agent_id" in obj))
 
 
 def log(*parts):
@@ -59,19 +75,22 @@ def log(*parts):
 
 
 async def broadcast(obj):
-    """Send to every open tab. A tab that has just gone away must never break the send to the others."""
+    """Send to every open tab. A tab that has just gone away is skipped, never an error for the others (Session.send absorbs it)."""
     for session in list(SESSIONS):
-        try:
-            await session.send(obj)
-        except websockets.ConnectionClosed:
-            pass
+        await session.send(obj)
 
 
 class Session:
-    """One browser tab: history, send lock, speech queue, background tasks. Also the council's `room`."""
+    """One browser tab: history, send lock, speech queue, background tasks. Also the council's `room`.
+
+    Work belongs to the session, not to the socket: reloading the page must not cancel a council or a build. While no tab is
+    attached (`ws` is None) messages are only journaled; the next tab to connect takes the session over and is replayed them.
+    """
 
     def __init__(self, websocket):
         self.ws = websocket
+        self.journal = deque(maxlen=JOURNAL_LIMIT)
+        self._retire_timer = None
         self.history = []
         self.tasks = set()
         self.voice_on = False
@@ -80,9 +99,45 @@ class Session:
         self._send_lock = asyncio.Lock()
         self.speaker = asyncio.create_task(self._speak_loop())
 
-    async def send(self, obj):
+    async def send(self, obj, record=True):
+        """Journal, then write, under the lock that attach() also takes for its whole replay: a message is either in the replay or written live after it, never both."""
         async with self._send_lock:
-            await self.ws.send(json.dumps(obj) if isinstance(obj, dict) else obj)
+            if record and keep_for_replay(obj):
+                self.journal.append(obj)
+            await self._write(obj)
+
+    async def _write(self, obj):
+        ws = self.ws
+        if ws is None:
+            return  # nobody is looking: the work carries on, and the journal has it
+        try:
+            await ws.send(json.dumps(obj) if isinstance(obj, dict) else obj)
+        except websockets.ConnectionClosed:
+            self.ws = None  # the tab left; handle_client decides whether anyone is still waiting on this session
+
+    def has_build_card(self):
+        return any(m.get("type") == "build_result" for m in self.journal)
+
+    def detach(self):
+        """The tab left while work was running: let it finish, and keep what happens for the next tab."""
+        self.ws, self.voice_on = None, False
+        self.hush()
+        DETACHED.append(self)
+
+    async def remember(self, obj):
+        """Keep a line for replay without sending it: the page that typed it has already drawn it."""
+        async with self._send_lock:
+            self.journal.append(obj)
+
+    async def attach(self, websocket):
+        """Hand a detached session to a new tab, caught up on everything it missed.
+
+        `resume` first: the page may be the same one that blipped and reconnected, so it clears its transcript before the replay."""
+        async with self._send_lock:
+            self.ws = websocket
+            await self._write({"type": "resume"})
+            for obj in list(self.journal):
+                await self._write(obj)
 
     # --- the council's room interface ------------------------------------------------
     async def status(self, text):
@@ -113,11 +168,11 @@ class Session:
             agent_id, text = await self.speech.get()
             try:
                 async for wav in VOICE.speak(agent_id, text):
+                    if self.ws is None:
+                        break  # the tab left: do not synthesize for nobody
                     self._seq += 1
                     header = json.dumps({"agent_id": agent_id, "seq": self._seq}).encode("utf-8")
                     await self.send(header + b"\n" + wav)
-            except websockets.ConnectionClosed:
-                return
             except Exception as exc:  # noqa: BLE001 - a bad clip never stops the room
                 log("tts failed:", repr(exc)[:200])
 
@@ -129,21 +184,27 @@ class Session:
     def spawn(self, coro, label):
         async def guarded():
             try:
-                try:
-                    await coro
-                except asyncio.CancelledError:
-                    await self.status(f"{label} cancelled.")
-                except Exception as exc:  # noqa: BLE001 - one bad turn never drops the client
-                    if isinstance(exc, websockets.ConnectionClosed):
-                        raise
-                    log(f"{label} FAILED:", repr(exc)[:300])
-                    await self.send({"agent_id": "main", "text": f"{label} failed: {exc}", "kind": "error"})
-            except websockets.ConnectionClosed:
-                pass  # the tab left; nobody to tell
+                await coro
+            except asyncio.CancelledError:
+                await self.status(f"{label} cancelled.")
+            except Exception as exc:  # noqa: BLE001 - one bad turn never drops the client
+                log(f"{label} FAILED:", repr(exc)[:300])
+                await self.send({"agent_id": "main", "text": f"{label} failed: {exc}", "kind": "error"})
 
         task = asyncio.create_task(guarded())
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
+        task.add_done_callback(self._retire_if_orphaned)
+
+    def _retire_if_orphaned(self, _task):
+        """Work finished with nobody watching: keep the result for the next tab, but not forever."""
+        if self.ws is None and not self.tasks and self in DETACHED and self._retire_timer is None:
+            self._retire_timer = asyncio.get_running_loop().call_later(RETIRE_AFTER_S, self._retire)
+
+    def _retire(self):
+        if self in DETACHED:
+            DETACHED.remove(self)
+            self.close()
 
     def convo(self):
         return "\n".join(f"{who}: {what[:400]}" for who, what in self.history[-HISTORY_TURNS:])
@@ -206,7 +267,7 @@ class Session:
         text = str(payload.get("text", "")).strip()
         if kind == "ping":
             await self.send({"ok": True, "pong": PROTOCOL, "server": SERVER_VERSION, "pid": os.getpid(),
-                             "stages": list(STAGES), "pinned": read_pin()})
+                             "stages": list(STAGES), "pinned": read_pin(), "busy": busy_tasks()})
         elif kind == "pin":
             write_pin(payload.get("agent_id"))
             await self.send({"ok": True, "pinned": read_pin()})
@@ -230,6 +291,7 @@ class Session:
             if problem:
                 await self.status(f"Not sent: {problem}.")
             else:
+                await self.remember({"type": "you", "kind": kind, "text": text, "files": [name for name, _ in files]})
                 await self.handle_text(text, kind, attachments.block(files))
         elif kind == "build":
             await self.handle_text("build it", "build")
@@ -253,21 +315,39 @@ class Session:
             self.speech.put_nowait((agent_id, f"I am {persona['name']}, the {persona['title']}."))
 
     def close(self):
+        if self._retire_timer:
+            self._retire_timer.cancel()
         self.speaker.cancel()
         for task in list(self.tasks):
             task.cancel()  # kills the agent subprocesses too
 
 
+def take_over(websocket):
+    """(session, resumed): the session a reload left running if there is one, otherwise a fresh one for this tab."""
+    if not DETACHED:
+        return Session(websocket), False
+    session = DETACHED.pop()
+    if session._retire_timer:
+        session._retire_timer.cancel()
+        session._retire_timer = None
+    return session, True
+
+
 async def handle_client(websocket):
-    session = Session(websocket)
+    session, resumed = take_over(websocket)
     SESSIONS.add(session)
-    log(f"client connected (open tabs now: {len(SESSIONS)})")
+    log(f"client connected (open tabs now: {len(SESSIONS)})" + (f", took over {len(session.tasks)} task(s) that kept running" if resumed else ""))
     try:
-        await session.status(f"Welcome to the War Room (server v{SERVER_VERSION}, {PROTOCOL}).")
-        await session.send(VOICE.info())
-        await session.send(casting.casting_message())
+        if resumed:
+            await session.attach(websocket)
+            welcome = "Reconnected: the work you started kept running while this page was away. Everything it said meanwhile is above."
+        else:
+            welcome = f"Welcome to the War Room (server v{SERVER_VERSION}, {PROTOCOL})."
+        await session.send({"agent_id": "war-room", "text": welcome}, record=False)  # greetings are never replayed
+        await session.send(VOICE.info(), record=False)
+        await session.send(casting.casting_message(), record=False)
         card = latest_build_card()  # a refresh must not lose the buttons that continue the last build
-        if card:
+        if card and not session.has_build_card():
             await session.send(card)
         async for raw in websocket:
             if isinstance(raw, bytes):
@@ -283,8 +363,12 @@ async def handle_client(websocket):
         pass  # tab closed / network blip: normal, not a traceback
     finally:
         SESSIONS.discard(session)
-        session.close()
-    log(f"client disconnected (open tabs now: {len(SESSIONS)})")
+        running = len(session.tasks)
+        if running:
+            session.detach()  # a reload or a closed tab must not cancel a council or a build: Cancel is the way to stop one
+        else:
+            session.close()
+    log(f"client disconnected (open tabs now: {len(SESSIONS)})" + (f"; {running} task(s) keep running for the next tab" if running else ""))
 
 
 async def warm_voice():

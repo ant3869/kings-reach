@@ -94,6 +94,28 @@ class SummitTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Attached", json.loads(council.VERDICT_JSON.read_text())["question"])
         self.assertEqual(data["outcome"], "verdict")
 
+    async def test_a_council_cancelled_mid_debate_still_leaves_a_ledger_row_and_no_verdict(self):
+        self.fail_debate_for = None
+        real = council.ab.ask
+
+        async def ask(agent, prompt, *, schema=None, **kw):
+            if schema is not council.PLAN and schema is not council.TAKE:  # the debate round: Cancel arrives now
+                raise asyncio.CancelledError()
+            return await real(agent, prompt, schema=schema, **kw)
+
+        council.ab.ask = ask
+        room = Room()
+        try:
+            await council.Council(room).deliberate("should we keep the cli wrapper?")
+        except asyncio.CancelledError:
+            pass
+        (row,) = [json.loads(x) for x in council.RUNS_FILE.read_text().splitlines()]
+        self.assertEqual((row["kind"], row["outcome"], row["interrupted_at"]), ("summit", "cancelled", "debate"))
+        self.assertEqual(row["question"], "should we keep the cli wrapper?")
+        self.assertNotIn("changed_files", row, "a council changes no files")
+        self.assertFalse(council.VERDICT_JSON.exists(), "a cancelled council must not overwrite the verdict a Build would run")
+        self.assertEqual(room.final()[0]["state"], "cancelled")
+
     async def test_a_toolless_debate_cannot_talk_a_verified_position_down(self):
         _, data = await self.convene()
         research, ops = data["mind_changes"]["research"], data["mind_changes"]["ops"]

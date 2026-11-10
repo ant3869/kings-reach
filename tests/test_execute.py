@@ -34,7 +34,7 @@ class ExecuteTests(unittest.IsolatedAsyncioTestCase):
         self.preflight_ok, self.gate_ok, self.approve, self.explode = True, True, True, None
         self.edits = ["docs/x.md"]  # what the executor reports it changed (empty = Codex with a broken sandbox)
         self.prompts = []
-        self.fixer_fails = self.ops_fails = self.cancel_review = False
+        self.fixer_fails = self.ops_fails = self.cancel_review = self.cancel_after_edit = False
 
         async def ask(agent, prompt, *, schema=None, on_event=None, **kw):
             self.asked.append(agent)
@@ -52,6 +52,8 @@ class ExecuteTests(unittest.IsolatedAsyncioTestCase):
             if on_event:
                 await on_event({"kind": "turn", "turn": 1, "maxTurns": 40})
                 await on_event({"kind": "tool", "tool": "Edit", "text": "Editing docs/x.md", "target": "docs/x.md", "edit": True})
+            if self.cancel_after_edit and agent == "ops":
+                raise asyncio.CancelledError()  # the tab's Cancel arrives after the file was edited, before the report
             return {"ok": True, "provider": "claude", "hasTools": True, "data": {
                 "changed_files": self.edits, "blocked": [], "spoken": "done",
                 "done": [{"step": "change docs", "result": "changed"}]}}
@@ -157,6 +159,93 @@ class ExecuteTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(data)
         final = room.final()
         self.assertEqual((final[0]["state"], final[0]["failed"]), ("cancelled", False))
+
+    def ledger(self):
+        return [json.loads(x) for x in council.RUNS_FILE.read_text(encoding="utf-8").splitlines()]
+
+    async def test_a_build_cancelled_after_an_edit_is_recorded_with_the_file_it_touched(self):
+        """The real incident: Ops had edited a file, the page reloaded, and the Build left no row and no state at all."""
+        self.cancel_after_edit = True
+        room, data = await self.run_build()
+        self.assertIsNone(data)
+        (row,) = self.ledger()
+        self.assertEqual((row["kind"], row["outcome"], row["interrupted_at"]), ("build", "cancelled", "execute"))
+        self.assertEqual(row["changed_files"], ["docs/x.md"], "seen in the live feed even though Ops never reported it")
+        self.assertFalse(row["approved"] or row["checks_ok"])
+        self.assertIn("Cancelled during execute", row["failure_summary"])
+        self.assertIn("1 file already changed", row["headline"])
+        self.assertEqual(room.final()[0]["state"], "cancelled")
+        self.assertEqual(room.metrics()[-1]["outcome"], "cancelled")
+
+    async def test_such_a_build_can_be_continued_with_fix_and_says_what_is_unfinished(self):
+        import buildflow
+        self.cancel_after_edit = True
+        room, _ = await self.run_build()
+        (card,) = room.cards()
+        self.assertEqual((card["state"], [a["id"] for a in card["actions"]], card["files"]), ("attention", ["fix"], ["docs/x.md"]))
+        self.assertTrue(any("ops never reported: change docs" in i for i in card["issues"]), card["issues"])
+        saved = buildflow.load_build_state(council.BUILD_STATE_JSON)
+        self.assertEqual((saved["outcome"], saved["missing"], saved["actions"], saved["checks_ok"]), ("cancelled", ["ops"], ["fix"], False))
+        self.assertEqual(buildflow.resumable_card(council.VERDICT_JSON, council.BUILD_STATE_JSON), card, "a page that reconnects gets the Fix button back")
+        self.cancel_after_edit = False
+        room2, data = await self.run_followup("fix")
+        self.assertEqual(data["outcome"], "built", "Fix finished it and the checks and review ran")
+        main_prompt = next(p for a, p in self.prompts if a == "main")
+        self.assertIn("ops never reported: change docs", main_prompt, "Main is told exactly what was left")
+        self.assertIn("docs/x.md", main_prompt)
+
+    async def test_a_build_cancelled_before_anything_was_edited_is_recorded_but_saves_no_state(self):
+        self.explode = asyncio.CancelledError()  # the first agent call is cancelled: nothing was edited
+        room, _ = await self.run_build()
+        (row,) = self.ledger()
+        self.assertEqual((row["outcome"], row["changed_files"], row["interrupted_at"]), ("cancelled", [], "execute"))
+        self.assertIn("nothing was changed", row["headline"])
+        self.assertEqual(room.cards(), [], "no Fix button for a build that changed nothing: just build again")
+        self.assertFalse(council.BUILD_STATE_JSON.exists(), "and an earlier build's state is not overwritten")
+
+    async def test_a_crash_is_recorded_too_and_still_raised(self):
+        self.explode = RuntimeError("provider exploded")
+        with self.assertRaises(RuntimeError):
+            await council.Council(Room()).execute()
+        (row,) = self.ledger()
+        self.assertEqual(row["outcome"], "crashed")
+        self.assertIn("provider exploded", row["failure_summary"])
+
+    async def test_a_finished_build_is_recorded_once_not_again_when_it_is_cancelled_late(self):
+        self.cancel_review = True  # cancelled while Research reviews: the run has not concluded yet
+        await self.run_build()
+        self.assertEqual([r["outcome"] for r in self.ledger()], ["cancelled"])
+        self.cancel_review = False
+        await self.run_build()
+        self.assertEqual([r["outcome"] for r in self.ledger()], ["cancelled", "built"], "one row per run, whatever happened to it")
+
+    async def test_a_run_that_had_already_concluded_is_not_recorded_a_second_time(self):
+        class CancelAtTheCard(Room):
+            async def send(self, obj):
+                if obj.get("type") == "build_result":
+                    raise asyncio.CancelledError()  # cancelled while the result card is being shown: the ledger row is already written
+                await super().send(obj)
+
+        try:
+            await council.Council(CancelAtTheCard()).execute()
+        except asyncio.CancelledError:
+            pass
+        self.assertEqual([r["outcome"] for r in self.ledger()], ["built"], "one row, with the real outcome")
+
+    async def test_failing_to_write_the_note_neither_hides_the_cancel_nor_leaves_the_meter_busy(self):
+        async def broken(self, outcome, detail=""):
+            raise OSError("disk full")
+
+        saved = council.Council.record_interruption
+        council.Council.record_interruption = broken
+        try:
+            self.cancel_after_edit = True
+            room, data = await self.run_build()  # run_build only swallows CancelledError: an OSError would fail this test
+        finally:
+            council.Council.record_interruption = saved
+        self.assertIsNone(data)
+        self.assertEqual(room.final()[0]["state"], "cancelled", "the page still learns the run ended")
+        self.assertTrue(any("Could not write down the stopped run: disk full" in t for _, t in room.said))
 
     async def test_ledger_went_to_the_temp_dir(self):
         await self.run_build()

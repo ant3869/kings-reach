@@ -42,32 +42,6 @@ const casting = WarCasting.mount(document, (m) => send(m));
 const buildResult = WarResult.mount(document, (m) => send(m)); // the Build result card + its re-check / fix / keep buttons
 const attach = KRAttach.mount(document, { button: $('attachbtn'), tray: $('attachtray'), input: $('msg'), zone: $('chatzone'), endpoint: '/api/upload', note: (t, bad) => bubble('war room', esc(t), bad ? 'err' : 'sys') });
 
-// Cancel run (in the live header) is separate from Hush voices. A cancel is pending until the server acks it, and
-// the run itself only ends when the CANCELLED meter arrives; if neither comes, say so and let the owner retry.
-const CANCEL_RETRY_MS = 8000;
-let cancelAt = 0, cancelTimer = 0;
-function cancelNote(text) { if ($('cancelnote')) $('cancelnote').textContent = text; }
-function cancelSync(active, key) {
-  const b = $('nowcancel');
-  if (!b) return;
-  b.hidden = !active;
-  if (!active || key === 'cancelled') { cancelAt = 0; clearTimeout(cancelTimer); b.disabled = false; b.textContent = 'Cancel run'; if (!active) cancelNote(''); }
-}
-function requestCancel() {
-  if (!send({ type: 'cancel' })) { cancelNote('Not connected, so nothing was sent. Reconnect and try again.'); return; }
-  cancelAt = Date.now();
-  $('nowcancel').disabled = true;
-  $('nowcancel').textContent = 'Cancelling...';
-  cancelNote('Cancel sent to the War Room.');
-  clearTimeout(cancelTimer);
-  cancelTimer = setTimeout(() => {
-    if (!cancelAt) return;
-    $('nowcancel').disabled = false;
-    $('nowcancel').textContent = 'Retry cancel';
-    cancelNote('No confirmation yet. The run may still be going (and spending). Retry cancel.');
-  }, CANCEL_RETRY_MS);
-}
-
 function setPose(id, state, ms) {
   if (!cardActivity[id]) return;
   const hold = ms || director.poseMs(state);
@@ -385,6 +359,8 @@ function onMessage(m) {
     return;
   }
   if (m.pinned !== undefined) return markPin(m.pinned);
+  if (m.type === 'resume') { $('log').innerHTML = ''; live.reset(); buildResult.clear(); return; } // the server is about to replay everything this page missed: start from a clean page
+  if (m.type === 'you') return youBubble(m.kind, m.text, m.files);
   if (m.type === 'cancel_ack') {
     cancelNote(m.stopped ? 'War Room confirmed: stopping ' + m.stopped + ' task' + (m.stopped === 1 ? '' : 's') + '.' : 'War Room confirmed: nothing was running in this tab.');
     return;
@@ -464,6 +440,11 @@ function runPlanLibraryBuild() {
   submit('build');
 }
 
+// Your own message in the transcript; the server also sends these when it replays a run to a page that reloaded.
+function youBubble(kind, text, files) {
+  bubble(kind === 'summit' ? 'you \u2192 council' : 'you', text.length > 500 ? disclosure(text, 'Read full request') : esc(text + KRAttach.describe(files || [])), 'you');
+}
+
 function submit(kind) {
   const input = $('msg');
   const text = input.value.trim();
@@ -480,7 +461,7 @@ function submit(kind) {
   const out = attach.outgoing(text); // {text, attachments}; null = nothing to send, or a file is still uploading
   if (!out) return input.focus();
   if (!send({ type: kind, ...out })) return;
-  bubble(kind === 'summit' ? 'you \u2192 council' : 'you', out.text.length > 500 ? disclosure(out.text, 'Read full request') : esc(out.text + attach.summary()), 'you');
+  youBubble(kind, out.text, attach.names());
   input.value = ''; attach.clear();
 }
 

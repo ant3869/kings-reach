@@ -7,7 +7,7 @@
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.19.1.
+and a dashboard. Version 2.20.0.
 
 ## The five roles
 
@@ -61,7 +61,7 @@ only Claude roles can reach Opus. Quick, tool-free steps also skip loading MCP s
 Any run can be cancelled, and cancelling really stops it. **Dashboard:** a Stop button appears next to Send while the console is
 working. **Telegram:** `/stop` cancels the run in progress and clears whatever is queued behind it. **API:** `GET /api/runs` lists what
 is running; `POST /api/runs/cancel` with `{"id": ...}`, `{"chatId": ...}` or `{"all": true}` stops it (an empty body stops nothing).
-**War Room:** its own Cancel button, which now also ends the agent's whole process tree.
+**War Room:** its own Cancel button, which now also ends the agent's whole process tree. Reloading or closing the page does **not** cancel a run: it keeps going and the next page is caught up ([how](docs/RUN-LIFECYCLE.md)); a run you do cancel is written to the history.
 
 A stop is final: it never retries and never falls through to the next provider, a cancelled scheduled task stays scheduled instead of
 being marked failed, and the Claude CLI and every command it started (a build, a long test run) are ended together rather than left

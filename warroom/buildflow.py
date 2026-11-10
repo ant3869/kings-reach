@@ -14,12 +14,14 @@ import sys
 try:
     from . import agent_bridge as ab
     from . import build
+    from . import interrupted
     from .ledger import (FOLLOWUPS, build_followups, build_headline, build_issues, build_outcome, build_state,
                          criteria_tally, load_build_state, save_build_state)
     from .schemas import EXECUTE, READ_ONLY_NOTE, REVIEW, TOOLS_NOTE, TURNS, bullets
 except ImportError:  # run as a script
     import agent_bridge as ab
     import build
+    import interrupted
     from ledger import (FOLLOWUPS, build_followups, build_headline, build_issues, build_outcome, build_state,
                         criteria_tally, load_build_state, save_build_state)
     from schemas import EXECUTE, READ_ONLY_NOTE, REVIEW, TOOLS_NOTE, TURNS, bullets
@@ -52,6 +54,27 @@ def resumable_card(verdict_path, state_path):
 
 
 class BuildFlow:
+    async def record_interruption(self, outcome, detail=""):
+        """A run was stopped (Cancel, or an error) before it concluded: write that down instead of leaving no trace.
+
+        The ledger always gets a row. A Build that had already edited files also saves its state and offers Fix, because
+        those edits are on disk and nobody has checked them."""
+        run = self.run
+        if run is None or "outcome" in run.data:  # nothing started, or it had already been recorded
+            return
+        stage, part = run.open_stage(), self.partial
+        observed = [f for t in self.live.trackers.values() for f in t.edited]
+        changed = interrupted.merge_files(part["changed"] if part else [], observed)
+        data = run.finish(**interrupted.ledger_fields(run.data["kind"], outcome, stage, changed, detail))
+        if part and changed:
+            owners, reports, v = part["owners"], part["reports"], part["v"]
+            issue_list = interrupted.issues(owners, reports, lambda o: steps_of(v, o), changed)
+            headline = data["headline"]
+            card = await self.show_result("attention", headline, "Your edits are kept. Fix finishes what was left and then checks it, "
+                                          "or you can build again.", issues=issue_list, files=changed, actions=["fix"])
+            save_build_state(self.state_file, interrupted.build_state(v.get("run"), outcome, changed, reports, owners, issue_list, card))
+        await self.room.send({"type": "metrics", **data})
+
     async def show_result(self, state, headline, detail, *, issues=(), files=(), output="", actions=()):
         """The one card that answers 'what happened, are my files still changed, and what can I do now?'"""
         card = {"type": "build_result", "state": state, "headline": headline, "detail": detail, "issues": list(issues),

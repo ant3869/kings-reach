@@ -426,6 +426,33 @@ try {
   check('cancel: the server ack is shown', (await cancelUi()).note.includes('confirmed: stopping 2 tasks'), JSON.stringify(await cancelUi()));
   await deliver({ type: 'meter', pct: 40, phase: 'cancelled', label: 'cancelled', failed: false, state: 'cancelled', final: true });
   check('cancel: the CANCELLED badge replaces the run and the button hides', (await js(`document.getElementById('nowbadge').textContent`)).includes('CANCELLED') && (await cancelUi()).hidden === true);
+
+  // --- War Room: a page that reconnects mid-run is replayed what it missed, and never sees it twice ---------------------
+  await open('/warroom', { fake: true });
+  const replayRun = [
+    { type: 'resume' },
+    { type: 'you', kind: 'text', text: 'hey Ops, what is 17 times 23?', files: ['notes.txt'] },
+    { type: 'thinking', agent_id: 'ops', on: true },
+    { type: 'activity', kind: 'route', agent_id: 'ops', text: 'Asking claude (claude-opus-5)' },
+    { type: 'meter', pct: 20, phase: 'ask', label: 'asking', failed: false },
+    { agent_id: 'war-room', text: 'Reconnected: the work you started kept running while this page was away. Everything it said meanwhile is above.' },
+  ];
+  const playReplay = async () => { for (const m of replayRun) await deliver(m); };
+  const logText = () => js(`document.getElementById('log').textContent`);
+  const count = (hay, needle) => hay.split(needle).length - 1;
+  await deliver({ agent_id: 'ops', text: 'a line this page already had', kind: 'reply' });
+  check('resume: the page already shows its earlier transcript', (await logText()).includes('a line this page already had'));
+  await playReplay();
+  const afterOne = await logText();
+  check('resume: the replay starts from a clean transcript (nothing the page had is doubled)', !afterOne.includes('a line this page already had'));
+  check('resume: your own question comes back, with its file name', /hey Ops, what is 17 times 23\?\s+\u{1F4CE} notes\.txt/u.test(afterOne), afterOne.slice(0, 160));
+  check('resume: the reconnect notice is shown', afterOne.includes('Reconnected: the work you started kept running'));
+  check('resume: the live panel shows the run as under way, with Cancel run available', (await js(`document.getElementById('nowbadge').textContent`)).includes('WORKING') && (await cancelUi()).hidden === false, `${await js(`document.getElementById('nowbadge').textContent`)} ${JSON.stringify(await cancelUi())}`);
+  await playReplay();
+  const afterTwo = await logText();
+  check('resume: a second replay (another blip) shows each line once', count(afterTwo, 'hey Ops, what is 17 times 23?') === 1 && count(afterTwo, 'Reconnected: the work') === 1, `question x${count(afterTwo, 'hey Ops, what is 17 times 23?')}`);
+  await deliver({ agent_id: 'ops', text: '391.', kind: 'reply' });
+  check('resume: the answer that arrives afterwards lands exactly once, after the question', count(await logText(), '391.') === 1 && (await logText()).indexOf('391.') > (await logText()).indexOf('hey Ops'));
   await open('/warroom', { fake: true, pre: `window.__fastRetry = true; var __st = window.setTimeout; window.setTimeout = function (f, ms) { return __st(f, ms === 8000 ? 300 : ms); };` });
   await deliver({ type: 'meter', pct: 10, phase: 'plan', label: 'plan', failed: false });
   await js(`document.getElementById('nowcancel').click()`);

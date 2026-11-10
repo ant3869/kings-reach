@@ -88,3 +88,4 @@ the hard-refresh notice instead of silently misbehaving. A test pins the two tog
 | `council-v5` | 18 | `cancel_ack`: the server confirms a cancel and says how many tasks it stopped |
 | `council-v6` | 19 | `build_result` (the result card), `build_followup` (re-check / fix / keep) |
 | `council-v7` | 20 | `text` and `summit` messages may carry `attachments` (see [`ATTACHMENTS.md`](ATTACHMENTS.md)) |
+| `council-v8` | 22 | `resume` (clear, a replay follows) and `you` (a line the user typed): a page that reconnects mid-run is caught up. See [`RUN-LIFECYCLE.md`](RUN-LIFECYCLE.md) |

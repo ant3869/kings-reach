@@ -16,6 +16,7 @@ import uuid
 try:
     from . import agent_bridge as ab
     from . import build
+    from . import interrupted
     from . import mindchange
     from .buildflow import BuildFlow, continuation, resumable_card
     from .config import (BUILD_STATE_JSON, COUNCIL_DIR, DEBATE_ROUNDS, INVESTIGATE_TURNS, RUNS_FILE,
@@ -28,6 +29,7 @@ try:
 except ImportError:  # run as a script
     import agent_bridge as ab
     import build
+    import interrupted
     import mindchange
     from buildflow import BuildFlow, continuation, resumable_card
     from config import (BUILD_STATE_JSON, COUNCIL_DIR, DEBATE_ROUNDS, INVESTIGATE_TURNS, RUNS_FILE,
@@ -78,6 +80,10 @@ class Run:
     def begin(self, stage):
         self._stage_t[stage] = time.monotonic()
 
+    def open_stage(self):
+        """The stage that was running when the run was stopped (the latest begun and not yet ended), or ""."""
+        return next((s for s in reversed(list(self._stage_t)) if s not in self.data["stages"]), "")
+
     def end(self, stage):
         self.data["stages"][stage] = round(time.monotonic() - self._stage_t.get(stage, self._t0), 1)
 
@@ -121,7 +127,13 @@ class Council(BuildFlow):
     def __init__(self, room):
         self.room = room
         self.live = Live(room)
+        self.run = None  # the run in progress, so a stop can still be written to the ledger
+        self.partial = None  # a build's verdict, owners and what they have reported so far
         self.state_file = BUILD_STATE_JSON  # read at construction, so a test (or a deploy) can point it elsewhere
+
+    def _begin(self, kind, question):
+        self.run = Run(kind, question)
+        return self.run
 
     async def _ask(self, run, agent, prompt, schema, **kw):
         """One structured call with seat animation + cost accounting. Returns (data|None, reply)."""
@@ -181,17 +193,25 @@ class Council(BuildFlow):
     async def _tracked(self, coro, to_state):
         """Run one top-level job and always leave the live meter in an honest final state.
         `to_state(data)` says how the run ended: complete | attention | failed (cancelled is decided here)."""
-        state, note = "failed", ""
+        state, note, stopped = "failed", "", None
         try:
             data = await coro
             if data:
                 state, note = to_state(data), data.get("headline") or data.get("failure_summary") or ""
             return data
         except asyncio.CancelledError:
-            state = "cancelled"
+            state, stopped = "cancelled", (interrupted.CANCELLED, "")
+            raise
+        except Exception as exc:  # noqa: BLE001 - recorded, then re-raised for the session's own report
+            stopped = (interrupted.CRASHED, repr(exc)[:200])
             raise
         finally:  # cancel, crash or adjourn: the meter must never be left looking busy
             await self.live.finish(state, note)
+            if stopped:
+                try:
+                    await self.record_interruption(*stopped)
+                except Exception as exc:  # noqa: BLE001 - a failed note must not replace the cancel (or the crash) being reported
+                    await self.room.status(f"Could not write down the stopped run: {exc}")
 
     async def deliberate(self, question, convo="", attached=""):
         """`attached` names the files the user attached. Every agent's context carries it; the ledger, history title, memory recall and the saved memory only see the question."""
@@ -199,7 +219,7 @@ class Council(BuildFlow):
         return await self._tracked(self._deliberate(question, convo, attached), lambda d: "complete" if d.get("outcome") == "verdict" else "failed")
 
     async def _deliberate(self, question, convo, attached=""):
-        run = Run("summit", question)
+        run = self._begin("summit", question)
         brief = await self._stage(run, "recall", ab.recall(question))
         memory_lines = max(0, len(brief.splitlines()) - 1)
         await self.room.status(f"recalled {memory_lines} memory/hive lines" if memory_lines else "no prior memory on this")
@@ -386,7 +406,7 @@ class Council(BuildFlow):
             await self.room.status(problem)
             return None
         self.live = Live(self.room, FOLLOWUP_PHASES[action])
-        run = Run("build", v.get("question", ""))
+        run = self._begin("build", v.get("question", ""))
         return await self._tracked(self._followup(run, action, v, state), lambda d: build_state(d["outcome"], d.get("checks_ok")))
 
     async def _execute(self):
@@ -394,7 +414,7 @@ class Council(BuildFlow):
             await self.room.status("No executable verdict on file yet: convene the council first.")
             return None
         v = json.loads(VERDICT_JSON.read_text(encoding="utf-8"))
-        run = Run("build", v.get("question", ""))
+        run = self._begin("build", v.get("question", ""))
         out_dir = COUNCIL_DIR / v.get("run", run.data["id"])
         success_metrics = v.get("success_metrics", [])
         run.begin("preflight")
@@ -423,6 +443,7 @@ class Council(BuildFlow):
                               "message": "Baseline is clean"})
         owners = list(dict.fromkeys(s["owner"] for s in v.get("plan", [])))
         changed, reports = [], {}
+        self.partial = {"v": v, "owners": owners, "changed": changed, "reports": reports}  # the lists are filled in as owners finish
         run.begin("execute")
         await self.room.stage("execute", "active", "starting implementation")
         await self.live.enter("execute", len(owners), f"{len(owners)} owner(s) implementing")

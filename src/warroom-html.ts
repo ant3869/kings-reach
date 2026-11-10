@@ -11,8 +11,8 @@ import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const WARROOM_CLIENT_VERSION = 38;
-export const WARROOM_PROTOCOL = 'council-v7'; // must match PROTOCOL in warroom/server.py
+export const WARROOM_CLIENT_VERSION = 39;
+export const WARROOM_PROTOCOL = 'council-v8'; // must match PROTOCOL in warroom/server.py
 const CARD_ROLES = ['main', 'research', 'comms', 'content', 'ops'] as const;
 const CARD_STATES = ['idle', 'thinking', 'speaking', 'building'] as const;
 const CARD_ASSETS = CARD_STATES.flatMap((state) =>
@@ -31,7 +31,7 @@ function manifestAssets(): string[] {
     return []; // no manifest: the client falls back to the original four-state art
   }
 }
-export const WARROOM_STATIC: readonly string[] = ['kr-attach.js', 'warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-result.js', 'warroom-demo.js',
+export const WARROOM_STATIC: readonly string[] = ['kr-attach.js', 'warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-cancel.js', 'warroom-result.js', 'warroom-demo.js',
   'warroom-casting.js', 'card-director.js', 'mic-worklet.js',
   'warroom-council-cards.png', 'warroom-chamber-bg.png', ...CARD_ASSETS, ...manifestAssets()];
 
@@ -307,3 +307,4 @@ ${CLIENT_MD_JS}
 <script src="/warroom/warroom-app.js${v}"></script>
 </body></html>`;
 }
+<script src="/warroom/warroom-cancel.js${v}"></script>

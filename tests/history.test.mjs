@@ -76,6 +76,15 @@ test('history: stats count what actually happened', () => {
   assert.equal(s.avgConfidence, 0.8);
 });
 
+test('history: a build you cancelled is counted, but is neither a success nor a failure', () => {
+  const runs = [...loadRuns(fixture().p), { ...build('0a0b0c0d', '2026-01-03T09:00:00'), outcome: 'cancelled', total_cost_usd: 1, total_s: 30 }];
+  const s = computeStats(runs);
+  assert.equal(s.builds, 3);
+  assert.equal(s.cancelled, 1);
+  assert.equal(s.buildSuccessRate, 0.5, 'unchanged: 1 built of the 2 builds that finished');
+  assert.equal(s.totalCostUsd, 7, 'its spend is still spend');
+});
+
 test('history: the active verdict is archived once, and a past plan can be re-activated', () => {
   const { p } = fixture();
   assert.equal(existsSync(p.archiveDir), false);

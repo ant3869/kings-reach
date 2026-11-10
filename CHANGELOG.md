@@ -1,5 +1,41 @@
 # Changelog
 
+## 2.20.0 - A run survives its tab, and a stopped Build is written down
+
+Reloading or closing the War Room page used to cancel whatever it was running. This was found when a real Build was cut off
+by a reload at 12:37: Ops had already edited a file, and the Build left **no ledger row and no saved state**, so nothing
+recorded what had changed on disk. Both halves are fixed. Full description: [`docs/RUN-LIFECYCLE.md`](docs/RUN-LIFECYCLE.md).
+
+**Changed**
+- **Work belongs to the server, not the tab.** A council, Build or reply keeps running when its page reloads or closes. The
+  next page to connect is told to clear itself (`resume`), is replayed everything it missed from a bounded journal (2000
+  messages), then gets live updates. Only **Cancel run**, an error, or restarting the War Room server stops a run. Finished
+  work nobody collected is kept 10 minutes, then dropped. There is no "leave this page?" warning, because leaving is safe.
+- **A stopped run is recorded.** Every cancelled (`cancelled`) or crashed (`crashed`) council or Build now gets a ledger row
+  with the stage it was in (`interrupted_at`). A Build also records the files it had changed, including edits the live feed
+  saw that the owner never got to report. If files were edited it saves its state and shows a card with **Fix** (finish the
+  unfinished steps, then check and review); a page that reconnects gets the card back. A Build stopped before any edit saves
+  nothing and leaves an earlier build's state alone.
+- **History** labels the new outcomes. A cancelled Build is counted on its own and is **not** counted against the build success
+  rate or the average cost (its spend still adds to the total).
+- `ping` answers `busy`: how many tasks are running across every tab, including detached ones, so a restart can check first.
+- Protocol `council-v8` (server 22, client 39): `resume`, and `you` (a line you typed, replayed with file **names**, never
+  paths). The Cancel-run button logic moved into `public/warroom-cancel.js`.
+
+**Fixed**
+- The cosmetic *"Task exception was never retrieved: ConnectionClosedOK"* after a tab left (`thinking(False)` on a dead
+  socket). A send to a tab that has gone is now absorbed in one place, and speech is not synthesized for nobody.
+- Recording a stopped run can never replace the cancel being reported, or leave the meter looking busy, if the write fails.
+
+**Not changed, on purpose.** Restarting the War Room server still stops running work (it lives in that process); check
+`busy` first. Voice is switched off for a detached session. A reconnecting page can cancel a run it did not start (this is a
+local, single-owner tool).
+
+**Tests:** 238 Node + 1 (cancelled builds and the success rate), 134 Python (+20: 12 reload/takeover/replay/ordering/retire/busy,
+7 stopped-build records and Fix, 1 cancelled council), 153 browser checks (+7: the replay starts clean, shows your question
+with its file, and is idempotent). Each rule was broken on purpose and a test failed; two surviving mutations exposed missing
+tests, which were added before release.
+
 ## 2.19.1 - A false "Claude is logged out" no longer sends a council to fallbacks, and attached files stay out of the history
 
 Found by reading the logs of the first real council that used attachments (run `efadb592`, two pasted screenshots). The

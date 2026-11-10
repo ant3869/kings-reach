@@ -103,7 +103,8 @@ export function computeStats(runs: RunRecord[]) {
   const summits = runs.filter((r) => r.kind === 'summit');
   const builds = runs.filter((r) => r.kind === 'build');
   const count = (rs: RunRecord[], outcome: string) => rs.filter((r) => r.outcome === outcome).length;
-  const executed = builds.filter((r) => r.outcome !== 'preflight_failed');
+  const finished = builds.filter((r) => r.outcome !== 'cancelled');
+  const executed = finished.filter((r) => r.outcome !== 'preflight_failed');
   const confidences = summits.filter((r) => typeof r.verdict_confidence === 'number').map((r) => num(r.verdict_confidence));
   const built = count(builds, 'built');
   return {
@@ -115,7 +116,9 @@ export function computeStats(runs: RunRecord[]) {
     needsWork: count(builds, 'needs_work'),
     noChanges: count(builds, 'no_changes'),
     preflightFailed: count(builds, 'preflight_failed'),
-    buildSuccessRate: builds.length ? built / builds.length : null,
+    cancelled: count(builds, 'cancelled'),
+    // A build you stopped is neither a success nor a failure, so it stays out of the rate.
+    buildSuccessRate: finished.length ? built / finished.length : null,
     totalCostUsd: Math.round(sum(runs.map((r) => num(r.total_cost_usd))) * 100) / 100,
     totalSeconds: Math.round(sum(runs.map((r) => num(r.total_s)))),
     avgConfidence: confidences.length ? sum(confidences) / confidences.length : null,
