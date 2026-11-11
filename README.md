@@ -7,7 +7,7 @@
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.25.0.
+and a dashboard. Version 2.26.0.
 
 ## The five roles
 
@@ -108,7 +108,7 @@ Copy `.env.example` to `.env` and fill in your own values. Never commit
 
 ## Docs
 
-- [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md): what each stage of a summit and a build does, what it costs, and where the results land.
+- [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md): what each stage of a summit and a build does, what it costs, where the results land, and how to rate or export a run.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md): researched ideas for what to build next, ranked, with the evidence behind each.
 - [`docs/LIVE.md`](docs/LIVE.md): how the War Room shows what is happening, and the wire protocol versions.
 - [`docs/RUN-LIFECYCLE.md`](docs/RUN-LIFECYCLE.md): what happens to a run when the page goes away, and how Stop War Room stays safe.

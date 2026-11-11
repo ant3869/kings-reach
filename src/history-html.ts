@@ -62,6 +62,7 @@ details{margin:10px 0;border-top:1px solid var(--rule);padding-top:8px}summary{c
 pre{background:#07090b;border:1px solid var(--line);border-radius:4px;padding:12px;overflow:auto;max-height:340px;font-size:12px;white-space:pre-wrap}
 ul.files{margin:4px 0;padding-left:18px;font:12px ui-monospace,Consolas,monospace;color:var(--dim)}
 .linkbtn{all:unset;color:var(--acc);cursor:pointer;text-decoration:underline}
+.actbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}.actbar .btn[aria-pressed=true]{background:var(--acc);color:#10100a;border-color:var(--acc);font-weight:600}
 dialog{background:var(--card);color:var(--txt);border:1px solid var(--acc);border-radius:6px;max-width:520px;padding:22px 24px;box-shadow:0 20px 60px #000c}
 dialog::backdrop{background:#000b}dialog h3{margin:0 0 10px;color:var(--txt);font:500 19px Georgia,serif}dialog p{line-height:1.55;color:var(--dim)}
 dialog .actions{justify-content:flex-end}

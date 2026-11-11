@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.26.0 - Export a run as Markdown; rate a result
+
+**Added**
+- **Download Markdown / Copy Markdown** on every run in the Plan Library: one file with the run's facts, question, the saved plan with the council's takes, the builds that executed it, changed files, check output, timings, cost per agent, deliverables (each cut at 20,000 characters, with the path to the full file) and every other recorded field. For handing a run to another agent. API keys and anything shaped like one are redacted first, and the file says so. `GET /api/history/:id/export.md`.
+- **Useful / Not useful** on every run, shown in the list and counted in a new "Rated useful" stat. Saved to `store/ratings.jsonl` (append-only, last answer wins); the run ledger is never edited, so the War Room's writer cannot collide with it. `POST /api/history/:id/rating`. Roadmap item 1, first slice: the War Room result card does not offer it yet.
+
+**Changed**
+- `mountHistory()` takes injectable paths, so every history route can be tested against a fixture ledger. The new route tests do; none can touch the real store.
+- The Plan Library page builds its auth header in one place.
+
+**Tests:** `tests/history-export.test.mjs` (6) and `tests/ratings.test.mjs` (5); each safety property was checked by breaking it (no redaction, a fixed-size code fence, headings changed inside code) and watching a test fail. Browser checks: 194 pass (8 new), with the rating request, save and clipboard stubbed so your real history is only read.
+
 ## 2.25.0 - Royal chamber theme (opt-in), lighter War Room images
 
 **Added**

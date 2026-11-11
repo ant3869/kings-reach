@@ -5,6 +5,7 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROJECT_ROOT, STORE_DIR } from './config.js';
+import { appendRating, loadRatings, type Rating, type RatingValue } from './ratings.js';
 
 export interface LedgerPaths {
   runsFile: string;
@@ -99,7 +100,7 @@ export function buildsOf(planId: string, runs: RunRecord[]): RunRecord[] {
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
-export function computeStats(runs: RunRecord[]) {
+export function computeStats(runs: RunRecord[], ratings: Map<string, Rating> = new Map()) {
   const summits = runs.filter((r) => r.kind === 'summit');
   const builds = runs.filter((r) => r.kind === 'build');
   const count = (rs: RunRecord[], outcome: string) => rs.filter((r) => r.outcome === outcome).length;
@@ -107,6 +108,7 @@ export function computeStats(runs: RunRecord[]) {
   const executed = finished.filter((r) => r.outcome !== 'preflight_failed');
   const confidences = summits.filter((r) => typeof r.verdict_confidence === 'number').map((r) => num(r.verdict_confidence));
   const built = count(builds, 'built');
+  const rated = runs.filter((r) => ratings.has(r.id));
   return {
     runs: runs.length,
     summits: summits.length,
@@ -124,10 +126,12 @@ export function computeStats(runs: RunRecord[]) {
     avgConfidence: confidences.length ? sum(confidences) / confidences.length : null,
     avgBuildCostUsd: executed.length ? sum(executed.map((r) => num(r.total_cost_usd))) / executed.length : null,
     avgBuildSeconds: executed.length ? sum(executed.map((r) => num(r.total_s))) / executed.length : null,
+    rated: rated.length,
+    ratedUseful: rated.filter((r) => ratings.get(r.id)?.value === 1).length,
   };
 }
 
-export function summarize(r: RunRecord, runs: RunRecord[], objectives: Map<string, string> = new Map()) {
+export function summarize(r: RunRecord, runs: RunRecord[], objectives: Map<string, string> = new Map(), ratings: Map<string, Rating> = new Map()) {
   const planId = r.kind === 'build' ? planOf(r, runs) : r.id;
   return {
     id: r.id,
@@ -150,6 +154,7 @@ export function summarize(r: RunRecord, runs: RunRecord[], objectives: Map<strin
     criteriaMet: typeof r.criteria_met === 'string' ? r.criteria_met : null,
     plan: planId,
     builds: r.kind === 'summit' ? buildsOf(r.id, runs).length : 0,
+    rating: ratings.get(r.id)?.value ?? null,
   };
 }
 
@@ -232,7 +237,16 @@ export function runDetail(id: string, p = defaultPaths()) {
     builds: run.kind === 'summit' ? buildsOf(run.id, runs).map((b) => summarize(b, runs)) : [],
     artifacts: planId ? listArtifacts(planId, p) : [],
     active: activePlan(p)?.run ?? null,
+    rating: loadRatings(p.runsFile).get(id)?.value ?? null,
   };
+}
+
+/** Record (or take back) your verdict on a run. Only runs in the ledger can be rated. */
+export function setRating(id: string, value: unknown, p = defaultPaths()): { ok: boolean; error?: string; rating?: 1 | -1 | null } {
+  if (!RUN_ID.test(id) || !loadRuns(p).some((r) => r.id === id)) return { ok: false, error: 'run not found' };
+  if (value !== 1 && value !== -1 && value !== 0) return { ok: false, error: 'value must be 1 (useful), -1 (not useful) or 0 (clear)' };
+  appendRating(p.runsFile, id, value as RatingValue);
+  return { ok: true, rating: loadRatings(p.runsFile).get(id)?.value ?? null };
 }
 
 export function historyOverview(p = defaultPaths()) {
@@ -245,9 +259,10 @@ export function historyOverview(p = defaultPaths()) {
     const objective = planSummary(readPlan(id, p))?.objective;
     if (objective) objectives.set(id, objective);
   }
+  const ratings = loadRatings(p.runsFile);
   return {
-    stats: computeStats(runs),
-    runs: runs.map((r) => summarize(r, runs, objectives)),
+    stats: computeStats(runs, ratings),
+    runs: runs.map((r) => summarize(r, runs, objectives, ratings)),
     active: activePlan(p),
     archived,
   };

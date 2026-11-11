@@ -30,12 +30,19 @@ function when(iso) {
   const d = new Date(iso); // recorded in local time, so it parses back as local time
   return isNaN(d) ? String(iso) : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
+const RATE = { 1: 'rated useful', '-1': 'rated not useful' };
+const ratingBox = (d) => `<div class="actbar" role="group" aria-label="Was this result useful?"><span class="meta">Was this useful?</span> ` +
+  [[1, 'Useful'], [-1, 'Not useful']].map(([v, label]) => `<button class="btn" data-act="rate" data-id="${esc(d.run.id)}" data-value="${v}" aria-pressed="${d.rating === v}">${label}</button>`).join(' ') +
+  `${d.rating ? ' <span class="meta" role="status">Saved. Click again to clear.</span>' : ''}</div>`;
+const exportBar = (d) => `<div class="actbar" role="group" aria-label="Share this run"><span class="meta">Share with another agent:</span> ` +
+  `<button class="btn" data-act="export" data-id="${esc(d.run.id)}">Download Markdown</button> ` +
+  `<button class="btn" data-act="copy" data-id="${esc(d.run.id)}">Copy Markdown</button></div>`;
 const badge = (outcome) => { const [label, tone] = outcomeOf(outcome); return `<span class="badge ${tone}">${esc(label)}</span>`; };
 
 // --- api -------------------------------------------------------------------------------
+const authHeaders = () => (HIST.token ? { 'x-kings-reach-token': HIST.token } : {});
 async function api(path, options) {
-  const headers = HIST.token ? { 'x-kings-reach-token': HIST.token } : {};
-  const res = await fetch(path, Object.assign({ headers }, options || {}));
+  const res = await fetch(path, Object.assign({}, options, { headers: Object.assign(authHeaders(), (options || {}).headers) }));
   const body = await res.json();
   if (!res.ok) throw new Error(body.error || 'HTTP ' + res.status);
   return body;
@@ -58,6 +65,7 @@ function renderStats() {
     ['Total spend', money(s.totalCostUsd), s.avgBuildCostUsd == null ? '' : `~${money(s.avgBuildCostUsd)} per build`],
     ['Time in session', duration(s.totalSeconds), s.avgBuildSeconds == null ? '' : `~${duration(s.avgBuildSeconds)} per build`],
     ['Avg confidence', s.avgConfidence == null ? 'n/a' : s.avgConfidence.toFixed(2), 'Main\'s verdict confidence'],
+    ['Rated useful', s.rated ? `${s.ratedUseful} of ${s.rated}` : 'n/a', s.rated ? 'results you rated' : 'rate a result to start'],
   ];
   $('stats').innerHTML = cards.map(([label, value, note]) =>
     `<div class="stat"><span>${esc(label)}</span><b>${esc(value)}</b><small>${esc(note)}</small></div>`).join('');
@@ -95,6 +103,7 @@ function renderList() {
         r.mindsChanged == null ? '' : 'minds changed ' + r.mindsChanged + (r.mindsClaimed !== r.mindsChanged ? ' (claimed ' + r.mindsClaimed + ')' : ''),
         r.builds ? `${r.builds} build${r.builds > 1 ? 's' : ''}` : '']
       : [duration(r.totalSeconds), money(r.costUsd), r.changedFiles + ' files', r.criteriaMet ? r.criteriaMet + ' criteria' : ''];
+    if (r.rating) facts.push(RATE[r.rating]);
     return `<li><button data-act="open" data-id="${esc(r.id)}" class="${r.id === selectedId ? 'sel' : ''}">` +
       `<div class="row1"><span class="badge kind-${esc(r.kind)}">${r.kind === 'summit' ? 'council' : 'build'}</span>${badge(r.outcome)}` +
       `<span class="when">${esc(when(r.started))}</span></div>` +
@@ -198,7 +207,7 @@ function summitDetail(d) {
   return `<h3>Council <span class="id">${esc(r.id)}</span> ${badge(r.outcome)}</h3>` +
     `<div class="meta">${esc(when(r.started))} &middot; ${duration(r.total_s)} &middot; ${money(r.total_cost_usd)} &middot; ` +
     `${(r.specialists || []).length} specialists &middot; ${r.memory_lines_used || 0} memories recalled</div>` +
-    glance(d) + actionsFor(d) +
+    glance(d) + ratingBox(d) + actionsFor(d) + exportBar(d) +
     `<details><summary>Question put to the council</summary><pre>${esc((d.plan && d.plan.question) || r.question)}</pre></details>` +
     plansSection(d) + buildsSection(d) +
     section('Stage timings', stageBar(r.stages)) + section('Who did the work', agentsTable(r.agents)) + artifactsSection(d);
@@ -230,7 +239,7 @@ function buildDetail(d) {
     (r.legacy_outcome ? `<div class="meta">Originally recorded as "${esc(r.legacy_outcome)}" although no file changed; reclassified.</div>` : '') +
     (d.planId ? `<div class="meta">Executed plan <button class="linkbtn id" data-act="open" data-id="${esc(d.planId)}">${esc(d.planId)}</button>` +
       `${r.verdict_run ? '' : ' (inferred: this build predates plan tracking)'}</div>` : '<div class="notice">The plan this build executed could not be identified.</div>') +
-    verdict + actionsFor(d) +
+    verdict + ratingBox(d) + actionsFor(d) + exportBar(d) +
     section(`Changed files (${files.length})`, files.length ? `<ul class="files">${files.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : '<span class="meta">No files changed.</span>') +
     section('Automated checks', `<pre>${esc(r.gate_output || '(none recorded)')}</pre>`) +
     ((r.execution_failures || []).length ? section('Owners without a report', bullets(r.execution_failures)) : '') +
@@ -258,6 +267,30 @@ async function showDetail(id) {
 }
 
 // --- actions ---------------------------------------------------------------------------
+/** The run as Markdown text, fetched with the token header (a plain link could not carry it). */
+async function fetchReport(id) {
+  const res = await fetch(`/api/history/${encodeURIComponent(id)}/export.md`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || 'HTTP ' + res.status);
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+  return { text: await res.text(), name: name ? name[1] : `kings-reach-${id}.md` };
+}
+
+async function downloadReport(id) {
+  const { text, name } = await fetchReport(id);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' }));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(`Saved ${name}.`);
+}
+
+async function copyReport(id) {
+  const { text } = await fetchReport(id);
+  try { await navigator.clipboard.writeText(text); toast(`Copied ${text.split('\n').length} lines of Markdown.`); }
+  catch (err) { toast('The browser refused to copy. Use Download Markdown instead.'); }
+}
+
 async function activate(id) {
   const r = await api(`/api/history/${encodeURIComponent(id)}/activate`, { method: 'POST' });
   await refresh();
@@ -316,6 +349,15 @@ async function onAction(e) {
     }
     else if (act === 'build') await confirmBuild(id);
     else if (act === 'reconvene') reconvene(id);
+    else if (act === 'export') await downloadReport(id);
+    else if (act === 'copy') await copyReport(id);
+    else if (act === 'rate') {
+      const value = Number(t.dataset.value);
+      await api(`/api/history/${encodeURIComponent(id)}/rating`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value: t.getAttribute('aria-pressed') === 'true' ? 0 : value }) });
+      await refresh(); await showDetail(id);
+      const again = document.querySelector(`[data-act="rate"][data-value="${value}"]`); // the redraw dropped focus; keyboard users keep their place
+      if (again) again.focus();
+    }
     else if (act === 'artifact') {
       const r = await api(`/api/history/${encodeURIComponent(id)}/artifact/${encodeURIComponent(name)}`);
       $('artifact').innerHTML = `<details open><summary>${esc(name)}</summary><div class="verdict">${/\.md$/i.test(name) ? md(r.text) : `<pre>${esc(r.text)}</pre>`}</div></details>`;

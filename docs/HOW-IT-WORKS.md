@@ -49,6 +49,13 @@ files as they are, without redoing the plan) or **no_changes**. A build costs ab
 
 Everything under `store/` and `workspace/` is yours and local; it is ignored by Git.
 
+## Rate and share a run (Plan Library, `/history`)
+
+- **Was this useful?** Useful / Not useful on any run; click again to clear. Saved to `store/ratings.jsonl` (append-only, last answer wins; the run ledger is never edited). The page shows "Rated useful: n of m".
+- **Download Markdown / Copy Markdown** gives one file with everything about the run: facts, question, the plan with the council's takes, the builds that executed it, changed files, check output, timings, cost per agent, deliverables (each cut at 20,000 characters, with the path to the full file) and any other recorded fields.
+- Meant for handing to another agent. API keys and anything shaped like one are redacted first, and the file says so. Your own project paths and file names stay in.
+- API: `GET /api/history/:id/export.md`, `POST /api/history/:id/rating` with `{"value": 1 | -1 | 0}`.
+
 ## Reading the numbers
 
 Over 31 real runs here: mean 9.3 minutes, 77% reached a usable result (a verdict or a built change), total spend $51.49. In 14 of 17

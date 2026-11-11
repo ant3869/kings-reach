@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { controlChecks } from './ui-check-controls.mjs';
+import { runActionChecks } from './ui-check-run-actions.mjs';
 
 const BASE = process.env.UI_CHECK_BASE ?? 'http://127.0.0.1:3141';
 const HEADLESS_SHELL = join(process.env.LOCALAPPDATA ?? '',
@@ -256,7 +257,7 @@ try {
   const rows = () => js(`document.querySelectorAll('#list button').length`);
   const total = await rows();
   check('library lists every run', total >= 8, `${total} rows`);
-  check('stats are populated', (await js(`document.querySelectorAll('#stats .stat').length`)) === 6);
+  check('stats are populated', (await js(`document.querySelectorAll('#stats .stat').length`)) === 7);
 
   await js(`document.querySelector('.chip[data-kind=build]').click()`);
   check('"Builds" filter shows only builds', (await js(`[...document.querySelectorAll('#list .badge.kind-build')].length === document.querySelectorAll('#list button').length`)) && (await rows()) >= 2);
@@ -286,6 +287,7 @@ try {
   const buildText = await js(`document.getElementById('detail').innerText`);
   check('a build links back to the plan it executed', /Executed plan\s+89ef3ae8/.test(buildText));
   check('a failed build explains why', /did not complete|failed|not approved/i.test(buildText));
+  await runActionChecks({ js, check, sleep });
 
   await js(`document.querySelector('#detail [data-act=reconvene]').click()`);
   await sleep(1200);

@@ -16,7 +16,7 @@ A win: a trusted plan, built, for about $2 and 10 minutes, that you can watch an
 
 | # | Idea | Why | Smallest slice | Effort |
 |---|---|---|---|---|
-| 1 | **Rate the result** | Nothing records if a result was *good* (V). Debate often doesn't beat cheaper baselines ([paper](https://arxiv.org/abs/2311.17371), [paper](https://arxiv.org/abs/2502.08788)) (R) | Thumbs up/down on result cards, shown in `/history` | S |
+| 1 | **Rate the result** | Nothing records if a result was *good* (V). Debate often doesn't beat cheaper baselines ([paper](https://arxiv.org/abs/2311.17371), [paper](https://arxiv.org/abs/2502.08788)) (R) | Thumbs up/down on result cards, shown in `/history`. **Done in 2.26.0 for `/history`**; the War Room result card still needs the run id sent over the wire | S |
 | 2 | **CI** | Two broken releases (V, CHANGELOG 2.22.0) | **Done in 2.24.2** | S |
 | 3 | **First-run checklist** | 42 settings; README "Run it" skips `npm run setup` (V) | README leads with setup; dashboard card from `/api/health` | S |
 | 4 | **Spend limit** | No cap anywhere; one run cost $3.58 (V). People improvise budgets ([HN](https://news.ycombinator.com/item?id=44742710)) (R) | `COUNCIL_MAX_COST_USD`, off by default, checked between stages | S-M |
@@ -30,6 +30,7 @@ Stop signs: #1 if a single agent matches the council 7 times in 10; #4 if people
 - Threat model: which role holds which tool, vs prompt injection ([Willison](https://simonwillison.net/2025/Aug/9/bay-area-ai/)) (S, doc first)
 - Skip `investigate` when memory already answers (M, risky; show "answered from memory")
 - Point a Build at another folder (M; the gate is hard-wired to this repo)
+- ~~Export a run as Markdown for another agent~~ **Done in 2.26.0**
 
 ## Moonshots
 - Replay a past council with a different provider mix
