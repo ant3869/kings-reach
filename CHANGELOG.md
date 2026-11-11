@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.24.3 - The roadmap is short now
+
+Docs only. Nothing in the code, the War Room or the dashboard changed.
+
+**Changed**
+- `docs/ROADMAP.md` is a one-page table: premise, what 31 real runs show, the top five ideas (each with why, smallest slice and effort), rejected ideas, and what could not be verified. CI is marked done.
+
 ## 2.24.2 - Copying `.env.example` no longer breaks start-up; CI; a roadmap and a how-it-works page
 
 Found by a second audit and a feature-scouting pass (the new `feature-scout` skill). Nothing here changes what the War Room or the dashboard show.
