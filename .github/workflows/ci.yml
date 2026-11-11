@@ -1,0 +1,45 @@
+# Runs on every push to main, every v* tag and every pull request. It exists because two published releases were broken
+# (v2.20.0 did not compile on a clean checkout; v2.21.0 carried part of an unfinished Build; see CHANGELOG 2.22.0).
+# Windows, because that is where King's Reach runs (Task Scheduler, taskkill, PowerShell scripts).
+# Not run here: the real-browser checks (npm run ui-check) and anything that needs a model, a login or a key.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - run: npm ci
+
+      # tsc (type check and emit dist/), then every Node test.
+      - run: npm test
+
+      # The War Room tests need only these two packages at import time; the voice models (kokoro, whisper) load lazily and are not tested here.
+      - run: python -m pip install "websockets==13.1" "numpy>=2.0,<3"
+
+      - run: npm run test:py

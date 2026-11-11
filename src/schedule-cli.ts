@@ -1,6 +1,6 @@
 // src/schedule-cli.ts - manage scheduled tasks. Run as: node dist/schedule-cli.js <cmd>.
 
-import { getDb, setTaskStatus, type ScheduledTask } from './db.js';
+import { getDb, deleteScheduledTask, setTaskStatus, type ScheduledTask } from './db.js';
 import { computeNextRun } from './scheduler.js';
 import { createTaskFromArgs, printTaskTable } from './task-cli-shared.js';
 
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   } else if (cmd === 'list') {
     printTaskTable(listAllTasks());
   } else if (cmd === 'delete' && rest[0]) {
-    getDb().prepare('DELETE FROM scheduled_tasks WHERE id = ?').run(rest[0]);
+    deleteScheduledTask(rest[0]);
     console.log(`Deleted ${rest[0]}`);
   } else if (cmd === 'pause' && rest[0]) {
     setTaskStatus(rest[0], 'paused');

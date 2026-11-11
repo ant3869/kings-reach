@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.24.2 - Copying `.env.example` no longer breaks start-up; CI; a roadmap and a how-it-works page
+
+Found by a second audit and a feature-scouting pass (the new `feature-scout` skill). Nothing here changes what the War Room or the dashboard show.
+
+**Fixed**
+- **The README's first step crashed the War Room.** `.env.example` ships all 42 settings as `YOUR_VALUE_HERE` and nothing treated that as "unset". Copying the
+  file as documented made `warroom.config` die on start (`int('YOUR_VALUE_HERE')`, for `WARROOM_PORT`, `DASHBOARD_PORT` and the debate and turn counts), made
+  `OPENROUTER_BASE_URL`, `OLLAMA_BASE_URL` and `KOKORO_URL` replace their defaults with that text, and made `npm run test:py` try to launch `YOUR_VALUE_HERE` as Python.
+  The exact placeholder now reads as unset in every place that reads `.env` (`src/env.ts`, `warroom/config.py`, `scripts/env.mjs`). `scripts/status.ts` had its own,
+  weaker third parser; it now uses the shared reader.
+  Reproduced first (the config crash is the new end-to-end test), then fixed; each new test fails when its fix is removed.
+- **Two PNGs removed in 2.24.1 were not dead.** `public/card-states/warroom-cards-idle.png` and `-clean.png` are the inputs of `scripts/clean-card-strips.ps1` and
+  `scripts/split-card-states.ps1`, which build the idle card art. Those scripts name them with PowerShell `$state` templates, which the audit's search had not
+  understood, so the 2.24.1 entry below is wrong to say they were "named nowhere". Restored byte for byte. The audit scanner now understands `$var`, `$(...)` and `%s`
+  templates (36 of 36 planted cases), and the audit skill now says a "a template may build this name" note is a stop sign, not a to-do.
+- `npm run status` no longer prints a raw `ERROR: The system cannot find the file` when the startup task is not registered.
+
+**Added**
+- **CI** (`.github/workflows/ci.yml`) on every push to `main`, every `v*` tag and every pull request, on a Windows runner: `npm ci`, typecheck and build, every Node test,
+  then the Python tests. Proven both ways before it was added: green on the released v2.24.1 (1 min 28 s), and red at `npm test` (`error TS1110`) when a syntax error
+  like the one behind the broken v2.20.0 was pushed. The browser checks and anything needing a model, a login or a key stay local.
+- [`docs/HOW-IT-WORKS.md`](docs/HOW-IT-WORKS.md): what each stage of a summit and a build does, what it costs, and where results land, with numbers measured from
+  31 real runs. [`docs/ROADMAP.md`](docs/ROADMAP.md): ideas ranked with evidence, what was rejected and why, and what could not be verified. Both, and the
+  previously unlinked Windows notes, are listed in a new "Docs" section of the README.
+
+**Changed (same behavior)**
+- Deleting a scheduled task is one function, `deleteScheduledTask()` in `src/db.ts`, instead of the same SQL in three files.
+
+**Tests:** `tests/env-placeholder.test.mjs` (4) and `tests/test_env_placeholder.py` (5): every setting in the real `.env.example` reads as unset, a real value is never
+mistaken for the placeholder, a `.env` copied from the example loads empty, and a fresh interpreter imports the War Room config from one. `tests/task-cli.test.mjs` (+1):
+delete through both CLIs. Browser checks were not rerun: no page changed.
+
 ## 2.24.1 - An audit: one real bug fixed, and dead weight removed
 
 Found by a full-repo audit (a new scanner plus a read of what it flagged). Nothing here changes the War Room or the dashboard.

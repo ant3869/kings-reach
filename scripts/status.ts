@@ -5,19 +5,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readEnvFile } from '../src/env.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
-function readEnv(): Record<string, string> {
-  const out: Record<string, string> = {};
-  const file = path.join(PROJECT_ROOT, '.env');
-  if (!fs.existsSync(file)) return out;
-  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
-    if (m) out[m[1]] = m[2].replace(/^["']|["']$/g, '');
-  }
-  return out;
-}
 
 function pidAlive(): string {
   const pidFile = path.join(PROJECT_ROOT, 'store', 'kings-reach.pid');
@@ -37,11 +27,12 @@ function serviceStatus(): string {
       const out = execFileSync('schtasks', ['/query', '/tn', 'KingsReach', '/fo', 'LIST'], {
         encoding: 'utf8',
         timeout: 10_000,
+        stdio: ['ignore', 'pipe', 'ignore'], // an unregistered task prints a raw ERROR line on stderr; we already say "not registered"
       });
       const state = out.match(/Status:\s*(.+)/)?.[1]?.trim() ?? 'unknown';
       return `Task Scheduler: ${state}`;
     }
-    const out = execFileSync('launchctl', ['list'], { encoding: 'utf8', timeout: 10_000 });
+    const out = execFileSync('launchctl', ['list'], { encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] });
     return out.includes('com.kings-reach') ? 'launchd: loaded' : 'launchd: not loaded';
   } catch {
     return 'service: not registered';
@@ -58,7 +49,7 @@ async function portOpen(port: number): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
-  const env = readEnv();
+  const env = readEnvFile();
   console.log('=== Kings Reach status ===');
   console.log(`platform: ${os.platform()} ${os.release()} | node ${process.version}`);
   console.log(`service: ${pidAlive()} | ${serviceStatus()}`);

@@ -13,8 +13,16 @@ function projectRoot(): string {
   return dirname(dirname(here));
 }
 
-/** `"quoted # kept"` -> inner text; `bare  # comment` -> `bare`; `   # comment` -> ''. Exported for tests. */
+/** The value every setting in `.env.example` ships with. Copying that file unchanged must leave every setting unset, not set to this text. */
+export const ENV_PLACEHOLDER = 'YOUR_VALUE_HERE';
+
+/** `"quoted # kept"` -> inner text; `bare  # comment` -> `bare`; `   # comment` -> ''; the example placeholder -> ''. Exported for tests. */
 export function parseEnvValue(raw: string): string {
+  const v = unquoteEnvValue(raw);
+  return v === ENV_PLACEHOLDER ? '' : v;
+}
+
+function unquoteEnvValue(raw: string): string {
   const v = raw.trim();
   if (v.startsWith('#')) return '';
   const quote = v[0];

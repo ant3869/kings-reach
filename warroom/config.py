@@ -10,8 +10,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STORE_DIR = PROJECT_ROOT / "store"
 
 
+# What every setting in .env.example ships with. Copying that file unchanged must leave every setting unset.
+ENV_PLACEHOLDER = "YOUR_VALUE_HERE"
+
+
 def parse_env_value(raw):
-    """'"quoted # kept"' -> inner text; 'bare  # comment' -> 'bare'; '  # c' -> ''. Mirrors src/env.ts."""
+    """'"quoted # kept"' -> inner text; 'bare  # comment' -> 'bare'; '  # c' -> ''; the example placeholder -> ''. Mirrors src/env.ts."""
+    value = _unquote_env_value(raw)
+    return "" if value == ENV_PLACEHOLDER else value
+
+
+def _unquote_env_value(raw):
     value = raw.strip()
     if value.startswith("#"):
         return ""

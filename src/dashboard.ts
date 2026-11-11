@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { serve } from '@hono/node-server';
 import { DASHBOARD_HOST, DASHBOARD_PORT, DASHBOARD_TOKEN, PROJECT_ROOT } from './config.js';
-import { getDb, getRecentHiveMind, createScheduledTask } from './db.js';
+import { getDb, getRecentHiveMind, createScheduledTask, deleteScheduledTask } from './db.js';
 import { computeNextRun } from './scheduler.js';
 import { getAgentRegistry } from './orchestrator.js';
 import { renderDashboard } from './dashboard-html.js';
@@ -216,7 +216,7 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
   });
 
   app.delete('/api/tasks/:id', (c) => {
-    getDb().prepare('DELETE FROM scheduled_tasks WHERE id = ?').run(c.req.param('id'));
+    deleteScheduledTask(c.req.param('id'));
     return c.json({ ok: true });
   });
 

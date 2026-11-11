@@ -496,6 +496,10 @@ export function setTaskStatus(id: string, status: ScheduledTask['status']): void
   getDb().prepare('UPDATE scheduled_tasks SET status = ? WHERE id = ?').run(status, id);
 }
 
+export function deleteScheduledTask(id: string): void {
+  getDb().prepare('DELETE FROM scheduled_tasks WHERE id = ?').run(id);
+}
+
 // --- Hive mind (multi-agent) ---
 export function logToHiveMind(agentId: string, actionType: string, summary: string, metadata?: unknown): void {
   getDb()

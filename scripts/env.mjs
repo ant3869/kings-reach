@@ -4,6 +4,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Every setting in .env.example ships as this text; copied unchanged it must read as unset (same rule as src/env.ts and warroom/config.py).
+export const ENV_PLACEHOLDER = 'YOUR_VALUE_HERE';
+
 export function readEnv(root) {
   const out = {};
   const file = path.join(root, '.env');
@@ -14,7 +17,8 @@ export function readEnv(root) {
     if (!line || line.startsWith('#') || eq <= 0) continue;
     const value = line.slice(eq + 1).trim();
     const quoted = /^(['"])(.*?)\1/.exec(value);
-    out[line.slice(0, eq).trim()] = quoted ? quoted[2] : value.startsWith('#') ? '' : value.replace(/\s#.*$/, '').trim(); // mirrors src/env.ts
+    const parsed = quoted ? quoted[2] : value.startsWith('#') ? '' : value.replace(/\s#.*$/, '').trim(); // mirrors src/env.ts
+    out[line.slice(0, eq).trim()] = parsed === ENV_PLACEHOLDER ? '' : parsed;
   }
   return out;
 }

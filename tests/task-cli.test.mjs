@@ -44,6 +44,19 @@ test('one mission-cli command is one command: create stores exactly one task, an
   assert.ok(!rows.some((l) => l.startsWith('tsch_') && l.includes('only once')), 'mission-cli must not create a schedule-cli task');
 });
 
+test('delete removes exactly that task through either CLI, and an unknown id is not an error', () => {
+  const idOf = (out) => out.match(/(msn|tsch)_[0-9a-f]{8}/)[0];
+  const keep = idOf(cli('schedule', 'create', 'keep me', '0 5 * * *', '123').out);
+  const gone1 = idOf(cli('schedule', 'create', 'drop via schedule', '0 5 * * *', '123').out);
+  const gone2 = idOf(cli('mission', 'create', 'drop via mission', '0 5 * * *', '123').out);
+  assert.match(cli('schedule', 'delete', gone1).out, new RegExp(`Deleted ${gone1}`));
+  cli('mission', 'delete', gone2);
+  const list = cli('schedule', 'list').out;
+  assert.ok(list.includes(keep), 'the other task survives');
+  assert.ok(!list.includes(gone1) && !list.includes(gone2), 'both deleted tasks are gone');
+  assert.equal(cli('schedule', 'delete', 'tsch_00000000').code, 0);
+});
+
 test('priority is clamped to 1-5 and falls back to 3 when it is not a number', () => {
   const ask = (p) => cli('mission', 'create', `p-${p}`, '0 7 * * *', '123', 'ops', p).out.match(/\(p(\d)\)/)[1];
   assert.deepEqual(['0', '9', 'abc', '4'].map(ask), ['3', '5', '3', '4']);
