@@ -32,8 +32,8 @@ function manifestAssets(): string[] {
   }
 }
 export const WARROOM_STATIC: readonly string[] = ['kr-attach.js', 'warroom-mic.webp', 'warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-cancel.js', 'warroom-result.js', 'warroom-demo.js',
-  'warroom-casting.js', 'card-director.js', 'mic-worklet.js',
-  'warroom-council-cards.png', 'warroom-chamber-bg.png', ...CARD_ASSETS, ...manifestAssets()];
+  'warroom-casting.js', 'warroom-panels.js', 'warroom-royal.js', 'warroom-royal.css', 'card-director.js', 'mic-worklet.js',
+  'warroom-council-cards.png', 'warroom-chamber-bg.png', 'warroom-chamber-bg.webp', ...CARD_ROLES.map((role) => `card-states/individual/idle-${role}.webp`), ...CARD_ASSETS, ...manifestAssets()];
 
 const COLORS: Record<string, string> = {
   main: '#d4a017', research: '#79c0ff', comms: '#a371f7', content: '#3fb950', ops: '#f85149',
@@ -77,7 +77,7 @@ const CSS = `
 :root{--gold:#d4a017;--bg:#07070d;--panel:#11111b;--line:#3a3020}
 *{box-sizing:border-box}
 body{background:#05070b;color:#eadfbe;font-family:Georgia,'Times New Roman',serif;margin:0;padding:0;min-height:100vh;position:relative}
-body:before{content:'';position:fixed;inset:0;background:linear-gradient(#02050aaa,#03050bdd),url('/warroom/warroom-chamber-bg.png?v=1') center top/cover no-repeat;z-index:-2}
+body:before{content:'';position:fixed;inset:0;background:linear-gradient(#02050aaa,#03050bdd),url('/warroom/warroom-chamber-bg.webp?v=1') center top/cover no-repeat;z-index:-2}
 body:after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at center top,transparent 15%,#02040a88 72%);z-index:-1;pointer-events:none}
 .kr-main{padding:14px}.kr-main>.kr-auth{margin:-14px -14px 12px}.wrap{max-width:1400px;margin:0 auto}
 h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;text-shadow:0 1px #000,0 0 18px #d4a01766}
@@ -285,7 +285,7 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
     .map(
       (c) =>
         `<div class="seat" id="seat-${esc(c.id)}" style="--ac:${c.color}" data-state="idle">` +
-        `<img class="strip-a" src="/warroom/card-states/individual/idle-${esc(c.id)}.png?v=${WARROOM_CLIENT_VERSION}" alt="">` +
+        `<img class="strip-a" src="/warroom/card-states/individual/idle-${esc(c.id)}.webp?v=${WARROOM_CLIENT_VERSION}" alt="" loading="lazy" decoding="async">` +
         `<img class="strip-b" alt="">` +
         `<span class="badge" id="badge-${esc(c.id)}"></span>` +
         // Title big, role name small beneath: both live text on the blank plate. The font shrinks for long titles.
@@ -356,6 +356,8 @@ ${CLIENT_MD_JS}
 <script src="/warroom/warroom-casting.js${v}"></script>
 <script src="/warroom/kr-attach.js${v}"></script>
 <script src="/warroom/warroom-demo.js${v}"></script>
+<script src="/warroom/warroom-royal.js${v}"></script>
+<script src="/warroom/warroom-panels.js${v}"></script>
 <script src="/warroom/warroom-app.js${v}"></script>
 </body></html>`;
 }

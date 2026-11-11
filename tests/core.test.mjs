@@ -108,9 +108,9 @@ test('providers: settings page never embeds credentials', () => {
 
 test('war room: card states use role-specific assets without sprite bleed or build bars', () => {
   const html = renderWarRoom();
-  const cardAssets = WARROOM_STATIC.filter((name) => name.startsWith('card-states/individual/'));
+  const cardAssets = WARROOM_STATIC.filter((name) => name.startsWith('card-states/individual/') && name.endsWith('.png'));
   assert.equal(cardAssets.length, 20);
-  assert.ok(html.includes('individual/idle-main.png'));
+  assert.ok(html.includes('individual/idle-main.webp'));
   assert.ok(!html.includes('--card-pos:'));
   assert.ok(!html.includes('build-bar'));
   assert.ok(!html.includes('build-sweep'));

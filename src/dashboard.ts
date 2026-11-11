@@ -25,6 +25,7 @@ import { activeRuns, cancelRuns, isCancelled } from './run-control.js';
 import { rankModels } from './model-rank.js';
 import { claudeLogin } from './claude-login.js';
 import { collectHealth } from './health.js';
+import { warRoomStatus } from './warroom-status.js';
 import { logger } from './logger.js';
 import { attachmentBlock } from './attach-format.js';
 import { MAX_FILE_BYTES, removeUpload, resolveAttachments, storeUpload, sweepOften, UploadError } from './attachments.js';
@@ -47,12 +48,17 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
     c.header('Cache-Control', 'no-store');
     return c.html(renderPlanLine());
   });
+  // Live numbers for the Council Status panel (uptime, memory count, active plan). Counts only, no content; same exposure as planline.
+  app.get('/warroom/status.json', (c) => {
+    c.header('Cache-Control', 'no-store');
+    return c.json(warRoomStatus());
+  });
   // Allowlisted static client files only (no path joins from user input).
   for (const name of WARROOM_STATIC) {
     app.get(`/warroom/${name}`, (c) => {
       const image = name.endsWith('.png') || name.endsWith('.webp');
       const type = name.endsWith('.webp') ? 'image/webp' : name.endsWith('.png') ? 'image/png'
-        : name.endsWith('.json') ? 'application/json; charset=utf-8' : 'text/javascript; charset=utf-8';
+        : name.endsWith('.json') ? 'application/json; charset=utf-8' : name.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8';
       c.header('Content-Type', type);
       c.header('Cache-Control', image ? 'public, max-age=86400' : 'no-cache');
       const path = join(PROJECT_ROOT, 'public', name);

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.25.0 - Royal chamber theme (opt-in), lighter War Room images
+
+**Added**
+- `/warroom?royal=1` (remembered): framed title, crest per seat, numbered stage chips and a Council Status panel (uptime, memory entries, active plan). Default look unchanged. See `docs/LIVE.md`.
+- `GET /warroom/status.json`: counts only, no content, `no-store`.
+
+**Changed**
+- The chamber background and idle seat art load as WebP: 2.0 MB to 78 KB, and about 110 KB to 11-13 KB per seat. The PNGs stay (card scripts and older clients use them). Seat images load lazily.
+- `.css` files are served with the right content type.
+
+**Tests:** `tests/warroom-panels.test.mjs`, `tests/warroom-royal.test.mjs`. 289 Node and 144 Python tests pass; 186 browser checks pass against a fresh server.
+
 ## 2.24.3 - The roadmap is short now
 
 Docs only. Nothing in the code, the War Room or the dashboard changed.

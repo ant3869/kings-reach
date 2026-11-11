@@ -39,6 +39,13 @@ Wire protocol `council-v4` (see the table at the end of this page for every vers
 Thresholds live in `warroom/live.py` (`QUIET_S, STALL_S = 45, 90`) and `public/warroom-live.js`; a test fails if they differ.
 Preflight and gate run in a worker thread with no heartbeat, so they show a phase clock but cannot be flagged stalled.
 
+## Royal chamber theme (opt-in)
+
+Open `/warroom?royal=1` (remembered; `?royal=0` turns it off). Default look is unchanged.
+- Adds a framed title, a crest per seat, numbered stage chips and two side panels (`public/warroom-royal.*`, `public/warroom-panels.js`).
+- **Council Status** shows uptime, memory entries and the active plan from `GET /warroom/status.json` (counts only, `no-store`), plus seats routed on this page. A value with no source reads "unavailable", never a made-up number.
+- It only adds elements and a stylesheet; no ids, handlers or state logic are touched.
+
 ## Spoken commentary
 
 Templated from real events (free, cannot invent progress): stage changes, the first edit of each file, route fallbacks,

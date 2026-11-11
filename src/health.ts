@@ -12,7 +12,7 @@ import { probeResearch } from './research-probe.js';
 import { readRegistry, skillsFor } from './skills.js';
 import { loadAgentConfigs } from './agent-config.js';
 
-const STARTED_AT = Date.now();
+export const STARTED_AT = Date.now();
 const COUNTED_TABLES = ['memories', 'scheduled_tasks', 'hive_mind', 'sessions', 'token_usage'] as const;
 
 function appVersion(): string {
@@ -24,7 +24,7 @@ function appVersion(): string {
 }
 const APP_VERSION = appVersion();
 
-function count(table: string): number | null {
+export function count(table: string): number | null {
   try {
     return (getDb().prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
   } catch {

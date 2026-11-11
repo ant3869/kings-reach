@@ -1,0 +1,30 @@
+/* Royal chamber theme. Loaded only when the flag is on (see warroom-royal.js); every rule is scoped to html[data-royal].
+   Tokens (contrast vs panel #11111b, measured WCAG ratio): gold 7.9, research 9.6, comms 5.6, content 7.4, ops 5.6,
+   body text 14.1, muted 7.6. All pass AA 4.5, so the existing palette is locked as-is and reused through --royal-* aliases. */
+html[data-royal]{--royal-gold:#d4a017;--royal-gold-hi:#f4df9a;--royal-ink:#eadfbe;--royal-line:#8e6a2c;--royal-glass:#07070dcc}
+html[data-royal] .wrap>h1{position:relative;padding:46px 14px 30px;margin:0 0 6px;border-radius:14px;border:1px solid var(--royal-line);
+  background:linear-gradient(#05070bb0,#05070be6),url('/warroom/warroom-chamber-bg.webp?v=1') center 18%/cover no-repeat;
+  box-shadow:inset 0 0 40px #000,0 6px 22px #000a}
+html[data-royal] .wrap>h1:before,html[data-royal] .wrap>h1:after{content:'';position:absolute;left:12%;right:12%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--royal-gold),transparent);opacity:.8}
+html[data-royal] .wrap>h1:before{top:20px}html[data-royal] .wrap>h1:after{bottom:14px}
+html[data-royal] .sub{margin-top:8px}
+/* seats: gilded frame plus a crest in the agent's own accent; the card art and state images are untouched */
+html[data-royal] .seat{border:1px solid color-mix(in srgb,var(--ac) 55%,var(--royal-line));box-shadow:0 0 0 1px #000,inset 0 0 22px #000a}
+html[data-royal] .seat .crest{position:absolute;z-index:4;left:50%;top:8px;width:28px;height:28px;margin-left:-14px;color:var(--ac);
+  filter:drop-shadow(0 1px 2px #000);pointer-events:none}
+html[data-royal] .seat[data-state="speaking"],html[data-royal] .seat[data-state="thinking"]{animation:royalbreath 2.6s ease-in-out infinite}
+@keyframes royalbreath{50%{box-shadow:0 0 0 1px #000,0 0 18px 2px var(--ac)}}
+/* 44px targets: the visible controls stay small, the hit area grows */
+html[data-royal] .seat .pin:before{content:'';position:absolute;inset:-10px -8px}
+html[data-royal] .seat .voice select{padding-top:14px;padding-bottom:14px}
+html[data-royal] .seat .voice{min-height:44px}
+html[data-royal] .seat .pin:focus-visible,html[data-royal] .seat .voice select:focus-visible{outline:3px solid var(--royal-gold-hi);outline-offset:2px}
+@media(max-width:560px){
+  html[data-royal] .wrap>h1{font-size:22px;letter-spacing:4px;padding:38px 10px 26px}
+  html[data-royal] #council{gap:8px}
+}
+@media(prefers-reduced-motion:reduce){
+  html[data-royal] .seat[data-state="speaking"],html[data-royal] .seat[data-state="thinking"]{animation:none;box-shadow:0 0 0 1px #000,0 0 0 3px var(--ac)}
+  html[data-royal] .seat{transition:none}
+}
