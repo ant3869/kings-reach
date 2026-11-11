@@ -5,7 +5,7 @@ import { ATTACH_CSS } from './attach-css.js';
 import { CLIENT_MD_JS } from './client-md.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 
-export const DASHBOARD_CLIENT_VERSION = 10;
+export const DASHBOARD_CLIENT_VERSION = 11;
 const REFRESH_MS = 15_000;
 const STALE_MS = 45_000;
 
@@ -177,6 +177,7 @@ export function renderDashboard(data: DashboardData = {}): string {
 <div class="banner" id="banner" role="alert" hidden></div>
 <main class="dashboard">
 <div class="primary">
+<section class="s-setup" id="setup" aria-labelledby="setup-title" hidden></section>
 <section class="s-chat" id="chatzone" aria-labelledby="chat-title"><div class="sectionhead"><h2 id="chat-title">Command console</h2><span>Enter to send</span></div>
 <div id="chatlog" aria-live="polite"><div class="msg agent"><span class="who">Main</span>The Hand of the King is at your service. Issue an order or ask for counsel.</div></div>
 <div id="attachtray" class="attachtray" aria-label="Files attached to your next message" hidden></div>
@@ -298,13 +299,18 @@ button,.buttonlink{background:var(--acc);color:#14110a;border:1px solid var(--ac
 @media(max-width:1100px){.workspace{padding:22px}}
 @media(max-width:980px){.dashboard{grid-template-columns:1fr}.intel{display:flex}.s-mem #mem{max-height:280px}}
 @media(max-width:760px){.workspace{padding:16px}.commandhead{display:block}.headmeta{text-align:left;margin-top:10px}.headlinks{justify-content:flex-start}.dashboard{display:flex;flex-direction:column}.primary,.intel{display:contents}.s-system{order:1}.s-chat,.s-runs{order:2}.s-missions{order:3}.s-agents{order:4}.s-mem{order:5}.s-hive{order:6}.formgrid .row{grid-template-columns:1fr}.missionprompt{padding-right:0}.textbtn.danger{position:static;margin-top:4px}.composer{grid-template-columns:1fr}.composer button{width:100%}}
-${ATTACH_CSS}</style></head><body>
+${ATTACH_CSS}.s-setup{border:1px solid var(--gold);border-radius:8px;padding:14px 16px;background:var(--card);margin-bottom:16px}.s-setup[hidden]{display:none}
+.steps,.problems{list-style:none;margin:0;padding:0;display:grid;gap:10px}.steps li,.problems li{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;align-items:baseline}
+.stepstate{font-size:12px;font-weight:600;min-width:64px;padding:1px 8px;border:1px solid var(--line);border-radius:10px;text-align:center}.steps li[data-state=ok] .stepstate{color:var(--acc);border-color:var(--acc)}.steps li[data-state=todo] .stepstate{color:var(--gold);border-color:var(--gold)}
+.steps .fix,.problems .fix{grid-column:2;font-size:13px;color:var(--dim)}.s-setup h3{font-size:13px;margin:16px 0 8px;color:var(--gold)}.problems .recheck{grid-column:2;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+</style></head><body>
 ${wrapInShell('command', token, body, {
   sub: [['#command', 'Overview'], ['#missions', 'Missions'], ['#memory', 'Memory']],
   footer: '<button class="ghost privacy" data-action="blur">Privacy blur</button>',
   version: `Client v${DASHBOARD_CLIENT_VERSION}`,
 })}
 <script src="/warroom/kr-attach.js?v=${DASHBOARD_CLIENT_VERSION}"></script>
+<script src="/warroom/setup-checklist.js?v=${DASHBOARD_CLIENT_VERSION}"></script>
 <script>
 var TOKEN=${JSON.stringify(token).replace(/</g, '\\u003c')};
 ${CLIENT_MD_JS}

@@ -7,7 +7,7 @@
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.26.0.
+and a dashboard. Version 2.27.0.
 
 ## The five roles
 
@@ -88,9 +88,14 @@ Requires Node.js 20 or newer.
 
 ```sh
 npm install
-npm run build
+npm run setup    # asks for your keys, writes .env (an existing .env is never touched), installs War Room deps, builds
 npm start
 ```
+
+Prefer to do it by hand? Copy `.env.example` to `.env`, fill in what you use, then `npm run build` and `npm start`.
+Then open the dashboard (`http://localhost:3141`). Until you are set up, a **Getting started** card at the top lists what is
+left and what to do about it; once you are, it disappears. If a provider you configured stops answering (say its account ran
+out of credit), the same card says why and offers a one-press **Re-check**.
 
 Other useful commands: `npm run dev`, `npm run setup`, `npm run status`,
 `npm run verify`, `npm test`, `npm run difficulty:calibrate` (refit the free-form difficulty model; add `--write` to save it), `npm run test:py` (War Room), `npm run ui-check` (real browser). History: [`CHANGELOG.md`](CHANGELOG.md).

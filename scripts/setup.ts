@@ -55,22 +55,28 @@ async function main(): Promise<void> {
   if (build.status !== 0) console.log(yellow('Build failed. Continuing so .env can still be written.'));
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const env: Record<string, string> = {};
+  const envPath = path.join(PROJECT_ROOT, '.env');
+  if (fs.existsSync(envPath)) {
+    // Never overwrite: a second run would silently erase every key already configured. Edit .env by hand, or delete it to start over.
+    console.log(yellow('.env already exists, so it was left exactly as it is. Edit it by hand, or delete it to run the questions again.'));
+  } else {
+    const env: Record<string, string> = {};
 
-  env.TELEGRAM_BOT_TOKEN = await ask(rl, 'Telegram bot token (from @BotFather): ', true);
-  env.ALLOWED_CHAT_ID = await ask(rl, 'Allowed Telegram chat ID (send /chatid to your bot): ');
-  env.GROQ_API_KEY = await ask(rl, 'Groq API key for voice STT (blank to skip): ', true);
-  env.KOKORO_URL = (await ask(rl, 'Kokoro TTS URL [http://127.0.0.1:8880]: ')) || 'http://127.0.0.1:8880';
-  env.GOOGLE_API_KEY = await ask(rl, 'Google API key for memory v2 + War Room (blank to skip): ', true);
-  env.DASHBOARD_PORT = (await ask(rl, 'Dashboard port [3141]: ')) || '3141';
-  env.WARROOM_PORT = (await ask(rl, 'War Room port [7860]: ')) || '7860';
-  env.AGENT_MAX_TURNS = '30';
+    env.TELEGRAM_BOT_TOKEN = await ask(rl, 'Telegram bot token (from @BotFather): ', true);
+    env.ALLOWED_CHAT_ID = await ask(rl, 'Allowed Telegram chat ID (send /chatid to your bot): ');
+    env.GROQ_API_KEY = await ask(rl, 'Groq API key for voice STT (blank to skip): ', true);
+    env.KOKORO_URL = (await ask(rl, 'Kokoro TTS URL [http://127.0.0.1:8880]: ')) || 'http://127.0.0.1:8880';
+    env.GOOGLE_API_KEY = await ask(rl, 'Google API key for memory v2 + War Room (blank to skip): ', true);
+    env.DASHBOARD_PORT = (await ask(rl, 'Dashboard port [3141]: ')) || '3141';
+    env.WARROOM_PORT = (await ask(rl, 'War Room port [7860]: ')) || '7860';
+    env.AGENT_MAX_TURNS = '30';
 
-  const lines = Object.entries(env)
-    .filter(([, v]) => v !== '')
-    .map(([k, v]) => `${k}=${v}`);
-  fs.writeFileSync(path.join(PROJECT_ROOT, '.env'), `${lines.join('\n')}\n`, 'utf8');
-  console.log(green('.env written.'));
+    const lines = Object.entries(env)
+      .filter(([, v]) => v !== '')
+      .map(([k, v]) => `${k}=${v}`);
+    fs.writeFileSync(envPath, `${lines.join('\n')}\n`, 'utf8');
+    console.log(green('.env written.'));
+  }
 
   // Multi-agent scaffold from template (idempotent: createAgent skips existing).
   const { createAgent } = await import('../src/agent-create.js');

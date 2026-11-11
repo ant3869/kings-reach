@@ -49,6 +49,14 @@ files as they are, without redoing the plan) or **no_changes**. A build costs ab
 
 Everything under `store/` and `workspace/` is yours and local; it is ignored by Git.
 
+## Getting started card and provider re-check (dashboard)
+
+- Every line is a real check, not a guess: `.env` exists, Claude signed in, a fallback model ready, War Room running, a first council run, and (optional) Telegram. Each undone line says what to do. Source: `GET /api/setup`.
+- **Set up but not answering** (separate list): a provider you configured whose last call failed, with the reason in plain words. Out of credit points at that provider's billing page.
+- **Re-check** (OpenAI, OpenRouter, Gemini): one tiny call, under a cent, to the model you already route to, and only when you press it. It records the result, so Settings stops showing an old failure. `POST /api/providers/:id/check`.
+- A failed provider heals itself too: the router tries every route in order and ignores that flag, so the first success clears it. Providers late in a ladder (OpenAI is last for Comms and Content) may not be reached for a while, which is what Re-check is for.
+- Hidden when nothing needs attention.
+
 ## Rate and share a run (Plan Library, `/history`)
 
 - **Was this useful?** Useful / Not useful on any run; click again to clear. Saved to `store/ratings.jsonl` (append-only, last answer wins; the run ledger is never edited). The page shows "Rated useful: n of m".

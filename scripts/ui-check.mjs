@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { controlChecks } from './ui-check-controls.mjs';
 import { runActionChecks } from './ui-check-run-actions.mjs';
+import { setupChecks } from './ui-check-setup.mjs';
 
 const BASE = process.env.UI_CHECK_BASE ?? 'http://127.0.0.1:3141';
 const HEADLESS_SHELL = join(process.env.LOCALAPPDATA ?? '',
@@ -293,6 +294,9 @@ try {
   await sleep(1200);
   check('"Reconvene" opens the War Room with a prefilled, unsent prompt',
     (await js('location.pathname')) === '/warroom' && /reopen the saved plan from run 89ef3ae8/i.test(await js(`document.getElementById('msg').value`)));
+
+  // --- Dashboard: first-run checklist ---------------------------------------------------------------------------
+  await setupChecks({ open, js, check, sleep });
 
   // --- Card nameplates: live text on the blank plate, pin below the card, voice dropdown under the route ---
   await open('/warroom?previewCards=idle&still=1', { fake: true });

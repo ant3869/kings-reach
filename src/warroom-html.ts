@@ -31,7 +31,7 @@ function manifestAssets(): string[] {
     return []; // no manifest: the client falls back to the original four-state art
   }
 }
-export const WARROOM_STATIC: readonly string[] = ['kr-attach.js', 'warroom-mic.webp', 'warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-cancel.js', 'warroom-result.js', 'warroom-demo.js',
+export const WARROOM_STATIC: readonly string[] = ['kr-attach.js', 'setup-checklist.js', 'warroom-mic.webp', 'warroom-app.js', 'warroom-voice.js', 'warroom-live.js', 'warroom-cancel.js', 'warroom-result.js', 'warroom-demo.js',
   'warroom-casting.js', 'warroom-panels.js', 'warroom-royal.js', 'warroom-royal.css', 'card-director.js', 'mic-worklet.js',
   'warroom-council-cards.png', 'warroom-chamber-bg.png', 'warroom-chamber-bg.webp', ...CARD_ROLES.map((role) => `card-states/individual/idle-${role}.webp`), ...CARD_ASSETS, ...manifestAssets()];
 

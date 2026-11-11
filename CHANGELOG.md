@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.27.0 - Getting started card; setup no longer erases .env
+
+**Fixed**
+- **`npm run setup` overwrote `.env` unconditionally**, so running it a second time silently erased every key you had set. It now leaves an existing `.env` exactly as it is (and does not ask for keys it would not save). Found while making the README lead with setup; a test runs the real wizard in a throwaway folder and fails on the old behaviour.
+
+**Added**
+- **Getting started card** at the top of the dashboard: `.env` exists, Claude signed in, a fallback model ready, War Room running, a first council run, and (optional) Telegram. Every line is a real check and each undone one says what to do. It disappears once you are set up. `GET /api/setup`.
+- **Set up but not answering**: a provider you configured whose last call failed, shown with the reason in plain words (e.g. out of credit, with that provider's billing page).
+- **Re-check** for OpenAI, OpenRouter and Gemini: one tiny call (under a cent) to the model you already route to, only when you press it, recorded so Settings stops showing an old failure. `POST /api/providers/:id/check`.
+
+**Changed**
+- README "Run it" leads with `npm run setup`. Roadmap item 3 done.
+- The Telegram step names which half is missing (token or chat ID).
+
+**Found, not a bug:** OpenAI "not working" was an account with no credit (HTTP 429 `credit_balance_exhausted`); the key itself is valid. It is last in the Comms and Content ladders, so nothing was blocked.
+
+**Tests:** `tests/setup-checklist.test.mjs` (11) and `tests/setup-wizard.test.mjs` (2); five behaviours were each broken on purpose and a test failed every time. Browser checks: 207 pass (13 new), with the checklist and re-check stubbed so nothing real is called.
+
 ## 2.26.0 - Export a run as Markdown; rate a result
 
 **Added**

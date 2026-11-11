@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { renderPlanLine, renderWarRoom, WARROOM_STATIC } from './warroom-html.js';
 import { renderProviderSettings } from './provider-html.js';
 import { mountHistory } from './history-routes.js';
+import { mountSetup } from './setup-routes.js';
 import { defaultProviderRouting, loadProviderRouting, PROVIDERS, ROLE_GUIDANCE, saveProviderRouting } from './provider-config.js';
 import { get9RouterCatalog, getProviderHealth } from './provider-runner.js';
 import { buildModelChoices, invalidRoutes, invalidTiers, readiness } from './provider-models.js';
@@ -71,6 +72,7 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
   app.use('/api/*', apiGuard({ token: DASHBOARD_TOKEN, loopbackOnly: DASHBOARD_LOOPBACK }));
 
   mountHistory(app);
+  mountSetup(app);
 
   app.get('/api/health', async (c) => c.json(await collectHealth()));
   // Drives the "Sign in to Claude" banner on every page. POST opens the browser sign-in; the apiGuard above makes it same-origin only.
