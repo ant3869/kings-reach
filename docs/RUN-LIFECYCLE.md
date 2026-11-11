@@ -14,6 +14,7 @@ ledger row and no saved state, so nothing said what had changed on disk.
 | Open the War Room again | The new page is told to clear itself, then replayed what it missed, then gets live updates. |
 | Press **Cancel run** | The run stops. It is recorded as `cancelled`. (Hush voices never stops a run.) |
 | An error escapes the run | It is recorded as `crashed` and reported. |
+| The run reaches its spend limit (`COUNCIL_MAX_COST_USD`) | It stops **between** stages and is recorded as `over_budget`. Nothing is cut off mid-edit. |
 | Restart the War Room server | Running work **is** stopped (it lives in that process). Check first, see below. |
 
 There is deliberately **no "leave this page?" warning**: leaving is safe, so a warning would be false.
@@ -42,13 +43,13 @@ page clears its transcript on `resume` instead of appending a second copy.
 `warroom/interrupted.py` (pure functions) and `BuildFlow.record_interruption` run after the final meter has been sent:
 
 - **Every** cancelled or crashed council or Build gets a ledger row in `store/council-runs.jsonl` with `outcome`
-  (`cancelled` / `crashed`), `interrupted_at` (the stage that was running), `failure_summary`.
+  (`cancelled` / `crashed` / `over_budget`), `interrupted_at` (the stage that was running), `failure_summary`.
 - A **Build** also records `changed_files`: what its owners reported *plus* any edit the live feed saw, so a file Ops edited
   but never got to report is not lost.
 - A Build that had already edited files saves `store/build-state.json` and shows an *attention* card with **Fix** (finish
   what is left, then run the checks and the review). A page that reconnects gets that card back. A Build stopped before any
   edit saves nothing, and an earlier build's state is not overwritten: just build again.
-- The History page labels the new outcomes, and a cancelled Build is counted separately and kept **out of the build
+- The History page labels the new outcomes, and a cancelled Build, or one stopped at the spend limit, is counted separately and kept **out of the build
   success rate** (it is neither a success nor a failure). Its spend still counts.
 - Writing the note can never replace the cancel: if it fails, the page still learns the run ended and a status line says
   why the note could not be written.

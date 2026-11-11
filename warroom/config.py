@@ -82,6 +82,8 @@ KOKORO_VOICES = Path(env("KOKORO_VOICES", str(VOICE_MODEL_DIR / "kokoro" / "voic
 # --- council ---
 DEBATE_ROUNDS = int(env("COUNCIL_DEBATE_ROUNDS", "1"))  # 0 = skip cross-examination
 INVESTIGATE_TURNS = int(env("COUNCIL_INVESTIGATE_TURNS", "24"))  # tool-use budget per specialist
+# Per-run spend limit in dollars; blank or 0 = off. Parsed (and a bad value reported) by spend.setting() when a Council starts.
+COST_LIMIT_RAW = env("COUNCIL_MAX_COST_USD", "")
 
 # Browsers may only connect from the dashboard origin (WebSockets ignore CORS, so
 # without this any website could drive agents). None = non-browser clients (probes).

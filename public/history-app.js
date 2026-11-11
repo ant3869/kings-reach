@@ -9,7 +9,7 @@ const OUTCOMES = {
   verdict: ['Verdict locked', 'good'], built: ['Built', 'good'], needs_work: ['Needs work', 'warn'],
   no_changes: ['Nothing was built', 'warn'], preflight_failed: ['Preflight failed', 'bad'],
   no_verdict: ['No verdict', 'bad'], no_takes: ['No takes', 'bad'],
-  cancelled: ['Cancelled', 'warn'], crashed: ['Stopped by an error', 'bad'],
+  cancelled: ['Cancelled', 'warn'], over_budget: ['Stopped at spend limit', 'warn'], crashed: ['Stopped by an error', 'bad'],
 };
 const STAGE_COLORS = ['#79c0ff', '#a371f7', '#3fb950', '#d4a017', '#f85149', '#8b949e'];
 
@@ -61,7 +61,7 @@ function renderStats() {
   const cards = [
     ['Runs', s.runs, `${s.summits} councils, ${s.builds} builds`],
     ['Verdicts locked', s.verdicts, `of ${s.summits} councils`],
-    ['Build success', pct(s.buildSuccessRate), `${s.built} built, ${s.needsWork} need work, ${s.noChanges} no-op` + (s.cancelled ? `, ${s.cancelled} cancelled` : '')],
+    ['Build success', pct(s.buildSuccessRate), `${s.built} built, ${s.needsWork} need work, ${s.noChanges} no-op` + (s.cancelled ? `, ${s.cancelled} cancelled` : '') + (s.overBudget ? `, ${s.overBudget} stopped at the spend limit` : '')],
     ['Total spend', money(s.totalCostUsd), s.avgBuildCostUsd == null ? '' : `~${money(s.avgBuildCostUsd)} per build`],
     ['Time in session', duration(s.totalSeconds), s.avgBuildSeconds == null ? '' : `~${duration(s.avgBuildSeconds)} per build`],
     ['Avg confidence', s.avgConfidence == null ? 'n/a' : s.avgConfidence.toFixed(2), 'Main\'s verdict confidence'],

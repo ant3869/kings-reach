@@ -49,6 +49,15 @@ files as they are, without redoing the plan) or **no_changes**. A build costs ab
 
 Everything under `store/` and `workspace/` is yours and local; it is ignored by Git.
 
+## Spend limit (`COUNCIL_MAX_COST_USD`)
+
+- **Off by default.** Set it to dollars (`2`, `$2.50`) in `.env` and restart the War Room. Blank or `0` = off. A value that is not a positive number is **reported when the run starts** and means no limit, never a silent off.
+- **Per run:** one council, or one Build, may spend up to the limit. The status line at the start says which limit applies.
+- **Checked between stages:** a council before the specialists investigate and before the debate; a Build before each owner starts (never in the middle of someone's edits). The verdict is never skipped: it is the product and the cheapest paid stage. The review is not skipped either.
+- **So it can overshoot:** a stage already running finishes, and several specialists run at once. Treat the limit as "stop starting new paid work", not a hard ceiling.
+- **Only reported costs count.** Claude reports every call; Codex, Gemini, ChatGPT and Meta only sometimes. The stop message says so. (In this project's history Claude reported a cost on 78 of 78 agent-runs, the others on only 13 of 45.)
+- **When it stops:** outcome `over_budget` in the ledger and the Plan Library, everything said so far stays in the log, and a Build that already changed files keeps them and offers **Fix**, exactly like a cancelled one. It stays out of the build success rate; its spend still counts.
+
 ## Getting started card and provider re-check (dashboard)
 
 - Every line is a real check, not a guess: `.env` exists, Claude signed in, a fallback model ready, War Room running, a first council run, and (optional) Telegram. Each undone line says what to do. Source: `GET /api/setup`.

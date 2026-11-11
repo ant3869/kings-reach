@@ -100,11 +100,14 @@ export function buildsOf(planId: string, runs: RunRecord[]): RunRecord[] {
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
+// Stopped by you (Cancel) or by the spend limit: neither a success nor a failure of the build, so out of the rate. The spend still counts.
+const STOPPED = new Set(['cancelled', 'over_budget']);
+
 export function computeStats(runs: RunRecord[], ratings: Map<string, Rating> = new Map()) {
   const summits = runs.filter((r) => r.kind === 'summit');
   const builds = runs.filter((r) => r.kind === 'build');
   const count = (rs: RunRecord[], outcome: string) => rs.filter((r) => r.outcome === outcome).length;
-  const finished = builds.filter((r) => r.outcome !== 'cancelled');
+  const finished = builds.filter((r) => !STOPPED.has(r.outcome));
   const executed = finished.filter((r) => r.outcome !== 'preflight_failed');
   const confidences = summits.filter((r) => typeof r.verdict_confidence === 'number').map((r) => num(r.verdict_confidence));
   const built = count(builds, 'built');
@@ -119,7 +122,7 @@ export function computeStats(runs: RunRecord[], ratings: Map<string, Rating> = n
     noChanges: count(builds, 'no_changes'),
     preflightFailed: count(builds, 'preflight_failed'),
     cancelled: count(builds, 'cancelled'),
-    // A build you stopped is neither a success nor a failure, so it stays out of the rate.
+    overBudget: count(builds, 'over_budget'),
     buildSuccessRate: finished.length ? built / finished.length : null,
     totalCostUsd: Math.round(sum(runs.map((r) => num(r.total_cost_usd))) * 100) / 100,
     totalSeconds: Math.round(sum(runs.map((r) => num(r.total_s)))),

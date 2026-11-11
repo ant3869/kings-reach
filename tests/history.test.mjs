@@ -85,6 +85,15 @@ test('history: a build you cancelled is counted, but is neither a success nor a 
   assert.equal(s.totalCostUsd, 7, 'its spend is still spend');
 });
 
+test('history: a build stopped by the spend limit is counted and its spend kept, but it is not a failure of the build', () => {
+  const runs = [...loadRuns(fixture().p), { ...build('0a0b0c0e', '2026-01-03T10:00:00'), outcome: 'over_budget', total_cost_usd: 2, total_s: 60 }];
+  const s = computeStats(runs);
+  assert.equal(s.overBudget, 1);
+  assert.equal(s.cancelled, 0, 'counted on its own, not as a cancel');
+  assert.equal(s.buildSuccessRate, 0.5, 'unchanged: 1 built of the 2 builds that finished');
+  assert.equal(s.totalCostUsd, 8, 'the money was spent either way');
+});
+
 test('history: the active verdict is archived once, and a past plan can be re-activated', () => {
   const { p } = fixture();
   assert.equal(existsSync(p.archiveDir), false);

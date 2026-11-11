@@ -7,7 +7,7 @@
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.27.0.
+and a dashboard. Version 2.28.0.
 
 ## The five roles
 
@@ -110,6 +110,10 @@ room — see `WARROOM_AUTOSTART` in `.env`.
 
 Copy `.env.example` to `.env` and fill in your own values. Never commit
 `.env`. The war room and the Node core read the same `.env` file.
+
+**Spend limit (off by default):** set `COUNCIL_MAX_COST_USD=2` to stop any one council or Build once it has spent $2. It is checked between
+stages, so the stage already running finishes and the last one can overshoot; and it counts only costs the providers report (Claude reports
+every call, others only sometimes), so the real bill can be higher. Blank or `0` means no limit.
 
 ## Docs
 

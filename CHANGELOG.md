@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.28.0 - Spend limit
+
+**Added**
+- **`COUNCIL_MAX_COST_USD`**: stop any one council or Build once it has spent that many dollars. **Off by default** (blank or `0`). Checked between stages: a council before the specialists investigate and before the debate, a Build before each owner starts, so nothing is cut off mid-edit. The verdict and the review always finish. The limit is announced when the run starts.
+- A stopped run is recorded as outcome `over_budget` (ledger, Plan Library label, "stopped at the spend limit" count under Build success). Everything said so far stays in the log; a Build that had already changed files keeps them and offers **Fix**, exactly like a cancelled one. It stays out of the build success rate; its spend still counts.
+- A value that is not a positive number (`2usd`, `-1`) is **reported when the run starts** and means no limit. A typo never fails silently into "off".
+
+**Honest limits** (also in the docs and the stop message)
+- A stage already running finishes and specialists run in parallel, so the last stage can overshoot.
+- Only costs the providers report are counted. In this project's history Claude reported a cost on 78 of 78 agent-runs, the others on 13 of 45, so the real bill can be higher.
+
+**Tests:** `tests/test_spend_limit.py` (16) and one in `tests/history.test.mjs`; seven behaviours were each broken on purpose (guard removed before the debate, guard removed between owners, the stop handler removed, `>=` changed to `>`, a typo silently meaning off, the stop recorded as a generic error, `over_budget` counted against the build rate) and a test failed every time.
+
 ## 2.27.0 - Getting started card; setup no longer erases .env
 
 **Fixed**

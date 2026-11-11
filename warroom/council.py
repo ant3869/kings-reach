@@ -18,8 +18,9 @@ try:
     from . import build
     from . import interrupted
     from . import mindchange
+    from . import spend
     from .buildflow import BuildFlow, continuation, resumable_card
-    from .config import (BUILD_STATE_JSON, COUNCIL_DIR, DEBATE_ROUNDS, INVESTIGATE_TURNS, RUNS_FILE,
+    from .config import (BUILD_STATE_JSON, COST_LIMIT_RAW, COUNCIL_DIR, DEBATE_ROUNDS, INVESTIGATE_TURNS, RUNS_FILE,
                          VERDICT_ARCHIVE_DIR, VERDICT_FILE, VERDICT_JSON)
     from .ledger import archive_verdict, build_headline, build_state
     from .live import BUILD_PHASES, COUNCIL_PHASES, FOLLOWUP_PHASES, Live
@@ -31,8 +32,9 @@ except ImportError:  # run as a script
     import build
     import interrupted
     import mindchange
+    import spend
     from buildflow import BuildFlow, continuation, resumable_card
-    from config import (BUILD_STATE_JSON, COUNCIL_DIR, DEBATE_ROUNDS, INVESTIGATE_TURNS, RUNS_FILE,
+    from config import (BUILD_STATE_JSON, COST_LIMIT_RAW, COUNCIL_DIR, DEBATE_ROUNDS, INVESTIGATE_TURNS, RUNS_FILE,
                         VERDICT_ARCHIVE_DIR, VERDICT_FILE, VERDICT_JSON)
     from ledger import archive_verdict, build_headline, build_state
     from live import BUILD_PHASES, COUNCIL_PHASES, FOLLOWUP_PHASES, Live
@@ -107,6 +109,9 @@ class Run:
         if reply.get("model") and reply["model"] not in a["models"]:
             a["models"].append(reply["model"])
 
+    def spent(self):
+        return round(sum(a["cost_usd"] for a in self.data["agents"].values()), 4)
+
     def finish(self, **extra):
         self.data.update(extra)
         self.data["total_s"] = round(time.monotonic() - self._t0, 1)
@@ -130,10 +135,24 @@ class Council(BuildFlow):
         self.run = None  # the run in progress, so a stop can still be written to the ledger
         self.partial = None  # a build's verdict, owners and what they have reported so far
         self.state_file = BUILD_STATE_JSON  # read at construction, so a test (or a deploy) can point it elsewhere
+        self.cost_limit, self.limit_note = spend.setting(COST_LIMIT_RAW)  # same: read once per run, a test can set cost_limit
 
     def _begin(self, kind, question):
         self.run = Run(kind, question)
         return self.run
+
+    def _guard(self, run, where):
+        """Stop between paid stages once the run has spent its limit. Free to call, so it sits before every paid stage."""
+        spent = run.spent()
+        if spend.over(spent, self.cost_limit):
+            raise spend.SpendLimitReached(spend.stopped_message(spent, self.cost_limit, where))
+
+    async def _announce_limit(self):
+        """Say what limit applies (or that a bad setting means none) before any money is spent."""
+        if self.cost_limit:
+            await self.room.status(f"Spend limit for this run: ${self.cost_limit:.2f}, checked between stages.")
+        elif self.limit_note:
+            await self.room.status(self.limit_note)
 
     async def _ask(self, run, agent, prompt, schema, **kw):
         """One structured call with seat animation + cost accounting. Returns (data|None, reply)."""
@@ -202,6 +221,10 @@ class Council(BuildFlow):
         except asyncio.CancelledError:
             state, stopped = "cancelled", (interrupted.CANCELLED, "")
             raise
+        except spend.SpendLimitReached as exc:  # a handled stop, not an error: recorded below and not re-raised
+            state, note, stopped = "attention", str(exc), (interrupted.OVER_BUDGET, str(exc))
+            await self.room.status(f"Stopped at the spend limit: {exc}")
+            return None
         except Exception as exc:  # noqa: BLE001 - recorded, then re-raised for the session's own report
             stopped = (interrupted.CRASHED, repr(exc)[:200])
             raise
@@ -220,6 +243,7 @@ class Council(BuildFlow):
 
     async def _deliberate(self, question, convo, attached=""):
         run = self._begin("summit", question)
+        await self._announce_limit()
         brief = await self._stage(run, "recall", ab.recall(question))
         memory_lines = max(0, len(brief.splitlines()) - 1)
         await self.room.status(f"recalled {memory_lines} memory/hive lines" if memory_lines else "no prior memory on this")
@@ -248,6 +272,7 @@ class Council(BuildFlow):
         frame = (f"{context}\n\n[Objective]\n{plan['objective']}\n\n[Success criteria]\n"
                  f"{bullets(plan.get('success_criteria', []))}")
         takes, tooled = {}, {}
+        self._guard(run, "before the specialists investigate")
 
         async def investigate(agent):
             take, reply = await self._ask(run, agent, (
@@ -280,6 +305,7 @@ class Council(BuildFlow):
             await self.room.status(diversity_warning)
 
         debates, assessments = {}, {}
+        self._guard(run, "before the debate")  # the verdict is never skipped: it is the product and the cheapest paid stage
         if DEBATE_ROUNDS > 0 and len(takes) > 1:
             async def cross_examine(agent):
                 others = "\n".join(f"- {o} (confidence {t['confidence']:.2f}): {t['recommendation']} | findings: "
@@ -415,6 +441,7 @@ class Council(BuildFlow):
             return None
         v = json.loads(VERDICT_JSON.read_text(encoding="utf-8"))
         run = self._begin("build", v.get("question", ""))
+        await self._announce_limit()
         out_dir = COUNCIL_DIR / v.get("run", run.data["id"])
         success_metrics = v.get("success_metrics", [])
         run.begin("preflight")
@@ -450,6 +477,7 @@ class Council(BuildFlow):
         await self.live.announce("main", f"Baseline is clean. {len(owners)} owner{'s' if len(owners) != 1 else ''} start building: "
                                  + ", ".join(owners) + ".")
         for owner in owners:
+            self._guard(run, f"before {owner} starts")  # between owners, never in the middle of one's edits
             steps = "\n".join(f"- {s['step']} (done when: {s['done_when']})" for s in v["plan"] if s["owner"] == owner)
             r, _ = await self._progress("execute", f"{owner} is implementing its assigned steps", self._ask(run, owner, (
                 f"The council decided:\n{v['verdict']}\n\n[Your steps]\n{steps}\n\n[Already done by others]\n"

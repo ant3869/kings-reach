@@ -9,7 +9,7 @@ try:
 except ImportError:  # run as a script
     from live import same_file
 
-CANCELLED, CRASHED = "cancelled", "crashed"
+CANCELLED, CRASHED, OVER_BUDGET = "cancelled", "crashed", "over_budget"
 
 
 def merge_files(reported, observed):
@@ -28,6 +28,8 @@ def why(outcome, stage, detail=""):
     where = f" during {stage}" if stage else ""
     if outcome == CANCELLED:
         return f"Cancelled{where}."
+    if outcome == OVER_BUDGET:
+        return f"Stopped at the spend limit{where}: {detail}"[:300]
     return f"Stopped by an error{where}: {detail}"[:300] if detail else f"Stopped by an error{where}."
 
 
@@ -43,7 +45,8 @@ def ledger_fields(kind, outcome, stage, changed, detail=""):
 def build_headline(outcome, stage, changed):
     n = len(changed)
     edited = f"{n} file{'s' if n != 1 else ''} already changed" if n else "nothing was changed"
-    return f"Build {'cancelled' if outcome == CANCELLED else 'stopped by an error'}{' during ' + stage if stage else ''}: {edited}."
+    verb = {CANCELLED: "cancelled", OVER_BUDGET: "stopped at the spend limit"}.get(outcome, "stopped by an error")
+    return f"Build {verb}{' during ' + stage if stage else ''}: {edited}."
 
 
 def issues(owners, reports, steps_of, changed):
