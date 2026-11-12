@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.29.0 - The crest, a launcher icon, and a quieter-run fix
+
+**Added**
+- **The KR crest is the app's logo.** Nav seal on every page (replaces the crown glyph), a crest in the War Room title frame, tab icons (`favicon.ico` 16-48 px, a 32 px PNG, an iOS touch icon) and a `/favicon.ico` route. One source image (`public/brand/kr-crest-source.png`); `python scripts/make-brand.py` rebuilds every size, squared without stretching, with a shield-only crop for the tiny sizes. Served from an allow-listed `/brand/` route. The README keeps its banner and gains the crest under it.
+- **A clickable icon (Windows):** `npm run shortcut` creates **King's Reach** on the Desktop and in the Start menu, with the crest as its icon. It runs `scripts/launch.ps1`: starts the app only if it is not already running (never restarts it), waits for it, opens the dashboard, and shows a message if Node is missing or it does not start.
+- **Silent runs now say why.** "Agents speak aloud" unticked: a one-time notice when you send. Browser holding sound back: a one-time notice, the clips are kept, and they play in order after your next click or key press (they used to be dropped without a word).
+
+**Changed**
+- **The royal War Room look is on by default.** It only ever switched on through `?royal=1` stored per browser address, so a new browser, another address (`localhost` vs `127.0.0.1`) or cleared site data lost it silently. `?royal=0` turns it off and is remembered. Blocked browser storage keeps the default.
+
+**Removed**
+- The small crown badge at the top of every War Room card.
+
+**Fixed**
+- With the royal look on, each card's voice dropdown was 9px taller than its plate and hung below the card. It keeps the 44px tap target but no longer adds layout height. (Hidden until now only because the look was opt-in.)
+
+**Tests:** `tests/warroom-voice.test.mjs` (4, four deliberate breakages each caught), the royal-flag test rewritten for the new default, `scripts/ui-check-brand.mjs` (crest on all four pages, royal default / opt-out / remembered, voice notices, no card badge).
+
 ## 2.28.0 - Spend limit
 
 **Added**

@@ -453,10 +453,15 @@ function youBubble(kind, text, files) {
   bubble(kind === 'summit' ? 'you \u2192 council' : 'you', text.length > 500 ? disclosure(text, 'Read full request') : esc(text + KRAttach.describe(files || [])), 'you');
 }
 
+let voicesOffNoted = false; // said once per page, and again after the box is ticked and unticked
 function submit(kind) {
   const input = $('msg');
   const text = input.value.trim();
   WarVoice.unlock();
+  if (!$('speak').checked && !voicesOffNoted) {
+    voicesOffNoted = true;
+    bubble('war room', 'Voices are off ("Agents speak aloud" is unticked), so this run will be silent. Tick it to hear the council.', 'sys');
+  }
   if (kind === 'build') {
     $('buildlive').hidden = false; $('buildlive')._phases = {}; $('buildbtn').disabled = true; buildResult.clear();
     resetStages(BUILD_STAGES);
@@ -519,6 +524,7 @@ function init() {
     },
     onLevel: setLevel,
     onSpeaking: setSpeaking,
+    onBlocked: () => bubble('war room', 'Your browser is holding sound back until you interact with the page. <b>Click anywhere</b> and the voices will start.', 'sys'),
     onMicState: (state, detail) => {
       $('micstate').textContent = { recording: 'listening to you...', listening: 'hands-free: waiting for speech',
         idle: '', error: 'mic error: ' + detail }[state];
@@ -543,6 +549,7 @@ function init() {
     if (e.key === 'Enter') submit(e.ctrlKey ? 'summit' : 'text');
   });
   $('speak').onchange = () => {
+    voicesOffNoted = false;
     WarVoice.unlock();
     if (!$('speak').checked) WarVoice.silence();
     send({ type: 'voice', on: $('speak').checked });

@@ -1,6 +1,6 @@
 {
   "name": "kings-reach",
-  "version": "2.28.0",
+  "version": "2.29.0",
   "type": "module",
   "description": "King's Reach - personal AI assistant hub (Telegram + voice + memory v2 + scheduler + multi-agent + war room + dashboard)",
   "scripts": {
@@ -8,6 +8,7 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "setup": "tsx scripts/setup.ts",
+    "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-shortcut.ps1",
     "status": "tsx scripts/status.ts",
     "typecheck": "tsc --noEmit",
     "verify": "node scripts/verify.mjs",

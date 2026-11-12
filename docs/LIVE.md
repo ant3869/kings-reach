@@ -41,8 +41,8 @@ Preflight and gate run in a worker thread with no heartbeat, so they show a phas
 
 ## Royal chamber theme (opt-in)
 
-Open `/warroom?royal=1` (remembered; `?royal=0` turns it off). Default look is unchanged.
-- Adds a framed title, a crest per seat, numbered stage chips and two side panels (`public/warroom-royal.*`, `public/warroom-panels.js`).
+The royal look is **on by default**. `/warroom?royal=0` turns it off (remembered in that browser); `?royal=1` turns it back on.
+- Adds a framed title, numbered stage chips and two side panels (`public/warroom-royal.*`, `public/warroom-panels.js`).
 - **Council Status** shows uptime, memory entries and the active plan from `GET /warroom/status.json` (counts only, `no-store`), plus seats routed on this page. A value with no source reads "unavailable", never a made-up number.
 - It only adds elements and a stylesheet; no ids, handlers or state logic are touched.
 

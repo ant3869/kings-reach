@@ -31,8 +31,8 @@ const PAGES: ReadonlyArray<{ id: PageId; href: string; label: string; note: stri
   { id: 'settings', href: '/providers', label: 'Settings', note: 'Alliances & Routes', group: 'The Realm' },
 ];
 
-// A small crown for the crest: stroke-only so it takes the gold from CSS.
-const CROWN = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18.5h18M3.5 17 2.5 8l5 4 4.5-7 4.5 7 5-4-1 9z"/><circle cx="12" cy="3.2" r=".6"/></svg>';
+// The crest in the rail: the 96 px WebP shown at 44 px, so it stays sharp on a high-density screen. Decorative: the name beside it says the words.
+const CREST = '<img src="/brand/kr-crest-96.webp" width="44" height="44" alt="" decoding="async">';
 
 /** Links keep the access token so a token-protected install never drops you at a locked page. */
 const withToken = (href: string, token: string): string =>
@@ -52,7 +52,7 @@ function renderRail(active: PageId, token: string, opts: ShellOptions): string {
       `<span class="kr-label">${p.label}<small>${p.note}</small></span></a>${sub}`;
   }).join('');
   return `<aside class="kr-rail" aria-label="King's Reach navigation">
-<a class="kr-brand" href="${esc(withToken('/', token))}"><span class="kr-seal">${CROWN}</span><span><strong>King's Reach</strong><small>The Royal Council</small></span></a>
+<a class="kr-brand" href="${esc(withToken('/', token))}"><span class="kr-seal">${CREST}</span><span><strong>King's Reach</strong><small>The Royal Council</small></span></a>
 <nav class="kr-nav" aria-label="Pages">${items}</nav>
 <div class="kr-foot"><div class="kr-status"><span class="kr-dot" id="kr-war-dot"></span><span id="kr-war-text">War room: checking</span></div>
 ${opts.version ? `<div>${esc(opts.version)}</div>` : ''}${opts.footer ?? ''}</div>
@@ -110,7 +110,7 @@ export const SHELL_CSS = `
 .kr-app{min-height:100vh;display:grid;grid-template-columns:208px minmax(0,1fr)}
 .kr-rail{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:22px 14px 16px;background:#0c0f12f2;border-right:1px solid #292e34;font:13px system-ui,sans-serif;z-index:20;backdrop-filter:blur(8px)}
 .kr-brand{display:flex;align-items:center;gap:10px;margin:0 6px 26px;color:#e8e3d7;text-decoration:none}
-.kr-seal{width:36px;height:36px;display:grid;place-items:center;border:1px solid #c7a44b;border-radius:3px 3px 50% 50%/3px 3px 40% 40%;color:#c7a44b;background:linear-gradient(#c7a44b24,#c7a44b0a);box-shadow:inset 0 0 8px #c7a44b1f}
+.kr-seal{width:44px;height:44px;flex:none;display:block}.kr-seal img{display:block;width:44px;height:44px;filter:drop-shadow(0 2px 4px #000a)}
 .kr-brand strong{display:block;font:600 15px Georgia,serif;letter-spacing:.3px}.kr-brand small{display:block;margin-top:2px;color:#a5a7a3;font-size:11px;letter-spacing:.3px}
 .kr-nav{display:flex;flex-direction:column;gap:2px;overflow-y:auto}
 .kr-group{margin:16px 8px 6px;color:#989c9b;font-size:10px;letter-spacing:1.2px;text-transform:uppercase}.kr-group:first-child{margin-top:0}

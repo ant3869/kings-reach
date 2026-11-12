@@ -20,7 +20,9 @@ const WarVoice = (() => {
   let quietMs = 0;
   const queue = [];
   let current = null;
-  let hooks = { onUtterance() {}, onLevel() {}, onMicState() {}, onSpeaking() {} };
+  let waitingForGesture = false;
+  const GESTURES = ['pointerdown', 'keydown'];
+  let hooks = { onUtterance() {}, onLevel() {}, onMicState() {}, onSpeaking() {}, onBlocked() {} };
 
   function audioCtx() {
     if (!ctx) ctx = new AudioContext();
@@ -130,10 +132,25 @@ const WarVoice = (() => {
     requestAnimationFrame(meter);
   }
 
+  // A browser keeps sound locked until the person has interacted with the page (a click or key press). When a clip arrives while it
+  // is still locked, say so once and keep the clip: the next click or key press unlocks the audio and the voices carry on.
+  function waitForGesture() {
+    if (waitingForGesture) return;
+    waitingForGesture = true;
+    hooks.onBlocked();
+    const go = () => {
+      for (const type of GESTURES) document.removeEventListener(type, go, true);
+      waitingForGesture = false;
+      audioCtx().resume().then(playNext);
+    };
+    for (const type of GESTURES) document.addEventListener(type, go, true);
+  }
+
   async function playNext() {
     if (current || !queue.length) return;
-    const clip = queue.shift();
     const c = audioCtx();
+    if (c.state === 'suspended') return waitForGesture();
+    const clip = queue.shift();
     let buffer;
     try {
       buffer = await c.decodeAudioData(clip.wav);

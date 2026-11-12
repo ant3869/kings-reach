@@ -4,6 +4,7 @@
 import { ATTACH_CSS } from './attach-css.js';
 import { CLIENT_MD_JS } from './client-md.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
+import { ICON_LINKS } from './brand.js';
 
 export const DASHBOARD_CLIENT_VERSION = 11;
 const REFRESH_MS = 15_000;
@@ -208,6 +209,7 @@ export function renderDashboard(data: DashboardData = {}): string {
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+${ICON_LINKS}
 <title>King's Reach Mission Control v${DASHBOARD_CLIENT_VERSION}</title>
 <style>
 ${SHELL_CSS}

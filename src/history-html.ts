@@ -3,6 +3,7 @@
 
 import { CLIENT_MD_JS } from './client-md.js';
 import { SHELL_CSS, pageHead, wrapInShell } from './shell.js';
+import { ICON_LINKS } from './brand.js';
 
 export const HISTORY_CLIENT_VERSION = 6;
 
@@ -90,6 +91,7 @@ ${pageHead('The Royal Archives', 'Plan Library', 'Every council, plan and build 
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+${ICON_LINKS}
 <title>Plan Library - King's Reach Council</title>
 <style>${SHELL_CSS}${CSS}</style></head><body>
 ${wrapInShell('history', token, body, { version: `Client v${HISTORY_CLIENT_VERSION}` })}

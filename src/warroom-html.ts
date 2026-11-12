@@ -10,6 +10,7 @@ import { ATTACH_CSS } from './attach-css.js';
 import { CLIENT_MD_JS, esc } from './client-md.js';
 import { activePlan, type PlanSummary } from './history.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
+import { ICON_LINKS } from './brand.js';
 
 export const WARROOM_CLIENT_VERSION = 43;
 export const WARROOM_PROTOCOL = 'council-v8'; // must match PROTOCOL in warroom/server.py
@@ -80,6 +81,8 @@ body{background:#05070b;color:#eadfbe;font-family:Georgia,'Times New Roman',seri
 body:before{content:'';position:fixed;inset:0;background:linear-gradient(#02050aaa,#03050bdd),url('/warroom/warroom-chamber-bg.webp?v=1') center top/cover no-repeat;z-index:-2}
 body:after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at center top,transparent 15%,#02040a88 72%);z-index:-1;pointer-events:none}
 .kr-main{padding:14px}.kr-main>.kr-auth{margin:-14px -14px 12px}.wrap{max-width:1400px;margin:0 auto}
+.wrap{position:relative}
+.wr-crest{position:absolute;left:14px;top:4px;width:72px;height:72px;z-index:2;filter:drop-shadow(0 3px 8px #000c)}/* beside the title, out of the flow: it must not push the message box down */
 h1{font-size:31px;text-align:center;letter-spacing:7px;margin:0;color:#f4df9a;text-shadow:0 1px #000,0 0 18px #d4a01766}
 .sub{text-align:center;font:italic 12px Georgia;color:#b2a47d;margin:0 0 5px}.sub a{color:#e2bf62}
 #status{text-align:center;font:13px system-ui;margin:6px}
@@ -302,10 +305,12 @@ export function renderWarRoom(plan: PlanSummary | null = activePlan()): string {
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+${ICON_LINKS}
 <title>War Room v${WARROOM_CLIENT_VERSION} - King's Reach Council</title>
 <style>${SHELL_CSS}${CSS}${ATTACH_CSS}</style></head><body>
 ${ICON_SPRITE}
 ${wrapInShell('warroom', '', `<div class="wrap">
+<img class="wr-crest" src="/brand/kr-crest-256.webp" width="72" height="72" alt="King's Reach crest" decoding="async">
 <h1>THE WAR ROOM</h1>
 <p class="sub">Plan. Investigate. Cross-examine. Decide. Build. client v${WARROOM_CLIENT_VERSION} &middot; <span id="sver">server ?</span></p>
 <div id="status"><span class="dot" id="dot"></span><span id="stext">connecting...</span><span class="vstat" id="vstat">voice: ?</span></div>

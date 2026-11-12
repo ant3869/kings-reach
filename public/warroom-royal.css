@@ -9,16 +9,14 @@ html[data-royal] .wrap>h1:before,html[data-royal] .wrap>h1:after{content:'';posi
   background:linear-gradient(90deg,transparent,var(--royal-gold),transparent);opacity:.8}
 html[data-royal] .wrap>h1:before{top:20px}html[data-royal] .wrap>h1:after{bottom:14px}
 html[data-royal] .sub{margin-top:8px}
-/* seats: gilded frame plus a crest in the agent's own accent; the card art and state images are untouched */
+/* seats: a gilded frame in the agent's own accent; the card art and state images are untouched */
 html[data-royal] .seat{border:1px solid color-mix(in srgb,var(--ac) 55%,var(--royal-line));box-shadow:0 0 0 1px #000,inset 0 0 22px #000a}
-html[data-royal] .seat .crest{position:absolute;z-index:4;left:50%;top:8px;width:28px;height:28px;margin-left:-14px;color:var(--ac);
-  filter:drop-shadow(0 1px 2px #000);pointer-events:none}
 html[data-royal] .seat[data-state="speaking"],html[data-royal] .seat[data-state="thinking"]{animation:royalbreath 2.6s ease-in-out infinite}
 @keyframes royalbreath{50%{box-shadow:0 0 0 1px #000,0 0 18px 2px var(--ac)}}
 /* 44px targets: the visible controls stay small, the hit area grows */
 html[data-royal] .seat .pin:before{content:'';position:absolute;inset:-10px -8px}
-html[data-royal] .seat .voice select{padding-top:14px;padding-bottom:14px}
-html[data-royal] .seat .voice{min-height:44px}
+/* 44px tall, but the 5px above and below are taken back with a negative margin: the hit area grows, the card plate does not (it used to push the voice box past the card's bottom edge) */
+html[data-royal] .seat .voice select{padding-top:14px;padding-bottom:14px;margin:-5px 0}
 html[data-royal] .seat .pin:focus-visible,html[data-royal] .seat .voice select:focus-visible{outline:3px solid var(--royal-gold-hi);outline-offset:2px}
 @media(max-width:560px){
   html[data-royal] .wrap>h1{font-size:22px;letter-spacing:4px;padding:38px 10px 26px}

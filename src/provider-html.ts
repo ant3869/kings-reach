@@ -3,6 +3,7 @@
 // mismatched pair (e.g. a ChatGPT model under the Claude route) cannot be selected, and the server re-checks on save.
 
 import { SHELL_CSS, pageHead, wrapInShell } from './shell.js';
+import { ICON_LINKS } from './brand.js';
 import { TIERS_CSS, TIERS_JS, TIERS_PANEL } from './tiers-html.js';
 
 // Page-specific rules only: palette, rail and the shared button/notice/input kit come from shell.ts.
@@ -60,6 +61,7 @@ ${TIERS_PANEL}
 <div class="actions"><button class="btn primary" id="save">Save routing</button><button class="btn" id="reset">Recommended defaults</button><span id="msg" class="msg"></span></div>
 </div>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+${ICON_LINKS}
 <title>Provider Network - King's Reach</title><style>${SHELL_CSS}${CSS}${TIERS_CSS}</style></head><body>
 ${wrapInShell('settings', token, body)}
 <script>

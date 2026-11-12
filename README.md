@@ -2,12 +2,16 @@
   <img src="docs/banner.png" alt="King's Reach: the AI council for command, build, and execution" width="100%">
 </p>
 
+<p align="center">
+  <img src="public/brand/kr-crest-512.png" alt="King's Reach crest: a gold KR monogram under a crown on a shield" width="170">
+</p>
+
 # King's Reach
 
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.28.0.
+and a dashboard. Version 2.29.0.
 
 ## The five roles
 
@@ -91,6 +95,9 @@ npm install
 npm run setup    # asks for your keys, writes .env (an existing .env is never touched), installs War Room deps, builds
 npm start
 ```
+
+**Windows icon:** `npm run shortcut` puts a King's Reach icon on your Desktop and in the Start menu. Clicking it starts the app if it is not
+already running (it never restarts a running one) and opens the dashboard.
 
 Prefer to do it by hand? Copy `.env.example` to `.env`, fill in what you use, then `npm run build` and `npm start`.
 Then open the dashboard (`http://localhost:3141`). Until you are set up, a **Getting started** card at the top lists what is

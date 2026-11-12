@@ -27,6 +27,7 @@ import { rankModels } from './model-rank.js';
 import { claudeLogin } from './claude-login.js';
 import { collectHealth } from './health.js';
 import { warRoomStatus } from './warroom-status.js';
+import { mountBrand } from './brand.js';
 import { logger } from './logger.js';
 import { attachmentBlock } from './attach-format.js';
 import { MAX_FILE_BYTES, removeUpload, resolveAttachments, storeUpload, sweepOften, UploadError } from './attachments.js';
@@ -66,6 +67,7 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
       return image ? c.body(readFileSync(path) as unknown as string) : c.body(readFileSync(path, 'utf8'));
     });
   }
+  mountBrand(app);
   app.get('/', (c) => c.html(renderDashboard({ token: c.req.query('token') })));
   app.get('/providers', (c) => c.html(renderProviderSettings(c.req.query('token') ?? '')));
 

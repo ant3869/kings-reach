@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { brandChecks } from './ui-check-brand.mjs';
 import { controlChecks } from './ui-check-controls.mjs';
 import { runActionChecks } from './ui-check-run-actions.mjs';
 import { setupChecks } from './ui-check-setup.mjs';
@@ -468,6 +469,7 @@ try {
   check('resume: the answer that arrives afterwards lands exactly once, after the question', count(await logText(), '391.') === 1 && (await logText()).indexOf('391.') > (await logText()).indexOf('hey Ops'));
 
   await controlChecks({ open, js, check, sleep, cdp });
+  await brandChecks({ open, js, check, sleep });
   await open('/warroom', { fake: true, pre: `window.__fastRetry = true; var __st = window.setTimeout; window.setTimeout = function (f, ms) { return __st(f, ms === 8000 ? 300 : ms); };` });
   await deliver({ type: 'meter', pct: 10, phase: 'plan', label: 'plan', failed: false });
   await js(`document.getElementById('nowcancel').click()`);

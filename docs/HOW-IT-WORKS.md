@@ -66,6 +66,13 @@ Everything under `store/` and `workspace/` is yours and local; it is ignored by 
 - A failed provider heals itself too: the router tries every route in order and ignores that flag, so the first success clears it. Providers late in a ladder (OpenAI is last for Comms and Content) may not be reached for a while, which is what Re-check is for.
 - Hidden when nothing needs attention.
 
+## The crest, the launcher icon and the royal look
+
+- **Crest:** `public/brand/kr-crest-source.png` is the one source image. `python scripts/make-brand.py` rebuilds every size from it (square, never stretched; the tiny sizes use the shield alone): the nav seal, the War Room title, the tab icon (`favicon.ico`), the iOS icon and `kings-reach.ico` for the shortcut.
+- **Launcher:** `npm run shortcut` (Windows) makes a **King's Reach** icon on the Desktop and in the Start menu. It runs `scripts/launch.ps1`: if the dashboard already answers, it only opens the browser; if not, it starts the core hidden (logs in `store/logs/core.log`), waits up to a minute, then opens it. Re-run it if you move the project folder.
+- **Royal look is on by default** in the War Room. `/warroom?royal=0` turns it off (remembered per browser address); `?royal=1` brings it back. A browser you have not used before, or a different address (`localhost` vs `127.0.0.1`), starts from the default.
+- **Silent runs:** if "Agents speak aloud" is unticked the page says so when you send. If the browser is still holding sound back, it says so once, keeps the clips, and plays them all after your next click or key press.
+
 ## Rate and share a run (Plan Library, `/history`)
 
 - **Was this useful?** Useful / Not useful on any run; click again to clear. Saved to `store/ratings.jsonl` (append-only, last answer wins; the run ledger is never edited). The page shows "Rated useful: n of m".
