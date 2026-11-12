@@ -25,6 +25,14 @@ export async function controlChecks({ open, js, check, sleep, cdp }) {
   const accepted = await stopFacts();
   check('stop: only an explicit yes sends force, after the plain request was refused', accepted.stops.length === 2 && accepted.stops[0].force === undefined && accepted.stops[1].force === true, JSON.stringify(accepted));
   check('stop: it says plainly that running work was ended', /running work was ended/.test(accepted.notice), accepted.notice);
+  // Already stopped: the page must say so, not claim it just stopped something (it used to look like the button did nothing).
+  await open('/', { pre: `window.__sent = []; const realFetch = window.fetch.bind(window);
+    window.fetch = (u, o) => String(u).includes('api/warroom/stop')
+      ? Promise.resolve(new Response(JSON.stringify({ ok: true, already: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      : realFetch(u, o);` });
+  await pressStop();
+  const already = await js(`document.getElementById('notice').textContent`);
+  check('stop: when the War Room was already stopped the page says so and points at Start', /already stopped/.test(already) && /Start/.test(already) && !/^War Room stopped\.$/.test(already), already);
   // --- War Room icons: they render, controls keep their meaning, the message box still fits, recording swaps its caption ----
   await open('/warroom', { fake: true });
   const drawnHidden = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('[hidden]')].filter((e) => getComputedStyle(e).display !== 'none').map((e) => e.id || e.className || e.tagName))`));

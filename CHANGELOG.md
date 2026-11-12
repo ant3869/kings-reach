@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.29.1 - Updates can go live safely, and Stop War Room says what happened
+
+**Fixed**
+- **A released update never reached a running app.** Nothing restarted the core, and **Stop War Room** only stops the Python War Room, so the icon, the royal default and everything else stayed invisible on a core started days earlier. `scripts/launch.ps1` (the desktop icon) now restarts a core that is older than the code on disk: gracefully (`/api/admin/shutdown`), with a rebuild, and **only when nothing is running** in the core or the War Room. `npm run restart` forces it under the same rule. Busy means untouched, with a message.
+- **Stop War Room looked like it did nothing** when the War Room was already stopped: the page said "War Room stopped." and nothing changed. It now says it was already stopped and points at Start.
+
+**Tests:** the launcher was exercised against a stub core on spare ports: stale and idle restarts, stale and busy is left alone, matching version untouched, `-Restart` works and is refused while busy. One browser check for the "already stopped" message (mutation-checked). Dashboard client v12.
+
 ## 2.29.0 - The crest, a launcher icon, and a quieter-run fix
 
 **Added**

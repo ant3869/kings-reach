@@ -6,7 +6,7 @@ import { CLIENT_MD_JS } from './client-md.js';
 import { SHELL_CSS, wrapInShell } from './shell.js';
 import { ICON_LINKS } from './brand.js';
 
-export const DASHBOARD_CLIENT_VERSION = 11;
+export const DASHBOARD_CLIENT_VERSION = 12;
 const REFRESH_MS = 15_000;
 const STALE_MS = 45_000;
 
@@ -139,7 +139,7 @@ var ACTIONS={
     try{await send('POST','api/warroom/start');notify('War Room started.');}catch(e){notify('War Room start failed: '+e.message,true);}
     el.disabled=false;refresh();},
   'war-stop':async function(el){el.disabled=true;
-    try{await send('POST','api/warroom/stop');notify('War Room stopped.');}
+    try{var r=await send('POST','api/warroom/stop');notify(r&&r.already?'The War Room was already stopped, so there was nothing to stop. Press Start to bring it back.':'War Room stopped.');}
     catch(e){
       if(e.status===409&&confirm(e.message+'\\n\\nStop it anyway? The running work will be lost.')){
         try{await send('POST','api/warroom/stop',{force:true});notify('War Room stopped. The running work was ended.');}catch(e2){notify('War Room stop failed: '+e2.message,true);}

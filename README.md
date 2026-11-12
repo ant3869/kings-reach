@@ -11,7 +11,7 @@
 Personal AI assistant hub with a five-role war room. A heavy task flows
 debate → verdict (agreed plan) → build, with a build button executing the
 agreed plan. Also: Telegram and WhatsApp bots, voice, memory, scheduler,
-and a dashboard. Version 2.29.0.
+and a dashboard. Version 2.29.1.
 
 ## The five roles
 
@@ -97,7 +97,9 @@ npm start
 ```
 
 **Windows icon:** `npm run shortcut` puts a King's Reach icon on your Desktop and in the Start menu. Clicking it starts the app if it is not
-already running (it never restarts a running one) and opens the dashboard.
+already running and opens the dashboard. If the running copy is older than the code on disk (you updated and never restarted), it is restarted
+gracefully first, but only when nothing is running. `npm run restart` forces a restart, also refused while work is running.
+**Stop War Room** on the dashboard stops only the Python War Room, not the core: it does not load an update.
 
 Prefer to do it by hand? Copy `.env.example` to `.env`, fill in what you use, then `npm run build` and `npm start`.
 Then open the dashboard (`http://localhost:3141`). Until you are set up, a **Getting started** card at the top lists what is
