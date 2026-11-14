@@ -1,11 +1,11 @@
 // src/history-html.ts - the Plan Library page (served at /history): every council, plan and build the War Room
-// has run, with stats and actions. Markup + CSS only; behaviour lives in public/history-app.js.
+// has run, with stats and actions. Markup + CSS only; behaviour lives in public/history-app.js (page) and public/history-plans.js (revisions, compare, plan of record).
 
 import { CLIENT_MD_JS } from './client-md.js';
 import { SHELL_CSS, pageHead, wrapInShell } from './shell.js';
 import { ICON_LINKS } from './brand.js';
 
-export const HISTORY_CLIENT_VERSION = 6;
+export const HISTORY_CLIENT_VERSION = 7;
 
 // Page-specific rules only: palette, rail and the shared button/notice/input kit come from shell.ts.
 const CSS = `
@@ -54,6 +54,7 @@ tr:last-child td{border-bottom:0}
 .owner{font:600 10px system-ui;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
 .verdict{border-left:2px solid var(--acc);padding:2px 0 2px 16px;margin:10px 0;max-height:360px;overflow-y:auto;line-height:1.6;color:#d6d1c3}
 .verdict p{margin:6px 0}.verdict h3,.verdict h4{margin:12px 0 4px;color:var(--acc);font-size:14px}.verdict ul,.verdict ol{padding-left:20px}
+.diff{list-style:none;padding:0;margin:6px 0}.diff li{margin:7px 0}.diff-a{border-left:3px solid var(--red);padding-left:8px}.diff-b{border-left:3px solid var(--green);padding-left:8px}.warnline{margin-top:6px;color:var(--amber)}#compare h3{margin-top:16px}#compare h4{margin:14px 0 4px}
 .chips{display:flex;gap:6px;flex-wrap:wrap}.chips span{border:1px solid var(--line);border-radius:3px;padding:2px 10px;font-size:12px;color:var(--dim)}
 .bar{display:flex;height:20px;border-radius:3px;overflow:hidden;border:1px solid var(--line);background:#0a0d10}
 .bar i{display:block;font:normal 10px/20px system-ui;color:#0a0a0a;text-align:center;overflow:hidden;white-space:nowrap}
@@ -99,6 +100,7 @@ ${wrapInShell('history', token, body, { version: `Client v${HISTORY_CLIENT_VERSI
 var HIST = ${config};
 ${CLIENT_MD_JS}
 </script>
+<script src="/history/history-plans.js?v=${HISTORY_CLIENT_VERSION}"></script>
 <script src="/history/history-app.js?v=${HISTORY_CLIENT_VERSION}"></script>
 </body></html>`;
 }

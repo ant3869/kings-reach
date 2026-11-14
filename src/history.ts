@@ -6,6 +6,9 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSyn
 import { join } from 'node:path';
 import { PROJECT_ROOT, STORE_DIR } from './config.js';
 import { appendRating, loadRatings, type Rating, type RatingValue } from './ratings.js';
+import { appendPromotion, loadPromotions } from './plan-promotions.js';
+import { buildThreads, threadKey, threadOfPlan, type Thread } from './plan-lineage.js';
+import { comparePlans, type PlanComparison } from './plan-compare.js';
 
 export interface LedgerPaths {
   runsFile: string;
@@ -241,6 +244,7 @@ export function runDetail(id: string, p = defaultPaths()) {
     artifacts: planId ? listArtifacts(planId, p) : [],
     active: activePlan(p)?.run ?? null,
     rating: loadRatings(p.runsFile).get(id)?.value ?? null,
+    lineage: planId ? threadOfPlan(threadsFor(p, runs), planId) : null,
   };
 }
 
@@ -252,9 +256,9 @@ export function setRating(id: string, value: unknown, p = defaultPaths()): { ok:
   return { ok: true, rating: loadRatings(p.runsFile).get(id)?.value ?? null };
 }
 
-export function historyOverview(p = defaultPaths()) {
+/** Which verdicts have an archived plan, and what each one's objective is. Reads every archive file once. */
+function archiveIndex(p: LedgerPaths): { archived: string[]; objectives: Map<string, string> } {
   ensureArchive(p);
-  const runs = loadRuns(p);
   const archived = existsSync(p.archiveDir)
     ? readdirSync(p.archiveDir).filter((n) => /^[0-9a-f]{8}\.json$/.test(n)).map((n) => n.slice(0, 8)) : [];
   const objectives = new Map<string, string>();
@@ -262,11 +266,79 @@ export function historyOverview(p = defaultPaths()) {
     const objective = planSummary(readPlan(id, p))?.objective;
     if (objective) objectives.set(id, objective);
   }
+  return { archived, objectives };
+}
+
+/** Threads of revisions of the same question, plus each thread's chosen plan of record. See plan-lineage.ts. */
+function threadsFor(p: LedgerPaths, runs: RunRecord[], index = archiveIndex(p)): Map<string, Thread> {
+  const buildsByPlan = new Map<string, RunRecord[]>();
+  for (const b of runs) {
+    if (b.kind !== 'build') continue;
+    const plan = planOf(b, runs);
+    if (plan) buildsByPlan.set(plan, [...(buildsByPlan.get(plan) ?? []), b]);
+  }
+  return buildThreads({ runs, archived: new Set(index.archived), objectives: index.objectives, buildsByPlan, promotions: loadPromotions(p.runsFile) });
+}
+
+/**
+ * Make an archived plan the plan of record for its question (value true), or take that choice back (false).
+ * This is a durable marker; it does not change which plan Build executes (that is activatePlan). Only a locked, archived verdict qualifies,
+ * the same bar as loading one.
+ */
+export function promotePlan(id: string, value: unknown, p = defaultPaths()): { ok: boolean; error?: string; thread?: string; planOfRecord?: string | null } {
+  if (!RUN_ID.test(id)) return { ok: false, error: 'bad run id' };
+  if (value !== true && value !== false) return { ok: false, error: 'value must be true (promote) or false (take back)' };
+  const run = loadRuns(p).find((r) => r.id === id && r.kind === 'summit' && r.outcome === 'verdict');
+  if (!run) return { ok: false, error: 'only a locked verdict can be the plan of record' };
+  ensureArchive(p);
+  if (!readPlan(id, p)) return { ok: false, error: `no archived verdict for ${id} (only locked verdicts can be promoted)` };
+  const thread = threadKey(run.question);
+  if (!thread) return { ok: false, error: 'this plan has no question text, so it has no thread to be the plan of record of' };
+  const current = loadPromotions(p.runsFile).get(thread)?.plan ?? null;
+  if (value === false && current !== id) return { ok: false, error: 'this plan is not the plan of record, so there is nothing to take back' };
+  appendPromotion(p.runsFile, thread, value ? id : null);
+  return { ok: true, thread, planOfRecord: value ? id : null };
+}
+
+export interface PlanRunFacts { started: string; costUsd: number; totalSeconds: number; builds: number; built: number }
+
+/** Two archived plans side by side: the diff of what they say, plus what running each cost and led to. */
+export function compareArchived(a: string, b: string, p = defaultPaths()):
+  { ok: true; comparison: PlanComparison; runs: { a: PlanRunFacts; b: PlanRunFacts }; sameThread: boolean } | { ok: false; error: string } {
+  if (!RUN_ID.test(a) || !RUN_ID.test(b)) return { ok: false, error: 'bad run id' };
+  if (a === b) return { ok: false, error: 'pick two different plans to compare' };
+  const runs = loadRuns(p);
+  const planA = readPlan(a, p), planB = readPlan(b, p);
+  const runA = runs.find((r) => r.id === a && r.kind === 'summit'), runB = runs.find((r) => r.id === b && r.kind === 'summit');
+  for (const [id, plan, run] of [[a, planA, runA], [b, planB, runB]] as const) {
+    if (!plan || !run) return { ok: false, error: `no archived plan for ${id}` };
+  }
+  const facts = (r: RunRecord): PlanRunFacts => {
+    const builds = buildsOf(r.id, runs);
+    return { started: String(r.started), costUsd: num(r.total_cost_usd), totalSeconds: num(r.total_s), builds: builds.length, built: builds.filter((x) => x.outcome === 'built').length };
+  };
+  return { ok: true, comparison: comparePlans(planA!, planB!), runs: { a: facts(runA!), b: facts(runB!) },
+    sameThread: threadKey(runA!.question) !== '' && threadKey(runA!.question) === threadKey(runB!.question) };
+}
+
+export function historyOverview(p = defaultPaths()) {
+  const index = archiveIndex(p);
+  const runs = loadRuns(p);
   const ratings = loadRatings(p.runsFile);
+  const threads = threadsFor(p, runs, index);
+  const active = activePlan(p);
+  const activeThread = active ? threadOfPlan(threads, active.run) : null;
   return {
     stats: computeStats(runs, ratings),
-    runs: runs.map((r) => summarize(r, runs, objectives, ratings)),
-    active: activePlan(p),
-    archived,
+    runs: runs.map((r) => {
+      const planId = r.kind === 'build' ? planOf(r, runs) : r.id;
+      const thread = planId ? threadOfPlan(threads, planId) : null;
+      return { ...summarize(r, runs, index.objectives, ratings), revisions: thread ? thread.plans.length : 0,
+        isPlanOfRecord: Boolean(thread && r.kind === 'summit' && thread.planOfRecord === r.id) };
+    }),
+    // isPlanOfRecord is null when the active plan's question has no plan of record: there is nothing to disagree with.
+    active: active && { ...active, planOfRecord: activeThread?.planOfRecord ?? null,
+      isPlanOfRecord: activeThread?.planOfRecord ? activeThread.planOfRecord === active.run : null },
+    archived: index.archived,
   };
 }

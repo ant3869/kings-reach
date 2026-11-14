@@ -10,6 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { brandChecks } from './ui-check-brand.mjs';
 import { controlChecks } from './ui-check-controls.mjs';
 import { runActionChecks } from './ui-check-run-actions.mjs';
+import { planChecks } from './ui-check-plans.mjs';
+import { skillChecks } from './ui-check-skills.mjs';
+import { routingChecks } from './ui-check-routing.mjs';
 import { setupChecks } from './ui-check-setup.mjs';
 
 const BASE = process.env.UI_CHECK_BASE ?? 'http://127.0.0.1:3141';
@@ -470,6 +473,9 @@ try {
 
   await controlChecks({ open, js, check, sleep, cdp });
   await brandChecks({ open, js, check, sleep });
+  await planChecks({ open, js, check, sleep, base: BASE });
+  await skillChecks({ open, js, check, sleep, base: BASE });
+  await routingChecks({ open, js, check, sleep, base: BASE });
   await open('/warroom', { fake: true, pre: `window.__fastRetry = true; var __st = window.setTimeout; window.setTimeout = function (f, ms) { return __st(f, ms === 8000 ? 300 : ms); };` });
   await deliver({ type: 'meter', pct: 10, phase: 'plan', label: 'plan', failed: false });
   await js(`document.getElementById('nowcancel').click()`);
