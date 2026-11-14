@@ -188,6 +188,12 @@ async function main() {
   let historyJsOk = historyJs.status === 200;
   try { execFileSync(process.execPath, ['--check', historyFile], { stdio: 'pipe' }); } catch { historyJsOk = false; }
   check('GET /history/history-app.js (+ node --check)', historyJsOk, `HTTP ${historyJs.status}, ${historyJs.body.length} bytes`);
+  const plansJs = await request({ port: DASH, urlPath: '/history/history-plans.js' });
+  const plansFile = path.join(LOG_DIR, 'served-history-plans.js');
+  fs.writeFileSync(plansFile, plansJs.body, 'utf8');
+  let plansJsOk = plansJs.status === 200;
+  try { execFileSync(process.execPath, ['--check', plansFile], { stdio: 'pipe' }); } catch { plansJsOk = false; }
+  check('GET /history/history-plans.js (+ node --check)', plansJsOk, `HTTP ${plansJs.status}, ${plansJs.body.length} bytes`);
   const overview = await request({ port: DASH, urlPath: '/api/history', headers: authed() });
   let overviewJson = {};
   try { overviewJson = JSON.parse(overview.body); } catch { /* reported by the check below */ }

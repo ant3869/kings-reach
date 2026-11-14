@@ -15,6 +15,8 @@ import { join } from 'node:path';
 import { renderPlanLine, renderWarRoom, WARROOM_STATIC } from './warroom-html.js';
 import { renderProviderSettings } from './provider-html.js';
 import { mountHistory } from './history-routes.js';
+import { mountSkills } from './skills-routes.js';
+import { mountRouting } from './routing-routes.js';
 import { mountSetup } from './setup-routes.js';
 import { defaultProviderRouting, loadProviderRouting, PROVIDERS, ROLE_GUIDANCE, saveProviderRouting } from './provider-config.js';
 import { get9RouterCatalog, getProviderHealth } from './provider-runner.js';
@@ -74,6 +76,8 @@ export function buildDashboardApp(opts: DashboardOptions = {}): Hono {
   app.use('/api/*', apiGuard({ token: DASHBOARD_TOKEN, loopbackOnly: DASHBOARD_LOOPBACK }));
 
   mountHistory(app);
+  mountSkills(app);
+  mountRouting(app);
   mountSetup(app);
 
   app.get('/api/health', async (c) => c.json(await collectHealth()));

@@ -2,7 +2,7 @@
 // between Command, War Room, Plan Library and Settings is a same-tab click, never a new window.
 // Also the small shared component kit (page header, buttons, notices) so pages stay visually consistent.
 
-export type PageId = 'command' | 'warroom' | 'history' | 'settings';
+export type PageId = 'command' | 'warroom' | 'history' | 'skills' | 'routing' | 'settings';
 
 export interface ShellOptions {
   /** In-page anchors shown under the active page, e.g. [['#missions', 'Missions']]. */
@@ -20,6 +20,8 @@ const ICONS: Record<PageId, string> = {
   command: '<path d="M2 3.5h12v9H2zM4.5 6.5l2 1.5-2 1.5M8 10h3"/>',
   warroom: '<path d="M2 13h12M3 13V7l5-4 5 4v6M6 13V9h4v4"/>',
   history: '<path d="M3 2.5h8l2 2v9H3zM5.5 7h5M5.5 9.5h5M5.5 12h3"/>',
+  skills: '<path d="M8 2l1.8 3.7 4.1.6-3 2.9.7 4.1L8 11.3 4.4 13.3l.7-4.1-3-2.9 4.1-.6z"/>',
+  routing: '<path d="M2.5 12.5h3l2-9 2 6 1.5-3h2.5"/><circle cx="13.5" cy="6.5" r="0.9"/>',
   settings: '<path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/><circle cx="10" cy="4.5" r="1.5"/><circle cx="6" cy="11.5" r="1.5"/>',
 };
 
@@ -28,6 +30,8 @@ const PAGES: ReadonlyArray<{ id: PageId; href: string; label: string; note: stri
   { id: 'command', href: '/', label: 'Command', note: 'The Throne Room', group: 'The Court' },
   { id: 'warroom', href: '/warroom', label: 'War Room', note: 'The Council Chamber', group: 'The Court' },
   { id: 'history', href: '/history', label: 'Plan Library', note: 'The Royal Archives', group: 'The Archives' },
+  { id: 'skills', href: '/skills', label: 'Skills', note: 'The Armoury', group: 'The Archives' },
+  { id: 'routing', href: '/routing', label: 'Route advice', note: 'The Scouts', group: 'The Realm' },
   { id: 'settings', href: '/providers', label: 'Settings', note: 'Alliances & Routes', group: 'The Realm' },
 ];
 

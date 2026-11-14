@@ -1,6 +1,6 @@
 // public/history-app.js - Plan Library behaviour. Needs (inline, before this file): HIST config, md(), esc().
 // Data comes from /api/history*; the only writes are "load as active plan" and the build hand-off.
-/* global HIST, md, esc */
+/* global HIST, md, esc, lineageSection, promoteButton, recordWarning, showCompare, setPlanOfRecord */ // the last five are in history-plans.js, loaded first
 'use strict';
 
 const $ = (id) => document.getElementById(id);
@@ -76,7 +76,7 @@ function renderActive() {
   el.classList.toggle('none', !a);
   if (!a) { el.innerHTML = 'No plan on file. Convene the council in the <a href="/warroom">War Room</a> to lock a verdict.'; return; }
   el.innerHTML = `<div class="grow"><b>Plan on file</b> <span class="id">${esc(a.run)}</span> &middot; ${a.steps} steps by ${esc(a.owners.join(', '))}` +
-    `<div class="meta clamp2" title="${esc(a.objective)}">${esc(a.objective)}</div></div>` +
+    `<div class="meta clamp2" title="${esc(a.objective)}">${esc(a.objective)}</div>${recordWarning(a)}</div>` +
     `<button class="btn" data-act="open" data-id="${esc(a.run)}">Review</button>` +
     `<button class="btn primary" data-act="build" data-id="${esc(a.run)}">Build this plan...</button>`;
 }
@@ -101,11 +101,11 @@ function renderList() {
     const facts = r.kind === 'summit'
       ? [duration(r.totalSeconds), money(r.costUsd), r.confidence == null ? '' : 'conf ' + r.confidence.toFixed(2),
         r.mindsChanged == null ? '' : 'minds changed ' + r.mindsChanged + (r.mindsClaimed !== r.mindsChanged ? ' (claimed ' + r.mindsClaimed + ')' : ''),
-        r.builds ? `${r.builds} build${r.builds > 1 ? 's' : ''}` : '']
+        r.builds ? `${r.builds} build${r.builds > 1 ? 's' : ''}` : '', r.revisions > 1 ? `${r.revisions} revisions` : '']
       : [duration(r.totalSeconds), money(r.costUsd), r.changedFiles + ' files', r.criteriaMet ? r.criteriaMet + ' criteria' : ''];
     if (r.rating) facts.push(RATE[r.rating]);
     return `<li><button data-act="open" data-id="${esc(r.id)}" class="${r.id === selectedId ? 'sel' : ''}">` +
-      `<div class="row1"><span class="badge kind-${esc(r.kind)}">${r.kind === 'summit' ? 'council' : 'build'}</span>${badge(r.outcome)}` +
+      `<div class="row1"><span class="badge kind-${esc(r.kind)}">${r.kind === 'summit' ? 'council' : 'build'}</span>${badge(r.outcome)}${r.isPlanOfRecord ? '<span class="badge good">plan of record</span>' : ''}` +
       `<span class="when">${esc(when(r.started))}</span></div>` +
       `<div class="q">${esc(r.title)}</div><div class="meta"><span class="id">${esc(r.id)}</span> &middot; ${esc(facts.filter(Boolean).join(' &middot; ').replace(/&middot;/g, '\u00b7'))}</div>` +
       `</button></li>`;
@@ -170,6 +170,7 @@ function actionsFor(d) {
   const isActive = d.active === id;
   return `<div class="actions">` +
     `<button class="btn" data-act="activate" data-id="${esc(id)}"${isActive ? ' disabled' : ''}>${isActive ? 'Active plan' : 'Load as active plan'}</button>` +
+    promoteButton(d) +
     `<button class="btn primary" data-act="build" data-id="${esc(id)}">Build this plan...</button>` +
     `<button class="btn" data-act="reconvene" data-id="${esc(id)}">Reconvene on this</button></div>`;
 }
@@ -209,7 +210,7 @@ function summitDetail(d) {
     `${(r.specialists || []).length} specialists &middot; ${r.memory_lines_used || 0} memories recalled</div>` +
     glance(d) + ratingBox(d) + actionsFor(d) + exportBar(d) +
     `<details><summary>Question put to the council</summary><pre>${esc((d.plan && d.plan.question) || r.question)}</pre></details>` +
-    plansSection(d) + buildsSection(d) +
+    lineageSection(d) + plansSection(d) + buildsSection(d) +
     section('Stage timings', stageBar(r.stages)) + section('Who did the work', agentsTable(r.agents)) + artifactsSection(d);
 }
 
@@ -347,6 +348,14 @@ async function onAction(e) {
     else if (act === 'retry') {
       if (id) await showDetail(id); else { await refresh(); $('detail').innerHTML = '<div class="empty">Pick a run on the left.</div>'; routeFromHash(); }
     }
+    else if (act === 'promote') {
+      const on = t.dataset.value === 'true';
+      await setPlanOfRecord(id, on); await refresh(); await showDetail(id);
+      toast(on ? `Plan ${id} is now the plan of record for its question.` : `Plan ${id} is no longer the plan of record.`);
+      const again = document.querySelector('[data-act="promote"]'); // the redraw dropped focus; keyboard users keep their place
+      if (again) again.focus();
+    }
+    else if (act === 'compare') await showCompare(id, t.dataset.other);
     else if (act === 'build') await confirmBuild(id);
     else if (act === 'reconvene') reconvene(id);
     else if (act === 'export') await downloadReport(id);

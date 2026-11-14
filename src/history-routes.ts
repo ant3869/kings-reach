@@ -5,20 +5,29 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { PROJECT_ROOT } from './config.js';
-import { activatePlan, defaultPaths, historyOverview, readArtifact, runDetail, setRating, type LedgerPaths } from './history.js';
+import { activatePlan, compareArchived, defaultPaths, historyOverview, promotePlan, readArtifact, runDetail, setRating, type LedgerPaths } from './history.js';
 import { exportMarkdown } from './history-export.js';
 import { renderHistory } from './history-html.js';
 
 /** `paths` is injectable so tests can run every route against a fixture ledger instead of the real store. */
 export function mountHistory(app: Hono, paths: LedgerPaths = defaultPaths()): void {
   app.get('/history', (c) => c.html(renderHistory(c.req.query('token') ?? '')));
-  app.get('/history/history-app.js', (c) => {
-    c.header('Content-Type', 'text/javascript; charset=utf-8');
-    c.header('Cache-Control', 'no-cache');
-    return c.body(readFileSync(join(PROJECT_ROOT, 'public', 'history-app.js'), 'utf8'));
-  });
+  // A fixed list, never a path taken from the request: the page's two scripts are the only files this route can serve.
+  for (const name of ['history-plans.js', 'history-app.js']) {
+    app.get(`/history/${name}`, (c) => {
+      c.header('Content-Type', 'text/javascript; charset=utf-8');
+      c.header('Cache-Control', 'no-cache');
+      return c.body(readFileSync(join(PROJECT_ROOT, 'public', name), 'utf8'));
+    });
+  }
 
   app.get('/api/history', (c) => c.json(historyOverview(paths)));
+
+  // Registered before /api/history/:id/... so the literal segment "compare" is never read as a run id.
+  app.get('/api/history/compare/:a/:b', (c) => {
+    const r = compareArchived(c.req.param('a'), c.req.param('b'), paths);
+    return c.json(r, r.ok ? 200 : r.error.startsWith('bad') || r.error.startsWith('pick') ? 400 : 404);
+  });
 
   app.get('/api/history/:id', (c) => {
     const detail = runDetail(c.req.param('id'), paths);
@@ -44,6 +53,12 @@ export function mountHistory(app: Hono, paths: LedgerPaths = defaultPaths()): vo
     const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
     const r = setRating(c.req.param('id'), body.value, paths);
     return c.json(r, r.ok ? 200 : r.error === 'run not found' ? 404 : 400);
+  });
+
+  app.post('/api/history/:id/promote', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { value?: unknown };
+    const r = promotePlan(c.req.param('id'), body.value, paths);
+    return c.json(r, r.ok ? 200 : r.error?.startsWith('bad') || r.error?.startsWith('value') ? 400 : 404);
   });
 
   app.post('/api/history/:id/activate', (c) => {

@@ -8,11 +8,15 @@ import vm from 'node:vm';
 import { renderDashboard } from '../dist/dashboard-html.js';
 import { renderWarRoom } from '../dist/warroom-html.js';
 import { renderHistory } from '../dist/history-html.js';
+import { renderSkills } from '../dist/skills-html.js';
+import { renderRouting } from '../dist/routing-html.js';
 
 const PAGES = {
   dashboard: () => renderDashboard(),
   'war room': () => renderWarRoom(null),
   history: () => renderHistory(''),
+  skills: () => renderSkills(''),
+  routing: () => renderRouting(''),
 };
 
 for (const [name, render] of Object.entries(PAGES)) {
